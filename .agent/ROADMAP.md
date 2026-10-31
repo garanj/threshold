@@ -9,11 +9,11 @@
   - LeakCanary embedded in debug builds for early memory leak detection.
   - Automated PSS memory ceiling check script/verification (< 30,000 KB PSS).
   - Pure Kotlin unit test suite infrastructure in `:core` (< 5s target execution time).
-- [ ] **Task 1.3: Core Domain Models & Ports (`:core`)**
-  - Implement `ConfigurationProfile`, `ComponentKey`, `DndPolicy`, `AppFilterRule`.
+- [x] **Task 1.3: Core Domain Models & Ports (`:core`)**
+  - Implement `ComponentKey`, `AppAccessState`, `FrictionPolicy`, `DndPolicy`, `Profile`.
   - Implement `PackageIndexSource` and `AppAccessController` interfaces.
-- [ ] **Task 1.4: Universal Dialer Whitelist Invariant (`:core`)**
-  - Test and verify permanent whitelisting of the system default dialer across all profile filters.
+- [ ] **Task 1.4: Universal Dialer AllowList Invariant (`:core`)**
+  - Test and verify permanent AllowListing of the system default dialer across all profile filters.
 - [ ] **Task 1.5: Fast Zero-Allocation Fuzzy Search (`:core`)**
   - Unicode-normalized, zero-allocation fuzzy matching with reverse-search friction logic.
 - [ ] **Task 1.6: Android Launcher Shell & Home Role (`:app`)**
@@ -91,7 +91,7 @@
   - Runtime inspection via `DevicePolicyManager.isDeviceOwnerApp`.
 - [ ] **Task 6.2: Kernel-Level Package Suspension & Lock Task**
   - `setPackagesSuspended` via `AppAccessController` port.
-  - Native `setLockTaskPackages` multi-app whitelisting (stripping Overview/Recents from System UI).
+  - Native `setLockTaskPackages` multi-app AllowListing (stripping Overview/Recents from System UI).
 - [ ] **Task 6.3: Anti-Tamper & Distraction Lockdown**
   - `setUninstallBlocked` and `setUserControlDisabledPackages` during active focus sessions.
   - `setStatusBarDisabled` notification shade lockdown.

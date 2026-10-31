@@ -7,7 +7,7 @@ Closes #<!-- Issue Number -->
 ### Architectural Boundary & Invariant Audit
 - [ ] **Pure Core Rule:** Did not introduce `android.*` dependencies into `:core`.
 - [ ] **No Shenanigans:** No `AccessibilityService` hacks, no background window polling, no screen overlays over 3rd-party apps.
-- [ ] **Universal Dialer Invariant:** Dialer component is unconditionally whitelisted and accessible.
+- [ ] **Universal Dialer Invariant:** Dialer component is unconditionally AllowListed and accessible.
 - [ ] **Memory & Performance:** Zero bitmap retention in memory; total PSS budget respected (< 30 MB).
 - [ ] **Typographic / Sensory Consistency:** Respects 120Hz non-bouncy curves (`cubic-bezier(0.16, 1, 0.3, 1)`) and bespoke haptics.
 

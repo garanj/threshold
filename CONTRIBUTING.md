@@ -34,7 +34,7 @@ Every non-trivial code modification must be tied directly to a GitHub Issue:
 | Type | Pattern | Example |
 | :--- | :--- | :--- |
 | Feature | `feat/<issue>-<short-description>` | `feat/14-rotary-haptic-detent` |
-| Fix | `fix/<issue>-<short-description>` | `fix/22-dialer-whitelist-leak` |
+| Fix | `fix/<issue>-<short-description>` | `fix/22-dialer-allowlist-leak` |
 | Refactor | `refactor/<issue>-<short-description>` | `refactor/30-search-zero-alloc` |
 | Testing | `test/<issue>-<short-description>` | `test/35-paparazzi-insets` |
 

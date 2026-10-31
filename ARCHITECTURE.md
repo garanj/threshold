@@ -83,7 +83,7 @@ Threshold includes an optional Device Policy Controller tier:
 - Inspected at runtime via `DevicePolicyManager.isDeviceOwnerApp`.
 - When active, leverages:
   - `setPackagesSuspended`: Suspends apps at the OS level so tapping Recents triggers the system pause dialog.
-  - `setLockTaskPackages`: Native lock-task multi-app whitelisting.
+  - `setLockTaskPackages`: Native lock-task multi-app AllowListing.
   - `setUninstallBlocked` & `setUserControlDisabledPackages`: Anti-tamper during active focus sessions.
   - `setStatusBarDisabled`: Notification shade lockdown during deep focus.
 - Dignified unenrollment available in-app, via WebUSB, or via ADB fallback.

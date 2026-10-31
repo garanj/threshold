@@ -29,7 +29,7 @@ To ensure device stability, battery efficiency, and privacy, Threshold adheres t
 * **Intent Gatekeeper Model:** The launcher controls app availability solely within its own index and home surface. If an app is hidden or restricted, it cannot be indexed in search or launched from the home screen.  
 * **Local & Offline by Default:** Zero internet permissions required for core functionality. No analytics, tracking SDKs, or cloud accounts.  
 * **Standard Permissions Only:** Relies exclusively on standard Android contracts: `SET_WALLPAPER`, `ACCESS_NOTIFICATION_POLICY` (DND), fine location/geofencing, and standard foreground `NfcAdapter`.  
-* **Universal Dialer Whitelist Safety Invariant:** Regardless of active configuration profile restrictions or focus locks, the package holding `android.app.role.DIALER` is permanently whitelisted and accessible in universal search and emergency dial scenarios to guarantee critical communication availability.  
+* **Universal Dialer AllowList Safety Invariant:** Regardless of active configuration profile restrictions or focus locks, the package holding `android.app.role.DIALER` is permanently AllowListed and accessible in universal search and emergency dial scenarios to guarantee critical communication availability.  
 * **OS-Owned Task Switcher (Recents) Boundary:** The Recents overview is owned strictly by `com.android.systemui` and the OS shell. Under the standard Android Home role, third-party launchers cannot intercept or strip tasks from the system overview without brittle, battery-draining `AccessibilityService` screen-scraping. Standard Threshold strictly governs launch surfaces and intent gatekeeping, leaving OS task switching unmolested.
 
 # **2.2 Explicit Product Non-Goals**
@@ -53,7 +53,7 @@ Users can create named configurations (e.g., Home Calm, Deep Work, Transit, Nigh
 | id | UUID | Unique identifier for the profile instance |
 | name | String | Display title (e.g., "Deep Work", "Transit", "Home Calm") |
 | pinnedAppIds | List\<ComponentKey\> | 3–6 priority items displayed on the active home surface |
-| allowedPackageNames | Set\<String\> | Whitelisted applications accessible via Search/Launch |
+| allowedPackageNames | Set\<String\> | AllowListed applications accessible via Search/Launch |
 | highFrictionPackageNames | Set\<String\> | Applications requiring typed intent before launching |
 | reverseSearchPackageNames | Set\<String\> | Applications where auto-launch on search match is disabled |
 | notificationFilter | DndPolicy | System notification filter mode (ALL, PRIORITY, or TOTAL\_SILENCE) |
@@ -157,7 +157,7 @@ While Threshold operates out-of-the-box as a standard, privacy-first Android Hom
 * **Dynamic Tier Detection:** At runtime, Threshold inspects `DevicePolicyManager.isDeviceOwnerApp(packageName)`. If inactive, the launcher runs its standard lightweight in-memory filtering.  
 * **Kernel-Level Access Enforcement:** When provisioned as Device Owner, Threshold unlocks native, platform-enforced control:  
   * **Package Suspension (`setPackagesSuspended`):** Restricted packages are paused by the OS; tapping an existing thumbnail in Recents is intercepted directly by Android with a system pause dialog ('This app is paused by Threshold'), eliminating the Recents switcher escape hatch without background polling.  
-  * **Native Lock Task Mode (`setLockTaskPackages` / `setLockTaskFeatures`):** Allows whitelisting a multi-task group (e.g., Notes, Signal, Calculator) while stripping the Overview/Recents gesture out of System UI at the platform level.  
+  * **Native Lock Task Mode (`setLockTaskPackages` / `setLockTaskFeatures`):** Allows AllowListing a multi-task group (e.g., Notes, Signal, Calculator) while stripping the Overview/Recents gesture out of System UI at the platform level.  
   * **Zero Architectural Leaks:** Governed via an abstract `AppAccessController` interface in `core/`, preserving pure architectural separation and keeping CI testable without physical DPC provisioning.  
   * **Anti-Tamper & Uninstall Guardrail (`setUninstallBlocked` / `setUserControlDisabledPackages`):** Prevents impulsive uninstallation and bypass attempts during active focus sessions. When a scheduled profile or focus countdown is active, Threshold asserts `dpm.setUninstallBlocked(admin, packageName, true)` and `dpm.setUserControlDisabledPackages(admin, listOf(packageName))`. Settings and Play Store uninstallation and Force Stop options are locked down by the OS. Uninstallation is re-enabled during ambient idle states or via explicit cool-down unenrollment.  
   * **Notification Shade Lockdown (`setStatusBarDisabled`):** Calling `dpm.setStatusBarDisabled(admin, true)` physically disables the pull-down notification shade and quick settings toggles during deep focus blocks, closing the top-bezel distraction loop.
