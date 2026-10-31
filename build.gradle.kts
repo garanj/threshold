@@ -16,17 +16,16 @@ subprojects {
         kotlin {
             target("**/*.kt")
             targetExclude("**/build/**")
-            ktlint().editorConfigOverride(
+            ktlint(libs.versions.ktlint.get()).editorConfigOverride(
                 mapOf(
-                    "ktlint_standard_function-naming" to "disabled",
-                    "standard:function-naming" to "disabled"
-                )
+                    "ktlint_function_naming_ignore_when_annotated_with" to "Composable, Test",
+                ),
             )
         }
         kotlinGradle {
             target("*.gradle.kts")
             targetExclude("**/build/**")
-            ktlint()
+            ktlint(libs.versions.ktlint.get())
         }
     }
 }
