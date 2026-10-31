@@ -1,6 +1,6 @@
 # Agent Operating Manual: Threshold
 
-Welcome to **Threshold** (`com.threshold.launcher`).
+Welcome to **Threshold** (`com.garan.threshold`).
 Threshold is a tactile, minimalist Android launcher designed to treat the smartphone like a precision mechanical instrument rather than an entertainment console.
 
 This file establishes the **non-negotiable operating rules, boundaries, and standards** for any AI agent or human contributor working in this repository.

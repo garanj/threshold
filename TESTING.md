@@ -49,7 +49,7 @@ Threshold adheres to a strict test-driven development (TDD) discipline. No featu
 - **TOTAL PSS Budget:** Strictly capped at **30,000 KB (30 MB)**.
 - Verified in CI and local emulator via:
   ```bash
-  adb shell dumpsys meminfo com.threshold.launcher | grep "TOTAL PSS"
+  adb shell dumpsys meminfo com.garan.threshold | grep "TOTAL PSS"
   ```
 - **LeakCanary** embedded in local debug builds.
 - Zero bitmap objects held in long-lived state.

@@ -152,8 +152,8 @@ Foreground reader mode (`NfcAdapter.enableReaderMode`) coupled with physical obj
 While Threshold operates out-of-the-box as a standard, privacy-first Android Home app (consuming under 25 MB RAM with zero accessibility services), it includes an optional Device Policy Controller (DPC) receiver:
 
 * **Opt-In Provisioning (WebUSB Zero-Install Setup):**  
-  * **WebUSB Provisioner Web App:** To eliminate terminal and command-line friction for non-technical users, Threshold provides a client-side web utility (hosted on GitHub Pages / custom domain) utilizing the browser WebUSB API via `@yume-chan/adb`. Users simply connect their phone via USB to a Chromium browser (Chrome/Edge/Brave), authorize the USB debugging prompt on device, and trigger a one-click automated setup. The web app executes pre-flight checks (verifying account status) and issues `dpm set-device-owner com.threshold.launcher/.ThresholdDeviceAdminReceiver` directly without requiring Android SDK / platform-tools installation.  
-  * **Raw ADB Shell CLI (Fallback):** Power users can alternatively provision directly from a terminal: `adb shell dpm set-device-owner com.threshold.launcher/.ThresholdDeviceAdminReceiver`  
+  * **WebUSB Provisioner Web App:** To eliminate terminal and command-line friction for non-technical users, Threshold provides a client-side web utility (hosted on GitHub Pages / custom domain) utilizing the browser WebUSB API via `@yume-chan/adb`. Users simply connect their phone via USB to a Chromium browser (Chrome/Edge/Brave), authorize the USB debugging prompt on device, and trigger a one-click automated setup. The web app executes pre-flight checks (verifying account status) and issues `dpm set-device-owner com.garan.threshold/.ThresholdDeviceAdminReceiver` directly without requiring Android SDK / platform-tools installation.  
+  * **Raw ADB Shell CLI (Fallback):** Power users can alternatively provision directly from a terminal: `adb shell dpm set-device-owner com.garan.threshold/.ThresholdDeviceAdminReceiver`  
 * **Dynamic Tier Detection:** At runtime, Threshold inspects `DevicePolicyManager.isDeviceOwnerApp(packageName)`. If inactive, the launcher runs its standard lightweight in-memory filtering.  
 * **Kernel-Level Access Enforcement:** When provisioned as Device Owner, Threshold unlocks native, platform-enforced control:  
   * **Package Suspension (`setPackagesSuspended`):** Restricted packages are paused by the OS; tapping an existing thumbnail in Recents is intercepted directly by Android with a system pause dialog ('This app is paused by Threshold'), eliminating the Recents switcher escape hatch without background polling.  
@@ -168,7 +168,7 @@ To ensure the user is never permanently locked out or trapped, Threshold provide
 
 * **In-App Dignified Unenrollment:** Accessible via Threshold Settings with configurable friction (e.g., typed intention check or 24-hour delayed cool-down timer). The app cleanly invokes `dpm.setUninstallBlocked(admin, packageName, false)`, clears package suspensions, and calls `dpm.clearDeviceOwnerApp(packageName)` to surrender admin authority gracefully.  
 * **WebUSB One-Click Revocation:** The companion web utility provides an explicit 'Deactivate & Unenroll' action over WebUSB, executing admin revocation without requiring manual terminal interaction.  
-* **External ADB CLI Revocation (Developer Fallback):** For builds compiled with `android:testOnly=true`, privileges can be stripped externally via: `adb shell dpm remove-active-admin com.threshold.launcher/.ThresholdDeviceAdminReceiver` followed by standard `adb uninstall com.threshold.launcher`.
+* **External ADB CLI Revocation (Developer Fallback):** For builds compiled with `android:testOnly=true`, privileges can be stripped externally via: `adb shell dpm remove-active-admin com.garan.threshold/.ThresholdDeviceAdminReceiver` followed by standard `adb uninstall com.garan.threshold`.
 
 # **9\. Testing Strategy, Benchmarking & Performance Guardrails**
 
@@ -191,7 +191,7 @@ To ensure the user is never permanently locked out or trapped, Threshold provide
 * **Pure Kotlin Core (`core/` package):** Zero `android.*` SDK dependencies.  
 * **System Wrappers / Port-and-Adapter Pattern:** All OS interfaces abstracted behind clean interfaces with in-memory test fakes.  
 * **Visual & Layout Regression:** Paparazzi screenshot testing executed on host JVM.  
-* **Automated Headless Emulator Instrumentation:** Zero-click role assignment via `adb shell cmd role add-role-holder android.app.role.HOME com.threshold.launcher`.  
+* **Automated Headless Emulator Instrumentation:** Zero-click role assignment via `adb shell cmd role add-role-holder android.app.role.HOME com.garan.threshold`.  
 * **Multi-Stage GitHub Actions CI Pipeline:** Stage 1 Fast Host JVM Gate (\~60-90s) and Stage 2 Headless Emulator Integration (\~4-6m).
 
 # **12\. Engineering Workflow: Issue-Driven Development & PR Gates**
