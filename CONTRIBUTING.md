@@ -18,10 +18,14 @@ Every non-trivial code modification must be tied directly to a GitHub Issue:
    ```bash
    git commit -m "feat(core): implement 4-tier conflict resolution engine (#12)"
    ```
-6. **Open PR with Template:**
+6. **Open PR with Template & Await Review:**
    - Fill out `.github/PULL_REQUEST_TEMPLATE.md`.
-   - Ensure all CI gates pass before merge.
-   - Enforce **Squash and Merge** to maintain a clean linear history.
+   - Assign PR to `garanj`.
+   - Never self-merge; merge authority belongs exclusively to `garanj`.
+7. **Address Review Comments In-Thread:**
+   - For any review comments left on the PR, address the code/test changes and reply directly to each comment thread using GitHub's review comment reply API (`in_reply_to: <comment_id>`).
+   - Push updates to the feature branch.
+   - Enforce **Squash and Merge** once approved to maintain a clean linear history.
 
 ---
 

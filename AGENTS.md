@@ -70,11 +70,21 @@ We operate strictly via **Issue-Driven Development (IDD)**:
    - **Red:** Write unit tests against the `:core` interface or fake.
    - **Green:** Implement the minimum code to pass.
    - **Refactor:** Clean up, verify memory allocations and linting.
-5. **PR Acceptance Gates:**
+5. **PR Review & Merge Invariant (Human Gatekeeper):**
+   - **Every PR MUST be reviewed by `garanj` before merge.**
+   - The agent MUST assign every created PR to `garanj` (`assignees: ["garanj"]`) and output the direct GitHub review URL to the user.
+   - **The agent must NEVER self-merge or bypass review.** Only `garanj` has authority to approve and merge pull requests.
+6. **PR Acceptance Gates:**
    - All host JVM tests (`./gradlew test`) pass.
    - Zero `android.*` imports in `:core`.
-   - Paparazzi screenshot tests match goldens.
-   - PSS memory footprint verified within budget.
+   - Host JVM Compose screenshot tests match goldens.
+   - PSS memory footprint verified within budget (< 30 MB).
+7. **PR Review Feedback & Threaded Reply Protocol:**
+   - When `garanj` reviews a PR and leaves review comments:
+     a. Fetch all inline review comments via `gh api repos/{owner}/{repo}/pulls/{number}/comments`.
+     b. Implement the necessary code/test changes and verify locally with `./gradlew test`.
+     c. **Direct Threaded Replies Mandatory:** The agent MUST respond directly to each individual review comment thread via `POST /repos/{owner}/{repo}/pulls/{number}/comments` with `in_reply_to: <comment_id>`, explaining the resolution. Never post solely a top-level summary without replying in-thread.
+     d. Push the changes to the feature branch and notify the user with the updated PR link.
 
 ---
 
