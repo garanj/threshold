@@ -1,0 +1,10 @@
+# Baseline Profile for Threshold (com.garan.threshold)
+# Cold startup and Home Canvas critical path
+Lcom/garan/threshold/MainActivity;
+Lcom/garan/threshold/ThresholdHomeCanvasKt;
+Lcom/garan/threshold/ui/theme/ColorKt;
+Lcom/garan/threshold/ui/theme/ThemeKt;
+HSPLcom/garan/threshold/MainActivity;-><init>()V
+HSPLcom/garan/threshold/MainActivity;->onCreate(Landroid/os/Bundle;)V
+HSPLcom/garan/threshold/ThresholdHomeCanvasKt;->ThresholdHomeCanvas(Landroidx/compose/ui/Modifier;Landroidx/compose/runtime/Composer;II)V
+HSPLcom/garan/threshold/ui/theme/ThemeKt;->ThresholdTheme(Lkotlin/jvm/functions/Function2;Landroidx/compose/runtime/Composer;I)V
