@@ -70,11 +70,15 @@ We operate strictly via **Issue-Driven Development (IDD)**:
    - **Red:** Write unit tests against the `:core` interface or fake.
    - **Green:** Implement the minimum code to pass.
    - **Refactor:** Clean up, verify memory allocations and linting.
-5. **PR Acceptance Gates:**
+5. **PR Review & Merge Invariant (Human Gatekeeper):**
+   - **Every PR MUST be reviewed by `garanj` before merge.**
+   - The agent MUST assign every created PR to `garanj` (`assignees: ["garanj"]`) and output the direct GitHub review URL to the user.
+   - **The agent must NEVER self-merge or bypass review.** Only `garanj` has authority to approve and merge pull requests.
+6. **PR Acceptance Gates:**
    - All host JVM tests (`./gradlew test`) pass.
    - Zero `android.*` imports in `:core`.
-   - Paparazzi screenshot tests match goldens.
-   - PSS memory footprint verified within budget.
+   - Host JVM Compose screenshot tests match goldens.
+   - PSS memory footprint verified within budget (< 30 MB).
 
 ---
 
