@@ -1,0 +1,36 @@
+name: Feature Task
+description: Track an individual, vertically sliced feature task
+title: "[FEAT] <Short imperative description>"
+labels: ["feat"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ### Feature Specification
+        Refer to the PRD in `threshold-spec.md` or `.agent/ROADMAP.md`.
+  - type: textarea
+    id: problem-context
+    attributes:
+      label: Context & Intent
+      description: What capability or safety invariant does this task deliver?
+    validations:
+      required: true
+  - type: textarea
+    id: architectural-boundary
+    attributes:
+      label: Architectural Boundaries & Invariants
+      description: Which modules are touched? Does this strictly honor "No Shenanigans" (Zero AccessibilityService, Dialer Safety, Pure Kotlin core)?
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance-criteria
+    attributes:
+      label: Acceptance Criteria Checklist
+      description: Specific, testable outcomes required for completion.
+      value: |
+        - [ ] Pure JVM unit tests pass in `core/`
+        - [ ] No `android.*` imports introduced into `core/`
+        - [ ] Micro-haptics / Compose stability verified
+        - [ ] Total memory footprint within budget (< 30MB PSS)
+    validations:
+      required: true

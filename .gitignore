@@ -1,0 +1,48 @@
+# Built application files
+*.apk
+*.aar
+*.ap_
+*.aab
+
+# Files for the ART/Dalvik VM
+*.dex
+
+# Java class files
+*.class
+
+# Generated files
+bin/
+gen/
+out/
+build/
+.gradle/
+reports/
+
+# Android Studio & IntelliJ IDEA
+*.iml
+.idea/
+.navigation/
+captures/
+.externalNativeBuild/
+.cxx/
+local.properties
+
+# Keystore files
+*.jks
+*.keystore
+
+# Google Services (Firebase / Cloud credentials if any)
+google-services.json
+
+# OS and Scratch files
+.DS_Store
+Thumbs.db
+*.swp
+*~
+*.bak
+.system_generated/
+scratch/
+
+# Screenshot test failures/deltas (keep recorded golden images, ignore diff/failures)
+**/build/paparazzi/failures/
+**/build/reports/
