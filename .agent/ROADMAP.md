@@ -41,34 +41,69 @@
 
 ---
 
-## Phase 3: Configuration Engine, Location & NFC (Milestone 3)
+## Phase 3: Configuration & Conflict Resolution Engine (Milestone 3)
 - [ ] **Task 3.1: 4-Tier Conflict Resolution Engine (`:core`)**
   - Deterministic evaluation: Tier 1 (Ephemeral/NFC) > Tier 2 (Schedules) > Tier 3 (Geofences) > Tier 4 (Ambient Fallback).
   - Intra-tier schedule overlap resolution (Most Restrictive Rule wins).
 - [ ] **Task 3.2: Room & DataStore Persistence (`:data`)**
   - Local database schema for profiles, schedules, and active tokens.
-- [ ] **Task 3.3: Low-Power Geofencing & Schedules (`:data`)**
-  - Android Geofencing API integration without continuous GPS polling.
-  - AlarmManager exact alarms for schedule transitions.
-- [ ] **Task 3.4: Physical NFC Reader Mode (`:data` / `:app`)**
-  - `NfcAdapter.enableReaderMode` bound to `onResume`/`onPause` with `FLAG_READER_NFC_A` and `FLAG_READER_SKIP_NDEF_CHECK`.
-  - Physical token handling (Downtime token, Bedside puck, Pair-to-Unlock 90s dual tag handshake).
-- [ ] **Task 3.5: Wallpapers & Lock Screen Synchronization**
+  - Reactive streams (`Flow`) for active profile emissions.
+- [ ] **Task 3.3: In-UI Conflict Highlighting & Diagnostics**
+  - Natural-language conflict explanations ("At Home after 21:00, Night Rest takes precedence").
+  - Live home indicator string below the clock.
+- [ ] **Task 3.4: Wallpaper & Lock Screen Sync**
   - Solid AMOLED black / profile color wallpaper application.
   - Opt-in `syncLockScreenWallpaper` toggle (`FLAG_LOCK`).
 
 ---
 
-## Phase 4: Polish, Localization & Pre-Launch (Milestone 4)
-- [ ] **Task 4.1: Optional Managed Device Mode (DPC Tier)**
+## Phase 4: Spatial Context & Geofencing (Milestone 4)
+- [ ] **Task 4.1: Low-Power Geofencing API Integration (`:data`)**
+  - Hardware-backed geofences (Home, Office, Gym) without continuous GPS polling.
+- [ ] **Task 4.2: Temporal Schedule Transitions (`:data`)**
+  - AlarmManager exact alarms for precise circadian schedule boundaries.
+- [ ] **Task 4.3: Geofence State Reconciliation & Safety**
+  - Handle location permission states, airplane mode, and reboot rescheduling via `BootReceiver`.
+
+---
+
+## Phase 5: Physical NFC Ecosystem (Milestone 5)
+- [ ] **Task 5.1: Foreground NFC Reader Adapter (`:data`)**
+  - `NfcAdapter.enableReaderMode` bound strictly to `onResume`/`onPause` with `FLAG_READER_NFC_A` and `FLAG_READER_SKIP_NDEF_CHECK`.
+- [ ] **Task 5.2: Physical Tokens & Passes (`:core` / `:data`)**
+  - The Downtime Token (30m countdown pass; quiet expiration with haptic click).
+  - The Bedside Sleep Dock (activates Dumbphone Mode and pitch-black wallpaper).
+  - The Departure Gate & Analog Companion profiles.
+- [ ] **Task 5.3: Pair-to-Unlock Handshake (`:core` / `:app`)**
+  - Anti-impulse challenge requiring tapping Tag A then Tag B across the house within 90 seconds.
+
+---
+
+## Phase 6: Device Owner & DPC Mode (Milestone 6)
+- [ ] **Task 6.1: DPC Receiver & Dynamic Tier Detection (`:app`)**
   - `ThresholdDeviceAdminReceiver` implementation.
-  - `setPackagesSuspended`, `setLockTaskPackages`, `setUninstallBlocked`, `setStatusBarDisabled`.
-  - WebUSB companion web app (@yume-chan/adb) setup instructions & unenrollment workflows.
-- [ ] **Task 4.2: Typographic Archetypes & Localization**
+  - Runtime inspection via `DevicePolicyManager.isDeviceOwnerApp`.
+- [ ] **Task 6.2: Kernel-Level Package Suspension & Lock Task**
+  - `setPackagesSuspended` via `AppAccessController` port.
+  - Native `setLockTaskPackages` multi-app whitelisting (stripping Overview/Recents from System UI).
+- [ ] **Task 6.3: Anti-Tamper & Distraction Lockdown**
+  - `setUninstallBlocked` and `setUserControlDisabledPackages` during active focus sessions.
+  - `setStatusBarDisabled` notification shade lockdown.
+- [ ] **Task 6.4: WebUSB Provisioning & Dignified Unenrollment**
+  - WebUSB setup instructions and companion client web app (@yume-chan/adb).
+  - In-app dignified unenrollment with optional delayed cool-down timer.
+  - External ADB CLI revocation fallback.
+
+---
+
+## Phase 7: Polish, Localization & Pre-Launch (Milestone 7)
+- [ ] **Task 7.1: Typographic Archetypes & Localization**
   - System, JetBrains Mono, Serif, Sans typefaces.
   - Full RTL layout mirroring.
-- [ ] **Task 4.3: Paparazzi Screenshot Golden Suite**
+- [ ] **Task 7.2: Paparazzi Screenshot Golden Suite**
   - Comprehensive snapshot tests across all orientations, font scales, and navigation bars.
-- [ ] **Task 4.4: Macrobenchmark & Memory Ceilings**
-  - MacrobenchmarkRule & BaselineProfileGenerator.
-  - Strict assertion of < 30 MB TOTAL PSS memory budget.
+- [ ] **Task 7.3: Macrobenchmark & Baseline Profiles**
+  - MacrobenchmarkRule & Automated BaselineProfileGenerator.
+- [ ] **Task 7.4: Memory Budget Verification (< 30 MB PSS)**
+  - Automated CI assertion of < 30 MB TOTAL PSS via `adb shell dumpsys meminfo`.
+  - LeakCanary debug validation.
