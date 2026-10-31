@@ -44,13 +44,23 @@ adb install -r -d -g "$APK_PATH"
 
 # 4. Zero-click Home Role Assignment via RoleManager
 echo "==> Step 4: Granting android.app.role.HOME via RoleManager..."
-adb shell cmd role add-role-holder android.app.role.HOME "$PACKAGE_NAME"
+ROLE_GRANTED=0
+for i in {1..12}; do
+    if adb shell cmd role add-role-holder android.app.role.HOME "$PACKAGE_NAME" 2>/dev/null; then
+        ROLE_HOLDERS=$(adb shell cmd role get-role-holders android.app.role.HOME 2>/dev/null | tr -d '\r')
+        if [[ "$ROLE_HOLDERS" == *"$PACKAGE_NAME"* ]]; then
+            ROLE_GRANTED=1
+            echo "    Active Home Role Holders: $ROLE_HOLDERS"
+            break
+        fi
+    fi
+    echo "    Waiting for RoleManagerService / PermissionController to settle (attempt $i/12)..."
+    sleep 2
+done
 
-ROLE_HOLDERS=$(adb shell cmd role get-role-holders android.app.role.HOME 2>/dev/null | tr -d '\r')
-echo "    Active Home Role Holders: $ROLE_HOLDERS"
-
-if [[ "$ROLE_HOLDERS" != *"$PACKAGE_NAME"* ]]; then
-    echo "ERROR: Failed to set $PACKAGE_NAME as default Home role holder!" >&2
+if [ "$ROLE_GRANTED" -ne 1 ]; then
+    ROLE_HOLDERS=$(adb shell cmd role get-role-holders android.app.role.HOME 2>/dev/null | tr -d '\r')
+    echo "ERROR: Failed to set $PACKAGE_NAME as default Home role holder! Current holders: '$ROLE_HOLDERS'" >&2
     exit 1
 fi
 echo "    SUCCESS: $PACKAGE_NAME is verified as Home role holder."
