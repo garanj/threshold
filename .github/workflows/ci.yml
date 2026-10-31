@@ -27,7 +27,7 @@ jobs:
           java-version: '17'
 
       - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@v6
 
       - name: Run Spotless Code Formatting Check
         run: ./gradlew spotlessCheck
@@ -37,6 +37,13 @@ jobs:
 
       - name: Validate Minified Release Build (R8 / ProGuard)
         run: ./gradlew :app:assembleRelease
+
+      - name: Upload Release APK Artifact
+        uses: actions/upload-artifact@v5
+        with:
+          name: release-apk
+          path: app/build/outputs/apk/release/app-release.apk
+          if-no-files-found: error
 
       - name: Upload Screenshot Artifacts (on failure or inspection)
         if: always()
@@ -62,8 +69,11 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
+      - name: Download Pre-built Release APK
+        uses: actions/download-artifact@v5
+        with:
+          name: release-apk
+          path: app/build/outputs/apk/release
 
       - name: Enable KVM Hardware Virtualization
         run: |
@@ -78,6 +88,6 @@ jobs:
           target: google_apis
           arch: x86_64
           force-avd-creation: false
-          emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -no-metrics
           disable-animations: true
           script: ./scripts/test-emulator-smoke.sh
