@@ -15,7 +15,6 @@ import org.robolectric.annotation.GraphicsMode
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 @Config(sdk = [34])
 class ThresholdScreenshotTest {
-
     @get:Rule
     val composeTestRule = createComposeRule()
 

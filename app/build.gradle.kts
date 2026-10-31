@@ -20,9 +20,10 @@ android {
     buildTypes {
         release {
             isMinifyEnabled = true
+            signingConfig = signingConfigs.getByName("debug")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
-                "proguard-rules.pro"
+                "proguard-rules.pro",
             )
         }
     }
@@ -60,7 +61,7 @@ configurations.matching { it.name.contains("UnitTest") }.all {
     resolutionStrategy {
         force(
             "org.ow2.asm:asm:9.10.1",
-            "org.ow2.asm:asm-commons:9.10.1"
+            "org.ow2.asm:asm-commons:9.10.1",
         )
     }
 }

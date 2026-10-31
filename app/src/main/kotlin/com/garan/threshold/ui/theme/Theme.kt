@@ -12,15 +12,13 @@ private val DarkColorScheme = darkColorScheme(
     surface = AmoledBlack,
     onSurface = PureWhite,
     surfaceVariant = CharcoalGray,
-    onSurfaceVariant = MutedWhite
+    onSurfaceVariant = MutedWhite,
 )
 
 @Composable
-fun ThresholdTheme(
-    content: @Composable () -> Unit
-) {
+fun ThresholdTheme(content: @Composable () -> Unit) {
     MaterialTheme(
         colorScheme = DarkColorScheme,
-        content = content
+        content = content,
     )
 }

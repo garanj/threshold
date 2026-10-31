@@ -13,7 +13,7 @@ kotlin {
         allWarningsAsErrors.set(true)
         freeCompilerArgs.addAll(
             "-Xjsr305=strict",
-            "-opt-in=kotlinx.coroutines.ExperimentalCoroutinesApi"
+            "-opt-in=kotlinx.coroutines.ExperimentalCoroutinesApi",
         )
     }
 }
