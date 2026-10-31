@@ -2,6 +2,7 @@ package com.garan.threshold
 
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onRoot
+import com.garan.threshold.ui.theme.ThresholdTheme
 import com.github.takahirom.roborazzi.captureRoboImage
 import org.junit.Rule
 import org.junit.Test
@@ -21,7 +22,9 @@ class ThresholdScreenshotTest {
     @Test
     fun snapshotHomeCanvas() {
         composeTestRule.setContent {
-            ThresholdHomeCanvas()
+            ThresholdTheme {
+                ThresholdHomeCanvas()
+            }
         }
         composeTestRule.onRoot().captureRoboImage("build/outputs/roborazzi/home_canvas.png")
     }
