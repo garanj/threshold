@@ -32,7 +32,7 @@ class ProfileTest {
     }
 
     @Test
-    fun `universal dialer whitelist invariant always resolves to Direct`() {
+    fun `universal dialer allowlist invariant always resolves to Direct`() {
         val bedtimeProfile = Profile(
             id = "bedtime",
             name = "Bedtime",

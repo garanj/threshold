@@ -15,8 +15,8 @@ Every line of code committed to Threshold must adhere to these non-negotiable bo
    - Threshold NEVER uses an `AccessibilityService` to inspect active window titles, scrape third-party screens, kill background tasks, or draw persistent blocking overlays.
    - Threshold is an **Intent Gatekeeper** at the home screen and search index. Restricted apps simply do not appear or cannot be launched from Threshold's surfaces.
 
-2. **Universal Dialer Whitelist Safety Invariant:**
-   - The package holding `android.app.role.DIALER` is **permanently whitelisted** regardless of active profiles, bedtime locks, or friction states. Emergency dialing and core phone communication must never be locked out.
+2. **Universal Dialer AllowList Safety Invariant:**
+   - The package holding `android.app.role.DIALER` is **permanently AllowListed** regardless of active profiles, bedtime locks, or friction states. Emergency dialing and core phone communication must never be locked out.
 
 3. **Pure Kotlin `core/` Module (Port-and-Adapter):**
    - The `:core` module contains all domain models, state machines, the 4-tier conflict resolution engine, intent gatekeeper logic, and fuzzy search.

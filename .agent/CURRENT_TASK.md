@@ -1,27 +1,23 @@
-# Active Task: Core Domain Models & Ports (`:core`)
+# Active Task: Universal Dialer AllowList Safety Invariant & Intent Gatekeeper (`:core`)
 
-- **Issue:** [#7 feat(core): implement core domain models and ports](https://github.com/garanj/threshold/issues/7)
+- **Issue:** [#9 feat(core): implement Universal Dialer AllowList safety invariant and intent gatekeeper](https://github.com/garanj/threshold/issues/9)
 - **Milestone:** Phase 1: Test Infrastructure, Core Architecture & Safe Shell
 - **Status:** In Progress
-- **Branch:** `feat/7-core-domain-models`
+- **Branch:** `feat/9-dialer-allowlist-invariant`
 
 ---
 
 ## Objectives
-1. [x] Create pure Kotlin domain models in `com.garan.threshold.core.model`:
-   - `ComponentKey` (`packageName`, `activityName`, `userSerial`)
-   - `AppAccessState` (`Direct`, `Guarded(policy: FrictionPolicy)`, `Blocked`)
-   - `FrictionPolicy` (`TypedIntention`, `TimedDelay`, `SessionBudget`)
-   - `DndPolicy` (`Off`, `PriorityOnly`, `AlarmsOnly`, `TotalSilence`)
-   - `Profile` (`id`, `name`, `dndPolicy`, `defaultAccess`, `appRules`) with `resolveAccess(component, isDefaultDialer)`
-2. [x] Create core outbound ports in `com.garan.threshold.core.port`:
-   - `PackageIndexSource`: Query and stream installed launchable components and package lifecycle changes.
-   - `AppAccessController`: Mediate launch requests, friction checks, and DPC-level package suspension.
-3. [x] Implement comprehensive unit tests in `core/src/test/kotlin/com/garan/threshold/core/`:
-   - `ComponentKeyTest`: equality, hashing, validation, string flattening roundtrips.
-   - `ProfileTest`: access resolution, default fallbacks, override precedence, and the Universal Dialer Whitelist safety invariant.
-   - `FrictionPolicyTest`: validation and boundary tests.
-   - `ArchitectureBoundaryTest`: strictly enforces 0 `android.*` imports in `:core`.
-4. [x] Invariant Verifications:
+1. [x] Purge any legacy terminology across repo to strictly adhere to `AllowList` and `DenyList`.
+2. [x] Implement `IntentGatekeeper` in `com.garan.threshold.core.gatekeeper`:
+   - `filterVisible(components: List<ComponentKey>, profile: Profile, defaultDialerPackage: String): List<ComponentKey>`
+   - `resolveAccess(component: ComponentKey, profile: Profile, defaultDialerPackage: String): AppAccessState`
+   - `evaluateLaunch(component: ComponentKey, profile: Profile, defaultDialerPackage: String): LaunchResult`
+3. [x] Exhaustive unit tests in `core/src/test/kotlin/com/garan/threshold/core/gatekeeper/IntentGatekeeperTest.kt`:
+   - Dialer is guaranteed `Direct` even under complete lockouts (`defaultAccess = Blocked`).
+   - Explicit attempt to mark dialer `Blocked` in `appRules` is rejected and evaluated as `Direct`.
+   - Invisible apps (`Blocked`) are strictly excluded from visible listing.
+   - Guarded apps remain visible with appropriate `FrictionPolicy`.
+4. [x] Invariant verifications:
    - Zero `android.*` imports in `:core` (verified via `ArchitectureBoundaryTest`).
    - Pass `./gradlew test spotlessCheck`.
