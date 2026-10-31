@@ -1,11 +1,11 @@
 # Threshold Delivery Roadmap
 
 ## Phase 1: Test Infrastructure, Core Architecture & Safe Shell (Milestone 1)
-- [ ] **Task 1.1: Multi-Module Gradle Scaffolding & Hygiene Baseline**
+- [x] **Task 1.1: Multi-Module Gradle Scaffolding & Hygiene Baseline**
   - Setup `:core` (pure Kotlin JVM), `:data` (Android library), `:app` (Android application), `:benchmark` (Macrobenchmark).
   - Configure Spotless / ktlint, Java 17/21 compatibility, strict compiler flags (`-Werror`).
-- [ ] **Task 1.2: Shift-Left Quality & Testing Harness**
-  - Host JVM screenshot testing harness setup (Paparazzi on `:app`).
+- [x] **Task 1.2: Shift-Left Quality & Testing Harness**
+  - Host JVM screenshot testing harness setup (Roborazzi on `:app`).
   - LeakCanary embedded in debug builds for early memory leak detection.
   - Automated PSS memory ceiling check script/verification (< 30,000 KB PSS).
   - Pure Kotlin unit test suite infrastructure in `:core` (< 5s target execution time).
