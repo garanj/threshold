@@ -1,22 +1,20 @@
-# Active Task: Foundation Setup & Best Practice Infrastructure
+# Active Task: Scaffold Multi-Module Gradle Architecture
 
-- **Issue:** Setup Initial Repository & Standards Architecture
+- **Issue:** [#1 Scaffold multi-module Gradle structure (:core, :data, :app, :benchmark)](https://github.com/garanj/threshold/issues/1)
 - **Milestone:** Phase 1: Core Shell & Safe System Integration
 - **Status:** In Progress
-- **Branch:** `main` (Initial scaffolding)
+- **Branch:** `feat/1-scaffold-gradle-modules`
 
 ---
 
 ## Objectives
-1. [x] Create comprehensive `.gitignore` and `.editorconfig`.
-2. [x] Establish private GitHub repository (`garanj/threshold`).
-3. [x] Create GitHub Milestones 1 through 4 corresponding to delivery phases.
-4. [x] Establish GitHub labels for modular tracking.
-5. [x] Set up Issue and PR templates enforcing architectural boundaries and testing gates.
-6. [x] Author `AGENTS.md`, `ARCHITECTURE.md`, `TESTING.md`, `CONTRIBUTING.md`.
-7. [x] Set up `.agent/` directory with `ROADMAP.md`, `STANDARDS.md`, `CURRENT_TASK.md`.
-8. [ ] Scaffold Gradle multi-module root build files (`:core`, `:data`, `:app`, `:benchmark`).
-9. [ ] Create GitHub Issue #1 for initial Multi-Module Gradle Scaffolding.
+1. [ ] Configure `settings.gradle.kts` and root `build.gradle.kts`.
+2. [ ] Establish `gradle/libs.versions.toml` with pinned, verified versions.
+3. [ ] Configure `:core` as pure Kotlin JVM module with zero Android SDK dependencies.
+4. [ ] Configure `:data` as Android library module with Room/DataStore.
+5. [ ] Configure `:app` as Android launcher application with Compose.
+6. [ ] Configure `:benchmark` as Macrobenchmark module.
+7. [ ] Verify `./gradlew test` runs cleanly on host JVM.
 
 ---
 
