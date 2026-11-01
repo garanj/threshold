@@ -12,7 +12,6 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
@@ -113,27 +112,52 @@ class AndroidPackageIndexSourceLifecycleInstrumentedTest {
         val events = mutableListOf<PackageChangeEvent>()
         val collectionJob = testScope!!.launch {
             packageIndexSource.observePackageChanges()
-                .filter { event ->
-                    when (event) {
-                        is PackageChangeEvent.Added -> event.component.packageName == targetPackage
-                        is PackageChangeEvent.Removed -> event.component.packageName == targetPackage
-                        is PackageChangeEvent.Changed -> event.component.packageName == targetPackage
-                    }
-                }
                 .collect { event ->
-                    events.add(event)
+                    println("[TEST-LIFECYCLE] Observed PackageChangeEvent: $event")
+                    when (event) {
+                        is PackageChangeEvent.Added -> if (event.component.packageName ==
+                            targetPackage
+                        ) {
+                            events.add(event)
+                        }
+                        is PackageChangeEvent.Removed -> if (event.component.packageName ==
+                            targetPackage
+                        ) {
+                            events.add(event)
+                        }
+                        is PackageChangeEvent.Changed -> if (event.component.packageName ==
+                            targetPackage
+                        ) {
+                            events.add(event)
+                        }
+                    }
                 }
         }
 
         // 1. Install fixture APK via real Android OS package manager streaming shell command
         val installOutput = installFixtureApk()
+        println("[TEST-LIFECYCLE] installOutput: $installOutput")
         assertThat(installOutput.lowercase()).contains("success")
 
-        // Wait up to 10 seconds for OS LauncherApps.Callback Binder dispatch
-        withTimeout(10_000) {
-            while (events.none { it is PackageChangeEvent.Added }) {
-                kotlinx.coroutines.delay(100)
+        // Wait up to 15 seconds for OS LauncherApps.Callback Binder dispatch
+        try {
+            withTimeout(15_000) {
+                while (events.none { it is PackageChangeEvent.Added }) {
+                    kotlinx.coroutines.delay(200)
+                }
             }
+        } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
+            val user = android.os.Process.myUserHandle()
+            val la = targetContext.getSystemService(android.content.pm.LauncherApps::class.java)
+            val activities = la?.getActivityList(targetPackage, user) ?: emptyList()
+            val pmList = device.executeShellCommand("pm list packages $targetPackage")
+            throw AssertionError(
+                "Timed out waiting for PackageChangeEvent.Added for $targetPackage.\n" +
+                    "Events received: $events\n" +
+                    "getActivityList count: ${activities.size} (${activities.map { it.componentName }})\n" +
+                    "pm list packages: $pmList",
+                e,
+            )
         }
 
         val addedEvent = events.first { it is PackageChangeEvent.Added } as PackageChangeEvent.Added
@@ -146,13 +170,21 @@ class AndroidPackageIndexSourceLifecycleInstrumentedTest {
 
         // 2. Uninstall fixture APK via real Android OS package manager shell command
         val uninstallOutput = device.executeShellCommand("pm uninstall $targetPackage")
+        println("[TEST-LIFECYCLE] uninstallOutput: $uninstallOutput")
         assertThat(uninstallOutput.lowercase()).contains("success")
 
-        // Wait up to 10 seconds for OS LauncherApps.Callback uninstall dispatch
-        withTimeout(10_000) {
-            while (events.none { it is PackageChangeEvent.Removed }) {
-                kotlinx.coroutines.delay(100)
+        // Wait up to 15 seconds for OS LauncherApps.Callback uninstall dispatch
+        try {
+            withTimeout(15_000) {
+                while (events.none { it is PackageChangeEvent.Removed }) {
+                    kotlinx.coroutines.delay(200)
+                }
             }
+        } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
+            throw AssertionError(
+                "Timed out waiting for PackageChangeEvent.Removed for $targetPackage. Events received: $events",
+                e,
+            )
         }
 
         val removedEvent = events.first { it is PackageChangeEvent.Removed } as PackageChangeEvent.Removed

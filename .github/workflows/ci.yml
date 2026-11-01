@@ -62,7 +62,6 @@ jobs:
   emulator-smoke-gate:
     name: Headless Emulator Gate (Functional & Smoke Tests)
     runs-on: ubuntu-latest
-    needs: host-jvm-gate
     timeout-minutes: 25
 
     steps:
@@ -77,12 +76,6 @@ jobs:
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v6
-
-      - name: Download Pre-built Release APK
-        uses: actions/download-artifact@v8
-        with:
-          name: release-apk
-          path: app/build/outputs/apk/release
 
       - name: Free Disk Space
         run: |
