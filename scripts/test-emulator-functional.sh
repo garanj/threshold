@@ -25,7 +25,13 @@ while [ "$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" != "1
 done
 echo "    Device is ready."
 
-echo "==> Step 2: Running connected Android instrumented tests..."
+echo "==> Step 2: Assembling fixture APK..."
+./gradlew :fixtures:dummy-app:assembleDebug
+
+echo "==> Step 3: Staging fixture APK to /data/local/tmp/dummy-app.apk..."
+adb push fixtures/dummy-app/build/outputs/apk/debug/dummy-app-debug.apk /data/local/tmp/dummy-app.apk
+
+echo "==> Step 4: Running connected Android instrumented tests..."
 ./gradlew :data:connectedDebugAndroidTest --continue
 
 echo "=========================================================="

@@ -1,6 +1,8 @@
 package com.garan.threshold.data.packageindex
 
 import android.content.Context
+import android.os.Build
+import android.os.ParcelFileDescriptor
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.UiDevice
@@ -40,7 +42,7 @@ class AndroidPackageIndexSourceLifecycleInstrumentedTest {
         targetContext = instrumentation.targetContext
         testContext = instrumentation.context
 
-        // Extract fixture APK from androidTest assets to target cache directory
+        // Extract fixture APK from androidTest assets to target cache directory as fallback
         apkFile = File(targetContext.cacheDir, "dummy-app.apk")
         testContext.assets.open("dummy-app.apk").use { input ->
             FileOutputStream(apkFile).use { output ->
@@ -66,6 +68,42 @@ class AndroidPackageIndexSourceLifecycleInstrumentedTest {
         if (apkFile.exists()) {
             apkFile.delete()
         }
+        val stagedFile = File("/data/local/tmp/dummy-app.apk")
+        if (stagedFile.exists()) {
+            device.executeShellCommand("rm -f /data/local/tmp/dummy-app.apk")
+        }
+    }
+
+    private fun installFixtureApk(): String {
+        val apkBytes = testContext.assets.open("dummy-app.apk").use { it.readBytes() }
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val uiAutomation = instrumentation.uiAutomation
+
+        // On Android 14+ (API 34+), stream bytes directly via stdin to bypass SELinux file-path restrictions
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            val pfd = uiAutomation.executeShellCommandRwe("pm install -t -r -d -g -S ${apkBytes.size}")
+            val stdout = ParcelFileDescriptor.AutoCloseInputStream(pfd[0])
+            val stdin = ParcelFileDescriptor.AutoCloseOutputStream(pfd[1])
+            val stderr = ParcelFileDescriptor.AutoCloseInputStream(pfd[2])
+
+            val writer = Thread {
+                stdin.use { it.write(apkBytes) }
+            }
+            writer.start()
+
+            val outText = stdout.bufferedReader().use { it.readText() }
+            val errText = stderr.bufferedReader().use { it.readText() }
+            writer.join()
+
+            return if (outText.isNotBlank()) outText else errText
+        } else {
+            // Check if staged to world-readable /data/local/tmp
+            val stagedFile = File("/data/local/tmp/dummy-app.apk")
+            if (stagedFile.exists()) {
+                return device.executeShellCommand("pm install -t -r -d -g /data/local/tmp/dummy-app.apk")
+            }
+            return device.executeShellCommand("pm install -t -r -d -g ${apkFile.absolutePath}")
+        }
     }
 
     @Test
@@ -87,8 +125,8 @@ class AndroidPackageIndexSourceLifecycleInstrumentedTest {
                 }
         }
 
-        // 1. Install fixture APK via real Android OS package manager shell command
-        val installOutput = device.executeShellCommand("pm install -t -r -d -g ${apkFile.absolutePath}")
+        // 1. Install fixture APK via real Android OS package manager streaming shell command
+        val installOutput = installFixtureApk()
         assertThat(installOutput.lowercase()).contains("success")
 
         // Wait up to 10 seconds for OS LauncherApps.Callback Binder dispatch
