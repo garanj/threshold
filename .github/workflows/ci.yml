@@ -54,7 +54,7 @@ jobs:
           if-no-files-found: ignore
 
   emulator-smoke-gate:
-    name: Headless Emulator Smoke (Home Role & Memory Budget)
+    name: Headless Emulator Gate (Functional & Smoke Tests)
     runs-on: ubuntu-latest
     needs: host-jvm-gate
     timeout-minutes: 25
@@ -69,6 +69,9 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v6
+
       - name: Download Pre-built Release APK
         uses: actions/download-artifact@v8
         with:
@@ -81,7 +84,7 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
 
-      - name: Run Emulator Smoke Test in AVD
+      - name: Run Emulator Tests in AVD
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 34
@@ -90,4 +93,14 @@ jobs:
           force-avd-creation: false
           emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -no-metrics
           disable-animations: true
-          script: ./scripts/test-emulator-smoke.sh
+          script: |
+            ./scripts/test-emulator-functional.sh
+            ./scripts/test-emulator-smoke.sh
+
+      - name: Upload Instrumented Test Results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: android-test-results
+          path: "**/build/reports/androidTests/"
+          if-no-files-found: ignore
