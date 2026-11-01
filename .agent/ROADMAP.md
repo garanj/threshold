@@ -12,7 +12,7 @@
 - [x] **Task 1.3: Core Domain Models & Ports (`:core`)**
   - Implement `ComponentKey`, `AppAccessState`, `FrictionPolicy`, `DndPolicy`, `Profile`.
   - Implement `PackageIndexSource` and `AppAccessController` interfaces.
-- [ ] **Task 1.4: Universal Dialer AllowList Invariant (`:core`)**
+- [x] **Task 1.4: Universal Dialer AllowList Invariant (`:core`)**
   - Test and verify permanent AllowListing of the system default dialer across all profile filters.
 - [ ] **Task 1.5: Fast Zero-Allocation Fuzzy Search (`:core`)**
   - Unicode-normalized, zero-allocation fuzzy matching with reverse-search friction logic.
