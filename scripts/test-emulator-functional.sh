@@ -26,7 +26,7 @@ done
 echo "    Device is ready."
 
 echo "==> Step 2: Running connected Android instrumented tests..."
-./gradlew connectedDebugAndroidTest --continue
+./gradlew :data:connectedDebugAndroidTest --continue
 
 echo "=========================================================="
 echo "  ALL FUNCTIONAL INSTRUMENTED TESTS PASSED!"

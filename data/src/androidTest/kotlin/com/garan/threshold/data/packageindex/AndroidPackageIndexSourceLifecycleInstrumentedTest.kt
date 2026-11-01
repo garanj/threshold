@@ -48,6 +48,11 @@ class AndroidPackageIndexSourceLifecycleInstrumentedTest {
             }
         }
 
+        // Disable package verifiers to prevent package manager verification pauses
+        device.executeShellCommand("settings put global package_verifier_enable 0")
+        device.executeShellCommand("settings put global verifier_verify_adb_installs 0")
+        device.executeShellCommand("settings put global package_verifier_user_consent -1")
+
         // Clean up any stale fixture install prior to test run
         device.executeShellCommand("pm uninstall $targetPackage")
 
@@ -83,7 +88,7 @@ class AndroidPackageIndexSourceLifecycleInstrumentedTest {
         }
 
         // 1. Install fixture APK via real Android OS package manager shell command
-        val installOutput = device.executeShellCommand("pm install -r ${apkFile.absolutePath}")
+        val installOutput = device.executeShellCommand("pm install -t -r -d -g ${apkFile.absolutePath}")
         assertThat(installOutput.lowercase()).contains("success")
 
         // Wait up to 10 seconds for OS LauncherApps.Callback Binder dispatch
