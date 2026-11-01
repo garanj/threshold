@@ -57,6 +57,8 @@ class AndroidPackageIndexSourceLifecycleInstrumentedTest {
         // Clean up any stale fixture install prior to test run
         device.executeShellCommand("pm uninstall $targetPackage")
 
+        instrumentation.uiAutomation.adoptShellPermissionIdentity("android.permission.QUERY_ALL_PACKAGES")
+
         packageIndexSource = AndroidPackageIndexSource(targetContext)
     }
 
@@ -71,6 +73,9 @@ class AndroidPackageIndexSourceLifecycleInstrumentedTest {
         if (stagedFile.exists()) {
             device.executeShellCommand("rm -f /data/local/tmp/dummy-app.apk")
         }
+        try {
+            InstrumentationRegistry.getInstrumentation().uiAutomation.dropShellPermissionIdentity()
+        } catch (_: Exception) {}
     }
 
     private fun installFixtureApk(): String {
