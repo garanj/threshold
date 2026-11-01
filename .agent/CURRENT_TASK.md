@@ -1,25 +1,33 @@
-# Active Task: Zero-Allocation Fuzzy Search & Reverse Search Friction (`:core`)
+# Active Task: Android PackageIndexSource & Multi-User Support (`:data`)
 
-- **Issue:** [#11 feat(core): implement zero-allocation fuzzy search and reverse search friction](https://github.com/garanj/threshold/issues/11)
+- **Issue:** [#13 feat(data): implement PackageIndexSource with LauncherApps and multi-user support](https://github.com/garanj/threshold/issues/13)
 - **Milestone:** Phase 1: Test Infrastructure, Core Architecture & Safe Shell
-- **Status:** In Progress
-- **Branch:** `feat/11-fuzzy-search`
+- **Status:** Complete / Ready for Review
+- **Branch:** `feat/13-package-index-source`
 
 ---
 
 ## Objectives
-1. [x] Implement `FuzzyMatcher` in `com.garan.threshold.core.search`:
-   - Fast, zero-allocation match evaluation between query and target strings.
-   - Unicode decomposition / diacritic stripping and case normalization (`café` -> `cafe`, `Über` -> `uber`).
-   - Multi-tier scoring: Exact match (100) > Prefix (80) > Word boundary / Acronym (60) > Contiguous substring (40) > Subsequence (20).
-2. [x] Implement `SearchItem` and `SearchEngine` in `com.garan.threshold.core.search`:
-   - `SearchItem.App(val component: ComponentKey, val label: String, val accessState: AppAccessState)`
-   - `SearchItem.Action(val id: String, val label: String)`
-   - Querying with `:` or `,` prefix filters strictly to actions/tools.
-   - Reverse search friction: Guarded apps strictly prohibited from auto-launch on partial prefix match.
-3. [x] Exhaustive unit tests in `core/src/test/kotlin/com/garan/threshold/core/search/`:
-   - `FuzzyMatcherTest`: exact matches, prefixes, acronyms, substrings, fuzzy subsequences, diacritic handling, performance benchmark (100k checks < 300ms).
-   - `SearchEngineTest`: integration with `IntentGatekeeper`, ranking order, action prefixing, and reverse search friction behavior.
-4. [x] Invariant verifications:
-   - Zero `android.*` imports in `:core` (verified via `ArchitectureBoundaryTest`).
-   - Pass `./gradlew test spotlessCheck`.
+1. [x] Implement `InstalledApp` domain model in `:core` and update `PackageIndexSource`:
+   - `InstalledApp(val component: ComponentKey, val label: String)`
+   - `PackageChangeEvent.Added(val app: InstalledApp)`
+   - `PackageChangeEvent.Removed(val component: ComponentKey)`
+   - `PackageChangeEvent.Changed(val app: InstalledApp)`
+2. [x] Implement `AndroidPackageIndexSource` in `com.garan.threshold.data.packageindex`:
+   - Query all launchable activities via `LauncherApps.getActivityList(null, user)`.
+   - Iterate over `launcherApps.profiles` and map each `UserHandle` to `userSerial` via `UserManager.getSerialNumberForUser(user)`.
+   - Map each activity to core domain `ComponentKey(packageName, className, userSerial)`.
+   - Maintain cached known component mappings for reliable resolution of uninstalled activities upon `onPackageRemoved`.
+   - Observe live package changes (`Added`, `Removed`, `Changed`, `onPackagesAvailable`, `onPackagesUnavailable`) via `callbackFlow` and `LauncherApps.Callback`.
+   - Clean listener unregistration upon flow cancellation.
+3. [x] Setup test fixture module `:fixtures:dummy-app`:
+   - Minimal in-tree Android application module with a launcher activity for real OS `pm install` / `pm uninstall` testing on physical devices/emulators.
+4. [x] Exhaustive unit tests in `data/src/test/kotlin/com/garan/threshold/data/packageindex/`:
+   - `AndroidPackageIndexSourceTest` (Robolectric):
+     - Multi-user / work profile query resolution across distinct `userSerial` handles.
+     - Event emissions for `onPackageAdded`, `onPackageRemoved`, `onPackageChanged`, `onPackagesAvailable`, and `onPackagesUnavailable`.
+     - Live flow emission when OS package callbacks fire.
+     - Lifecycle cleanup upon flow collector cancellation.
+5. [x] Quality gates:
+   - Zero `android.*` imports in `:core`.
+   - `./gradlew test spotlessCheck` passes.

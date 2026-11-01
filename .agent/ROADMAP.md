@@ -14,17 +14,29 @@
   - Implement `PackageIndexSource` and `AppAccessController` interfaces.
 - [x] **Task 1.4: Universal Dialer AllowList Invariant (`:core`)**
   - Test and verify permanent AllowListing of the system default dialer across all profile filters.
-- [ ] **Task 1.5: Fast Zero-Allocation Fuzzy Search (`:core`)**
+- [x] **Task 1.5: Fast Zero-Allocation Fuzzy Search (`:core`)**
   - Unicode-normalized, zero-allocation fuzzy matching with reverse-search friction logic.
-- [ ] **Task 1.6: Android Launcher Shell & Home Role (`:app`)**
-  - `MainActivity` configured with `CATEGORY_HOME` and `CATEGORY_DEFAULT`.
-  - Android `LauncherApps.Callback` lifecycle integration with soft-delete support (`is_installed = false`).
-  - Multi-user / work profile support (`UserManager.userProfiles`).
+- [ ] **Task 1.6: Android Launcher Shell & Package Index (`:data` / `:app`)**
+  - **Task 1.6a: `AndroidPackageIndexSource` Implementation & Robolectric Suite (`:data`)**
+    - `LauncherApps.getActivityList` for launchable activities across personal and work profiles.
+    - Multi-user mapping via `UserManager.getSerialNumberForUser`.
+    - Reactive `observePackageChanges()` flow via `LauncherApps.Callback` (`Added`, `Removed`, `Changed`).
+    - Fast host JVM Robolectric unit test coverage.
+  - **Task 1.6b: Real OS Package Lifecycle Instrumented Test (`:data:androidTest`)**
+    - Minimal in-tree test fixture APK (`:fixtures:dummy-app`) compiled directly by Gradle.
+    - Device / emulator integration test using `pm install` / `pm uninstall` to verify real Android OS Binder callback delivery.
 - [ ] **Task 1.7: Typographic Surface & Insets Foundation (`:app`)**
   - Clean typographic home display with OpenType `tnum, zero` numerals and `PlatformTextStyle(includeFontPadding = false)`.
   - WindowInsets handling (3-button vs gesture navigation).
   - Programmatic IME dismissal prior to `startActivity()`.
-  - Immediate Paparazzi golden screenshot tests for insets and typography modes.
+  - Roborazzi golden screenshot tests for insets and typography modes.
+- [ ] **Task 1.8: Search Interface & Golden Screenshot Verification (`:app`)**
+  - Search surface binding `SearchEngine` (`:core`) to reactive `PackageIndexSource` (`:data`).
+  - Reverse-search friction UI and command prefixing (`:` / `,`).
+  - Roborazzi host JVM screenshot tests:
+    - App appears in search results when installed and user types query.
+    - App does not appear when not installed or after uninstall event.
+    - Guarded friction visual indicator state in search results.
 
 ---
 
