@@ -26,31 +26,58 @@ class FuzzyMatcher {
 
         if (qLen == 0 || qLen > tLen) return NO_MATCH
 
-        // 1. Exact Match
-        if (qLen == tLen && charSequenceEquals(normalizedQuery, normalizedTarget)) {
-            return SCORE_EXACT
-        }
+        val q0 = normalizedQuery[0]
+        val maxStart = tLen - qLen
 
-        // 2. Prefix Match
-        if (startsWith(normalizedTarget, normalizedQuery)) {
-            val lengthPenalty = (tLen - qLen).coerceAtMost(9_999)
-            return SCORE_PREFIX_BASE - lengthPenalty
+        // Find first occurrence of query[0] within valid start bounds [0..maxStart].
+        // Every match tier requires query[0] to appear at or before maxStart.
+        var firstCharIdx = -1
+        for (i in 0..maxStart) {
+            if (normalizedTarget[i] == q0) {
+                firstCharIdx = i
+                break
+            }
+        }
+        if (firstCharIdx < 0) return NO_MATCH
+
+        // 1 & 2. Exact Match and Prefix Match (only possible when query[0] matches at index 0)
+        if (firstCharIdx == 0) {
+            var prefixMatch = true
+            for (i in 1 until qLen) {
+                if (normalizedTarget[i] != normalizedQuery[i]) {
+                    prefixMatch = false
+                    break
+                }
+            }
+            if (prefixMatch) {
+                if (qLen == tLen) return SCORE_EXACT
+                val lengthPenalty = (tLen - qLen).coerceAtMost(9_999)
+                return SCORE_PREFIX_BASE - lengthPenalty
+            }
+            // If lengths are equal and not an exact match, no other tier can match
+            if (qLen == tLen) return NO_MATCH
+        } else if (qLen == tLen) {
+            return NO_MATCH
         }
 
         // 3. Word-Boundary / Acronym Match
-        if (matchesWordBoundary(normalizedQuery, normalizedTarget)) {
+        if (matchesWordBoundary(normalizedQuery, normalizedTarget, qLen, tLen)) {
             return SCORE_WORD_BOUNDARY
         }
 
-        // 4. Contiguous Substring Match
-        val subIndex = indexOf(normalizedTarget, normalizedQuery)
+        // 4. Contiguous Substring Match (resume scan from firstCharIdx)
+        val subIndex = if (qLen == 1) {
+            firstCharIdx
+        } else {
+            indexOfFrom(normalizedTarget, normalizedQuery, firstCharIdx, maxStart, qLen)
+        }
         if (subIndex >= 0) {
             val positionPenalty = (subIndex * 10).coerceAtMost(9_999)
             return SCORE_SUBSTRING_BASE - positionPenalty
         }
 
-        // 5. Fuzzy Subsequence Match
-        if (matchesSubsequence(normalizedQuery, normalizedTarget)) {
+        // 5. Fuzzy Subsequence Match (query[0] already matched at firstCharIdx)
+        if (qLen > 1 && matchesSubsequenceFrom(normalizedQuery, normalizedTarget, firstCharIdx + 1, qLen, tLen)) {
             return SCORE_SUBSEQUENCE
         }
 
@@ -77,28 +104,12 @@ class FuzzyMatcher {
         else -> null
     }
 
-    private fun charSequenceEquals(a: CharSequence, b: CharSequence): Boolean {
-        if (a.length != b.length) return false
-        for (i in 0 until a.length) {
-            if (a[i] != b[i]) return false
-        }
-        return true
-    }
-
-    private fun startsWith(target: CharSequence, prefix: CharSequence): Boolean {
-        if (prefix.length > target.length) return false
-        for (i in 0 until prefix.length) {
-            if (target[i] != prefix[i]) return false
-        }
-        return true
-    }
-
-    private fun indexOf(target: CharSequence, query: CharSequence): Int {
-        val qLen = query.length
-        val maxIndex = target.length - qLen
-        for (i in 0..maxIndex) {
+    private fun indexOfFrom(target: CharSequence, query: CharSequence, startIdx: Int, maxIndex: Int, qLen: Int): Int {
+        val q0 = query[0]
+        for (i in startIdx..maxIndex) {
+            if (target[i] != q0) continue
             var matched = true
-            for (j in 0 until qLen) {
+            for (j in 1 until qLen) {
                 if (target[i + j] != query[j]) {
                     matched = false
                     break
@@ -109,11 +120,9 @@ class FuzzyMatcher {
         return -1
     }
 
-    private fun matchesWordBoundary(query: CharSequence, target: CharSequence): Boolean {
+    private fun matchesWordBoundary(query: CharSequence, target: CharSequence, qLen: Int, tLen: Int): Boolean {
         var queryIdx = 0
         var isWordStart = true
-        val qLen = query.length
-        val tLen = target.length
 
         for (i in 0 until tLen) {
             val c = target[i]
@@ -123,7 +132,7 @@ class FuzzyMatcher {
             }
 
             if (isWordStart) {
-                if (queryIdx < qLen && query[queryIdx] == c) {
+                if (query[queryIdx] == c) {
                     queryIdx++
                     if (queryIdx == qLen) return true
                 }
@@ -133,12 +142,15 @@ class FuzzyMatcher {
         return false
     }
 
-    private fun matchesSubsequence(query: CharSequence, target: CharSequence): Boolean {
-        var queryIdx = 0
-        val qLen = query.length
-        val tLen = target.length
-
-        for (i in 0 until tLen) {
+    private fun matchesSubsequenceFrom(
+        query: CharSequence,
+        target: CharSequence,
+        startTargetIdx: Int,
+        qLen: Int,
+        tLen: Int,
+    ): Boolean {
+        var queryIdx = 1
+        for (i in startTargetIdx until tLen) {
             if (target[i] == query[queryIdx]) {
                 queryIdx++
                 if (queryIdx == qLen) return true
@@ -157,9 +169,46 @@ class FuzzyMatcher {
 
         /**
          * Normalizes a string by decomposing Unicode diacritics and converting to lowercase.
+         * Uses a zero-allocation fast path for lowercase ASCII and a single-pass CharArray fast path
+         * for mixed-case ASCII before falling back to Unicode NFD decomposition.
          * e.g. "Café" -> "cafe", "Über" -> "uber".
          */
         fun normalize(input: CharSequence): String {
+            val len = input.length
+            if (len == 0) return ""
+
+            var firstTransformIdx = -1
+            var hasNonAscii = false
+            for (i in 0 until len) {
+                val c = input[i]
+                if (c >= '\u0080') {
+                    hasNonAscii = true
+                    if (firstTransformIdx == -1) firstTransformIdx = i
+                    break
+                } else if (c in 'A'..'Z') {
+                    if (firstTransformIdx == -1) firstTransformIdx = i
+                }
+            }
+
+            // Fast path 1: Already lowercase ASCII -> zero allocations when input is a String
+            if (firstTransformIdx == -1) {
+                return input.toString()
+            }
+
+            // Fast path 2: Pure ASCII with uppercase characters -> single CharArray pass
+            if (!hasNonAscii) {
+                val chars = CharArray(len)
+                for (i in 0 until firstTransformIdx) {
+                    chars[i] = input[i]
+                }
+                for (i in firstTransformIdx until len) {
+                    val c = input[i]
+                    chars[i] = if (c in 'A'..'Z') (c.code + 32).toChar() else c
+                }
+                return String(chars)
+            }
+
+            // Fallback path: Non-ASCII Unicode NFD decomposition and diacritic stripping
             val decomposed = Normalizer.normalize(input, Normalizer.Form.NFD)
             val sb = java.lang.StringBuilder(decomposed.length)
             for (i in 0 until decomposed.length) {

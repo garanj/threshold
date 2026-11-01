@@ -67,6 +67,44 @@ class FuzzyMatcherTest {
     }
 
     @Test
+    fun `equal length non matching strings and single char queries behave deterministically`() {
+        assertThat(matcher.match(query = "phona", target = "Phone")).isEqualTo(FuzzyMatcher.NO_MATCH)
+        assertThat(matcher.match(query = "xphone", target = "yphone")).isEqualTo(FuzzyMatcher.NO_MATCH)
+
+        val singleSubstringScore = matcher.match(query = "h", target = "Phone")
+        assertThat(matcher.getMatchType(singleSubstringScore)).isEqualTo(MatchType.SUBSTRING)
+
+        val singleWordBoundaryScore = matcher.match(query = "c", target = "Google Chrome")
+        assertThat(matcher.getMatchType(singleWordBoundaryScore)).isEqualTo(MatchType.WORD_BOUNDARY)
+    }
+
+    @Test
+    fun `normalize generates zero heap allocations for lowercase ASCII inputs`() {
+        val input = "slack"
+
+        // Warm up JIT
+        repeat(10_000) {
+            FuzzyMatcher.normalize(input)
+        }
+
+        val threadBean = ManagementFactory.getThreadMXBean() as? com.sun.management.ThreadMXBean
+        if (threadBean != null && threadBean.isThreadAllocatedMemorySupported) {
+            @Suppress("DEPRECATION")
+            val threadId = Thread.currentThread().id
+            val startBytes = threadBean.getThreadAllocatedBytes(threadId)
+
+            repeat(50_000) {
+                FuzzyMatcher.normalize(input)
+            }
+
+            val endBytes = threadBean.getThreadAllocatedBytes(threadId)
+            val allocatedBytes = endBytes - startBytes
+
+            assertThat(allocatedBytes).isEqualTo(0L)
+        }
+    }
+
+    @Test
     fun `matchNormalized generates zero heap allocations in inner loop`() {
         val query = "cl"
         val target = "clock"

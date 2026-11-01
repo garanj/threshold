@@ -15,7 +15,9 @@ data class ActionCandidate(
     val shortcutKeyword: String,
     val normalizedKeyword: String = FuzzyMatcher.normalize(shortcutKeyword),
     val normalizedLabel: String = FuzzyMatcher.normalize(label),
-)
+) {
+    val item: SearchItem.Action = SearchItem.Action(id, label)
+}
 
 sealed interface SearchItem {
     data class App(val component: ComponentKey, val label: String, val accessState: AppAccessState) : SearchItem

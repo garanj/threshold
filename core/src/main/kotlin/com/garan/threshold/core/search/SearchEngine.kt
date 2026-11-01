@@ -20,42 +20,49 @@ class SearchEngine(private val gatekeeper: IntentGatekeeper, private val matcher
         actions: List<ActionCandidate>,
         profile: Profile,
         defaultDialerPackage: String,
+    ): List<SearchResult> = searchTrimmed(query.trim(), candidates, actions, profile, defaultDialerPackage)
+
+    private fun searchTrimmed(
+        trimmed: String,
+        candidates: List<AppSearchCandidate>,
+        actions: List<ActionCandidate>,
+        profile: Profile,
+        defaultDialerPackage: String,
     ): List<SearchResult> {
-        val trimmed = query.trim()
         if (trimmed.isEmpty()) return emptyList()
 
-        val isActionFilter = trimmed.startsWith(":") || trimmed.startsWith(",")
+        val firstChar = trimmed[0]
+        val isActionFilter = firstChar == ':' || firstChar == ','
         val cleanQuery = if (isActionFilter) trimmed.substring(1).trim() else trimmed
         if (cleanQuery.isEmpty() && isActionFilter) {
             // Return all actions when bare prefix ':' or ',' is entered
             return actions.map { action ->
                 SearchResult(
-                    item = SearchItem.Action(action.id, action.label),
+                    item = action.item,
                     score = FuzzyMatcher.SCORE_PREFIX_BASE,
                     matchType = MatchType.PREFIX,
                 )
             }
         }
 
-        // Normalize query string ONCE per keystroke
+        // Normalize query string ONCE per keystroke (zero allocations for lowercase ASCII)
         val normQuery = FuzzyMatcher.normalize(cleanQuery)
-        val results = mutableListOf<SearchResult>()
+        var results: ArrayList<SearchResult>? = null
 
         // 1. Actions
         for (i in actions.indices) {
             val action = actions[i]
             var score = matcher.matchNormalized(normQuery, action.normalizedKeyword)
-            var matchType = matcher.getMatchType(score)
-
             if (score == FuzzyMatcher.NO_MATCH) {
                 score = matcher.matchNormalized(normQuery, action.normalizedLabel)
-                matchType = matcher.getMatchType(score)
             }
 
-            if (score != FuzzyMatcher.NO_MATCH && matchType != null) {
-                results.add(
+            if (score != FuzzyMatcher.NO_MATCH) {
+                val matchType = matcher.getMatchType(score) ?: continue
+                val list = results ?: ArrayList<SearchResult>(8).also { results = it }
+                list.add(
                     SearchResult(
-                        item = SearchItem.Action(action.id, action.label),
+                        item = action.item,
                         score = score,
                         matchType = matchType,
                     ),
@@ -65,31 +72,62 @@ class SearchEngine(private val gatekeeper: IntentGatekeeper, private val matcher
 
         // 2. Apps (strictly excluded when query uses ':' or ',' action prefix)
         if (!isActionFilter) {
-            for (i in candidates.indices) {
-                val candidate = candidates[i]
-                val access = gatekeeper.resolveAccess(
-                    component = candidate.component,
-                    profile = profile,
-                    defaultDialerPackage = defaultDialerPackage,
-                )
-
-                if (access != AppAccessState.Blocked) {
+            if (profile.defaultAccess == AppAccessState.Blocked) {
+                // Lockout / Bedtime fast-path: almost all apps are Blocked, so reject via Gatekeeper O(1) first
+                for (i in candidates.indices) {
+                    val candidate = candidates[i]
+                    val access = gatekeeper.resolveAccess(
+                        component = candidate.component,
+                        profile = profile,
+                        defaultDialerPackage = defaultDialerPackage,
+                    )
+                    if (access != AppAccessState.Blocked) {
+                        val score = matcher.matchNormalized(normQuery, candidate.normalizedLabel)
+                        if (score != FuzzyMatcher.NO_MATCH) {
+                            val matchType = matcher.getMatchType(score) ?: continue
+                            val list = results ?: ArrayList<SearchResult>(8).also { results = it }
+                            list.add(
+                                SearchResult(
+                                    item = SearchItem.App(candidate.component, candidate.label, access),
+                                    score = score,
+                                    matchType = matchType,
+                                ),
+                            )
+                        }
+                    }
+                }
+            } else {
+                // Standard / Focus fast-path: fuzzy-match first, only lookup profile rules on matched candidates
+                for (i in candidates.indices) {
+                    val candidate = candidates[i]
                     val score = matcher.matchNormalized(normQuery, candidate.normalizedLabel)
                     if (score != FuzzyMatcher.NO_MATCH) {
-                        val matchType = matcher.getMatchType(score) ?: continue
-                        results.add(
-                            SearchResult(
-                                item = SearchItem.App(candidate.component, candidate.label, access),
-                                score = score,
-                                matchType = matchType,
-                            ),
+                        val access = gatekeeper.resolveAccess(
+                            component = candidate.component,
+                            profile = profile,
+                            defaultDialerPackage = defaultDialerPackage,
                         )
+                        if (access != AppAccessState.Blocked) {
+                            val matchType = matcher.getMatchType(score) ?: continue
+                            val list = results ?: ArrayList<SearchResult>(8).also { results = it }
+                            list.add(
+                                SearchResult(
+                                    item = SearchItem.App(candidate.component, candidate.label, access),
+                                    score = score,
+                                    matchType = matchType,
+                                ),
+                            )
+                        }
                     }
                 }
             }
         }
 
-        return results.sortedByDescending { it.score }
+        val finalResults = results ?: return emptyList()
+        if (finalResults.size > 1) {
+            finalResults.sortWith(SCORE_COMPARATOR)
+        }
+        return finalResults
     }
 
     /**
@@ -103,17 +141,18 @@ class SearchEngine(private val gatekeeper: IntentGatekeeper, private val matcher
         profile: Profile,
         defaultDialerPackage: String,
     ): SearchResponse {
-        val results = search(query, candidates, actions, profile, defaultDialerPackage)
+        val trimmed = query.trim()
+        val results = searchTrimmed(trimmed, candidates, actions, profile, defaultDialerPackage)
         var autoLaunch: SearchItem? = null
 
         if (results.size == 1) {
-            val single = results.first()
+            val single = results[0]
             when (val item = single.item) {
                 is SearchItem.App -> {
                     when (item.accessState) {
                         is AppAccessState.Direct -> {
                             // Direct apps auto-launch on unique match with query length >= 2 or exact match
-                            if (query.trim().length >= 2 || single.matchType == MatchType.EXACT) {
+                            if (trimmed.length >= 2 || single.matchType == MatchType.EXACT) {
                                 autoLaunch = item
                             }
                         }
@@ -139,5 +178,9 @@ class SearchEngine(private val gatekeeper: IntentGatekeeper, private val matcher
         }
 
         return SearchResponse(results = results, autoLaunchCandidate = autoLaunch)
+    }
+
+    companion object {
+        private val SCORE_COMPARATOR = Comparator<SearchResult> { a, b -> b.score.compareTo(a.score) }
     }
 }
