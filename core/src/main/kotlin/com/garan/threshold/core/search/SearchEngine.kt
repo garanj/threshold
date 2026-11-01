@@ -12,6 +12,7 @@ class SearchEngine(private val gatekeeper: IntentGatekeeper, private val matcher
 
     /**
      * Searches across visible applications and launcher actions.
+     * Operates over pre-normalized candidate labels, avoiding per-candidate string allocations.
      */
     fun search(
         query: String,
@@ -30,43 +31,57 @@ class SearchEngine(private val gatekeeper: IntentGatekeeper, private val matcher
             return actions.map { action ->
                 SearchResult(
                     item = SearchItem.Action(action.id, action.label),
-                    matchResult = MatchResult(MatchType.PREFIX, 100),
+                    score = FuzzyMatcher.SCORE_PREFIX_BASE,
+                    matchType = MatchType.PREFIX,
                 )
             }
         }
 
+        // Normalize query string ONCE per keystroke
+        val normQuery = FuzzyMatcher.normalize(cleanQuery)
         val results = mutableListOf<SearchResult>()
 
         // 1. Actions
-        actions.forEach { action ->
-            val match = matcher.match(cleanQuery, action.shortcutKeyword)
-                ?: matcher.match(cleanQuery, action.label)
-            if (match != null) {
-                results.add(SearchResult(SearchItem.Action(action.id, action.label), match))
+        for (i in actions.indices) {
+            val action = actions[i]
+            var score = matcher.matchNormalized(normQuery, action.normalizedKeyword)
+            var matchType = matcher.getMatchType(score)
+
+            if (score == FuzzyMatcher.NO_MATCH) {
+                score = matcher.matchNormalized(normQuery, action.normalizedLabel)
+                matchType = matcher.getMatchType(score)
+            }
+
+            if (score != FuzzyMatcher.NO_MATCH && matchType != null) {
+                results.add(
+                    SearchResult(
+                        item = SearchItem.Action(action.id, action.label),
+                        score = score,
+                        matchType = matchType,
+                    ),
+                )
             }
         }
 
         // 2. Apps (strictly excluded when query uses ':' or ',' action prefix)
         if (!isActionFilter) {
-            val visibleComponents = gatekeeper.filterVisible(
-                components = candidates.map { it.component },
-                profile = profile,
-                defaultDialerPackage = defaultDialerPackage,
-            ).toSet()
+            for (i in candidates.indices) {
+                val candidate = candidates[i]
+                val access = gatekeeper.resolveAccess(
+                    component = candidate.component,
+                    profile = profile,
+                    defaultDialerPackage = defaultDialerPackage,
+                )
 
-            candidates.forEach { candidate ->
-                if (candidate.component in visibleComponents) {
-                    val match = matcher.match(cleanQuery, candidate.label)
-                    if (match != null) {
-                        val access = gatekeeper.resolveAccess(
-                            component = candidate.component,
-                            profile = profile,
-                            defaultDialerPackage = defaultDialerPackage,
-                        )
+                if (access != AppAccessState.Blocked) {
+                    val score = matcher.matchNormalized(normQuery, candidate.normalizedLabel)
+                    if (score != FuzzyMatcher.NO_MATCH) {
+                        val matchType = matcher.getMatchType(score) ?: continue
                         results.add(
                             SearchResult(
                                 item = SearchItem.App(candidate.component, candidate.label, access),
-                                matchResult = match,
+                                score = score,
+                                matchType = matchType,
                             ),
                         )
                     }
@@ -74,7 +89,7 @@ class SearchEngine(private val gatekeeper: IntentGatekeeper, private val matcher
             }
         }
 
-        return results.sortedByDescending { it.matchResult.score }
+        return results.sortedByDescending { it.score }
     }
 
     /**
@@ -98,14 +113,14 @@ class SearchEngine(private val gatekeeper: IntentGatekeeper, private val matcher
                     when (item.accessState) {
                         is AppAccessState.Direct -> {
                             // Direct apps auto-launch on unique match with query length >= 2 or exact match
-                            if (query.trim().length >= 2 || single.matchResult.matchType == MatchType.EXACT) {
+                            if (query.trim().length >= 2 || single.matchType == MatchType.EXACT) {
                                 autoLaunch = item
                             }
                         }
                         is AppAccessState.Guarded -> {
                             // Reverse Search Drag: Guarded apps NEVER auto-launch on partial prefix.
                             // Requires deliberate full typed match.
-                            if (single.matchResult.matchType == MatchType.EXACT) {
+                            if (single.matchType == MatchType.EXACT) {
                                 autoLaunch = item
                             }
                         }
@@ -116,7 +131,7 @@ class SearchEngine(private val gatekeeper: IntentGatekeeper, private val matcher
                     }
                 }
                 is SearchItem.Action -> {
-                    if (single.matchResult.matchType == MatchType.EXACT) {
+                    if (single.matchType == MatchType.EXACT) {
                         autoLaunch = item
                     }
                 }
