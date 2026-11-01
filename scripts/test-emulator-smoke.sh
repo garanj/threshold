@@ -90,6 +90,17 @@ if [ -n "$TOTAL_PSS" ] && [ "$TOTAL_PSS" -gt "$CEILING_KB" ]; then
 fi
 echo "    SUCCESS: Memory consumption within strict budget (${TOTAL_PSS} KB <= ${CEILING_KB} KB)."
 
+if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+  cat << EOF >> "$GITHUB_STEP_SUMMARY"
+### 📱 Android Emulator Smoke & Memory Gate
+| Metric | Value | Budget / Status |
+| :--- | :--- | :--- |
+| **Home Role Assignment** | \`$PACKAGE_NAME\` | ✅ Granted |
+| **Foreground Focus** | \`$MAIN_ACTIVITY\` | ✅ Verified |
+| **Observed Total PSS** | **\`${TOTAL_PSS} KB\`** | ✅ Pass (< ${CEILING_KB} KB) |
+EOF
+fi
+
 echo "=========================================================="
 echo "  ALL SMOKE CHECKS PASSED: Home Role & Memory Verified!"
 echo "=========================================================="

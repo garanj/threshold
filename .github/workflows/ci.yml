@@ -53,6 +53,12 @@ jobs:
           path: app/build/outputs/roborazzi/
           if-no-files-found: ignore
 
+      - name: Publish Host JVM Test Summary
+        if: always()
+        uses: test-summary/action@v2
+        with:
+          paths: "**/build/test-results/**/TEST-*.xml"
+
   emulator-smoke-gate:
     name: Headless Emulator Gate (Functional & Smoke Tests)
     runs-on: ubuntu-latest
@@ -104,3 +110,9 @@ jobs:
           name: android-test-results
           path: "**/build/reports/androidTests/"
           if-no-files-found: ignore
+
+      - name: Publish Emulator Test Summary
+        if: always()
+        uses: test-summary/action@v2
+        with:
+          paths: "**/build/outputs/androidTest-results/**/TEST-*.xml"
