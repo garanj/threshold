@@ -23,6 +23,23 @@ android {
             allWarningsAsErrors.set(true)
         }
     }
+
+    testOptions {
+        unitTests.isIncludeAndroidResources = true
+        unitTests.isReturnDefaultValues = true
+    }
+}
+
+// Temporary: Host machine runs OpenJDK 25 (class major version 69).
+// Robolectric 4.14 bundles ASM 9.6 which only supports up to Java 22.
+// Scoped strictly to unit tests; remove once Robolectric bundles ASM >= 9.7+ or on standard JDK 17/21 CI.
+configurations.matching { it.name.contains("UnitTest") }.all {
+    resolutionStrategy {
+        force(
+            "org.ow2.asm:asm:9.10.1",
+            "org.ow2.asm:asm-commons:9.10.1",
+        )
+    }
 }
 
 dependencies {
@@ -39,4 +56,6 @@ dependencies {
     testImplementation(libs.junit)
     testImplementation(libs.truth)
     testImplementation(libs.kotlinx.coroutines.test)
+    testImplementation(libs.androidx.junit)
+    testImplementation(libs.robolectric)
 }
