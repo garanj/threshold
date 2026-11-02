@@ -157,7 +157,7 @@ jobs:
         if: always()
         run: |
           TOTAL_PSS=$(cat build/total_pss.txt 2>/dev/null || echo "N/A")
-          export TOTAL_PSS
+          echo "total_pss=$TOTAL_PSS" >> "$GITHUB_OUTPUT"
           python3 -c '
           import xml.etree.ElementTree as ET, glob, os
           tests, failures, errors = 0, 0, 0
@@ -170,7 +170,6 @@ jobs:
               except Exception:
                   pass
           with open(os.environ["GITHUB_OUTPUT"], "a") as gh_out:
-              gh_out.write(f"total_pss={os.environ.get(\"TOTAL_PSS\", \"N/A\")}\n")
               gh_out.write(f"instrumented_tests={tests}\n")
               gh_out.write(f"instrumented_failed={failures + errors}\n")
           '
