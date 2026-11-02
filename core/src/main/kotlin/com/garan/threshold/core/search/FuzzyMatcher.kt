@@ -60,9 +60,10 @@ class FuzzyMatcher {
             return NO_MATCH
         }
 
-        // 3. Word-Boundary / Acronym Match
-        if (matchesWordBoundary(normalizedQuery, normalizedTarget, qLen, tLen)) {
-            return SCORE_WORD_BOUNDARY
+        // 3. Word-Boundary Prefix or Acronym Match
+        val wordBoundaryScore = matchWordBoundary(normalizedQuery, normalizedTarget, firstCharIdx, maxStart, qLen, tLen)
+        if (wordBoundaryScore != NO_MATCH) {
+            return wordBoundaryScore
         }
 
         // 4. Contiguous Substring Match (resume scan from firstCharIdx)
@@ -98,7 +99,7 @@ class FuzzyMatcher {
     fun getMatchType(score: Int): MatchType? = when {
         score >= SCORE_EXACT -> MatchType.EXACT
         score >= SCORE_PREFIX_BASE - 10_000 -> MatchType.PREFIX
-        score == SCORE_WORD_BOUNDARY -> MatchType.WORD_BOUNDARY
+        score >= SCORE_WORD_BOUNDARY - 10_000 -> MatchType.WORD_BOUNDARY
         score >= SCORE_SUBSTRING_BASE - 10_000 -> MatchType.SUBSTRING
         score == SCORE_SUBSEQUENCE -> MatchType.SUBSEQUENCE
         else -> null
@@ -120,13 +121,52 @@ class FuzzyMatcher {
         return -1
     }
 
-    private fun matchesWordBoundary(query: CharSequence, target: CharSequence, qLen: Int, tLen: Int): Boolean {
+    private fun isWordDelimiter(c: Char): Boolean = c == ' ' || c == '-' || c == '_' || c == '.'
+
+    private fun matchWordBoundary(
+        query: CharSequence,
+        target: CharSequence,
+        firstCharIdx: Int,
+        maxStart: Int,
+        qLen: Int,
+        tLen: Int,
+    ): Int {
+        val q0 = query[0]
+        val startScan = if (firstCharIdx > 0) firstCharIdx else 1
+
+        // 3a. Contiguous word-boundary prefix (e.g. "maps" in "Google Maps" or "My Google Maps")
+        for (i in startScan..maxStart) {
+            if (target[i] == q0 && isWordDelimiter(target[i - 1])) {
+                var matched = true
+                for (j in 1 until qLen) {
+                    if (target[i + j] != query[j]) {
+                        matched = false
+                        break
+                    }
+                }
+                if (matched) {
+                    val lengthPenalty = (tLen - qLen).coerceAtMost(999)
+                    return SCORE_WORD_BOUNDARY - lengthPenalty
+                }
+            }
+        }
+
+        // 3b. Acronym / initial letters across word boundaries (e.g. "gc" in "Google Chrome")
+        if (qLen > 1 && matchesAcronym(query, target, qLen, tLen)) {
+            val lengthPenalty = (tLen - qLen).coerceAtMost(999)
+            return SCORE_WORD_BOUNDARY - 1_000 - lengthPenalty
+        }
+
+        return NO_MATCH
+    }
+
+    private fun matchesAcronym(query: CharSequence, target: CharSequence, qLen: Int, tLen: Int): Boolean {
         var queryIdx = 0
         var isWordStart = true
 
         for (i in 0 until tLen) {
             val c = target[i]
-            if (c == ' ' || c == '-' || c == '_' || c == '.') {
+            if (isWordDelimiter(c)) {
                 isWordStart = true
                 continue
             }

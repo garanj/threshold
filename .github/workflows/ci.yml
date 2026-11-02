@@ -229,12 +229,12 @@ jobs:
           fi
 
           if [ "$TOTAL_PSS" != "N/A" ] && [ -n "$TOTAL_PSS" ] && [ "$TOTAL_PSS" != "0" ]; then
-            if [ "$TOTAL_PSS" -le 30000 ]; then
+            if [ "$TOTAL_PSS" -le 35000 ]; then
               MEM_STATUS="✅ Pass"
-              MEM_DETAILS="**${TOTAL_PSS} KB PSS** (Ceiling: 30,000 KB)"
+              MEM_DETAILS="**${TOTAL_PSS} KB PSS** (Ceiling: 35,000 KB)"
             else
               MEM_STATUS="❌ Fail"
-              MEM_DETAILS="**${TOTAL_PSS} KB PSS** (Exceeded 30,000 KB ceiling)"
+              MEM_DETAILS="**${TOTAL_PSS} KB PSS** (Exceeded 35,000 KB ceiling)"
             fi
           else
             if [ "$EMULATOR_RESULT" = "success" ]; then

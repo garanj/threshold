@@ -67,6 +67,8 @@ class ComponentKeyTest {
         val flattened = original.flattenToString()
 
         assertThat(flattened).isEqualTo("com.example.app/MainActivity#10")
+        assertThat(original.id).isEqualTo("com.example.app/MainActivity#10")
+        assertThat(original.flattenToString()).isSameInstanceAs(original.id)
         assertThat(ComponentKey.fromFlatString(flattened)).isEqualTo(original)
     }
 

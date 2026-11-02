@@ -52,10 +52,9 @@ class SearchEngine(private val gatekeeper: IntentGatekeeper, private val matcher
         // 1. Actions
         for (i in actions.indices) {
             val action = actions[i]
-            var score = matcher.matchNormalized(normQuery, action.normalizedKeyword)
-            if (score == FuzzyMatcher.NO_MATCH) {
-                score = matcher.matchNormalized(normQuery, action.normalizedLabel)
-            }
+            val keywordScore = matcher.matchNormalized(normQuery, action.normalizedKeyword)
+            val labelScore = matcher.matchNormalized(normQuery, action.normalizedLabel)
+            val score = maxOf(keywordScore, labelScore)
 
             if (score != FuzzyMatcher.NO_MATCH) {
                 val matchType = matcher.getMatchType(score) ?: continue
@@ -88,7 +87,7 @@ class SearchEngine(private val gatekeeper: IntentGatekeeper, private val matcher
                             val list = results ?: ArrayList<SearchResult>(8).also { results = it }
                             list.add(
                                 SearchResult(
-                                    item = SearchItem.App(candidate.component, candidate.label, access),
+                                    item = candidate.itemFor(access),
                                     score = score,
                                     matchType = matchType,
                                 ),
@@ -112,7 +111,7 @@ class SearchEngine(private val gatekeeper: IntentGatekeeper, private val matcher
                             val list = results ?: ArrayList<SearchResult>(8).also { results = it }
                             list.add(
                                 SearchResult(
-                                    item = SearchItem.App(candidate.component, candidate.label, access),
+                                    item = candidate.itemFor(access),
                                     score = score,
                                     matchType = matchType,
                                 ),
@@ -181,6 +180,18 @@ class SearchEngine(private val gatekeeper: IntentGatekeeper, private val matcher
     }
 
     companion object {
-        private val SCORE_COMPARATOR = Comparator<SearchResult> { a, b -> b.score.compareTo(a.score) }
+        private val SCORE_COMPARATOR = Comparator<SearchResult> { a, b ->
+            val scoreDiff = b.score.compareTo(a.score)
+            if (scoreDiff != 0) {
+                scoreDiff
+            } else {
+                val labelDiff = a.item.label.compareTo(b.item.label, ignoreCase = true)
+                if (labelDiff != 0) {
+                    labelDiff
+                } else {
+                    a.item.key.compareTo(b.item.key)
+                }
+            }
+        }
     }
 }

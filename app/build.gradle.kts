@@ -49,10 +49,19 @@ android {
         unitTests.isIncludeAndroidResources = true
         unitTests.isReturnDefaultValues = true
         unitTests.all {
-            it.systemProperty("roborazzi.test.record", "true")
-            it.systemProperty("roborazzi.record", "true")
+            val recordScreenshots = project.findProperty("roborazzi.test.record") == "true"
+            if (recordScreenshots) {
+                it.systemProperty("roborazzi.test.record", "true")
+                it.systemProperty("roborazzi.record", "true")
+            } else {
+                it.systemProperty("roborazzi.test.verify", "true")
+            }
         }
     }
+}
+
+composeCompiler {
+    stabilityConfigurationFiles.add(layout.projectDirectory.file("compose_stability.conf"))
 }
 
 // Temporary: Host machine runs OpenJDK 25 (class major version 69).

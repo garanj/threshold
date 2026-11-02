@@ -15,9 +15,15 @@ data class ComponentKey(val packageName: String, val activityName: String, val u
     }
 
     /**
+     * Precomputed flat string identifier: `packageName/activityName#userSerial`.
+     * Cached at construction so UI list keys (`LazyColumn`) never allocate strings on recomposition.
+     */
+    val id: String = "$packageName/$activityName#$userSerial"
+
+    /**
      * Serializes this key to a flat string format: `packageName/activityName#userSerial`.
      */
-    fun flattenToString(): String = "$packageName/$activityName#$userSerial"
+    fun flattenToString(): String = id
 
     companion object {
         /**

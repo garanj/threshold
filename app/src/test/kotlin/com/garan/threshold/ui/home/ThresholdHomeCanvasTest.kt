@@ -2,18 +2,24 @@ package com.garan.threshold.ui.home
 
 import android.content.Context
 import android.content.Intent
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.LifecycleRegistry
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.test.core.app.ApplicationProvider
 import com.garan.threshold.ui.theme.ThresholdTheme
+import com.google.common.truth.Truth.assertThat
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.Shadows
 import org.robolectric.annotation.Config
 import java.time.ZonedDateTime
-import java.time.format.DateTimeFormatter
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
@@ -23,25 +29,76 @@ class ThresholdHomeCanvasTest {
     val composeTestRule = createComposeRule()
 
     @Test
-    fun defaultCanvas_registersReceiverAndDisplaysCurrentTime() {
-        val now = ZonedDateTime.now()
-        val expectedTime = now.format(DateTimeFormatter.ofPattern("HH:mm"))
+    fun defaultCanvas_registersReceiverAndUpdatesDisplayedTimeOnTick() {
+        var simulatedNow = ZonedDateTime.of(2026, 11, 2, 10, 9, 59, 0, java.time.ZoneId.of("UTC"))
 
         composeTestRule.setContent {
             ThresholdTheme {
-                ThresholdHomeCanvas()
+                ThresholdHomeCanvas(
+                    clockProvider = { simulatedNow },
+                )
             }
         }
 
-        composeTestRule.onNodeWithText(expectedTime).assertIsDisplayed()
+        composeTestRule.onNodeWithText("10:09").assertIsDisplayed()
+        composeTestRule.onNodeWithText("Monday, November 2").assertIsDisplayed()
         composeTestRule.onNodeWithText("THRESHOLD").assertIsDisplayed()
 
-        // Send ACTION_TIME_TICK broadcast to verify receiver handles it without crash
+        // Advance clock across minute boundary and send ACTION_TIME_TICK broadcast
+        simulatedNow = simulatedNow.plusSeconds(1)
         val context = ApplicationProvider.getApplicationContext<Context>()
         context.sendBroadcast(Intent(Intent.ACTION_TIME_TICK))
         composeTestRule.waitForIdle()
 
-        composeTestRule.onNodeWithText(expectedTime).assertIsDisplayed()
+        composeTestRule.onNodeWithText("10:10").assertIsDisplayed()
         composeTestRule.onNodeWithText("THRESHOLD").assertIsDisplayed()
+    }
+
+    @Test
+    fun defaultCanvas_unregistersTimeTickReceiverOnLifecycleStopAndReregistersOnStart() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val shadowApp = Shadows.shadowOf(context as android.app.Application)
+        val lifecycleOwner = object : LifecycleOwner {
+            val registry = LifecycleRegistry.createUnsafe(this).apply {
+                currentState = Lifecycle.State.STARTED
+            }
+            override val lifecycle: Lifecycle get() = registry
+        }
+
+        composeTestRule.setContent {
+            CompositionLocalProvider(LocalLifecycleOwner provides lifecycleOwner) {
+                ThresholdTheme {
+                    ThresholdHomeCanvas()
+                }
+            }
+        }
+        composeTestRule.waitForIdle()
+
+        val hasTimeTickReceiverWhenStarted = shadowApp.registeredReceivers.any {
+            it.intentFilter.hasAction(Intent.ACTION_TIME_TICK)
+        }
+        assertThat(hasTimeTickReceiverWhenStarted).isTrue()
+
+        // Transition to CREATED (ON_STOP) -> receiver must be unregistered
+        composeTestRule.runOnIdle {
+            lifecycleOwner.registry.handleLifecycleEvent(Lifecycle.Event.ON_STOP)
+        }
+        composeTestRule.waitForIdle()
+
+        val hasTimeTickReceiverWhenStopped = shadowApp.registeredReceivers.any {
+            it.intentFilter.hasAction(Intent.ACTION_TIME_TICK)
+        }
+        assertThat(hasTimeTickReceiverWhenStopped).isFalse()
+
+        // Transition back to STARTED (ON_START) -> receiver must re-register
+        composeTestRule.runOnIdle {
+            lifecycleOwner.registry.handleLifecycleEvent(Lifecycle.Event.ON_START)
+        }
+        composeTestRule.waitForIdle()
+
+        val hasTimeTickReceiverWhenRestarted = shadowApp.registeredReceivers.any {
+            it.intentFilter.hasAction(Intent.ACTION_TIME_TICK)
+        }
+        assertThat(hasTimeTickReceiverWhenRestarted).isTrue()
     }
 }

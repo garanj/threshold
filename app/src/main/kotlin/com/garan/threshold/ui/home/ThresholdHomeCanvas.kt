@@ -30,12 +30,18 @@ import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.garan.threshold.ui.theme.AmoledBlack
 import com.garan.threshold.ui.theme.HairlineBorder
 import com.garan.threshold.ui.theme.PureWhite
 import com.garan.threshold.ui.theme.SubtleGray
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
+
+private val TIME_FORMATTER: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
+private val DATE_FORMATTER: DateTimeFormatter = DateTimeFormatter.ofPattern("EEEE, MMMM d")
 
 /**
  * Clean typographic home display for Threshold.
@@ -48,30 +54,29 @@ fun ThresholdHomeCanvas(
     timeText: String? = null,
     dateText: String? = null,
     statusText: String = "Threshold",
+    clockProvider: () -> ZonedDateTime = { ZonedDateTime.now() },
     content: @Composable () -> Unit = {},
 ) {
-    var liveTime by remember { mutableStateOf("") }
-    var liveDate by remember { mutableStateOf("") }
+    // Initialize synchronously on Frame 0 so the canvas never flashes "00:00" or "Threshold"
+    var liveTime by remember {
+        mutableStateOf(if (timeText == null) clockProvider().format(TIME_FORMATTER) else "")
+    }
+    var liveDate by remember {
+        mutableStateOf(if (dateText == null) clockProvider().format(DATE_FORMATTER) else "")
+    }
 
     if (timeText == null || dateText == null) {
         val context = LocalContext.current
         val isInspection = LocalInspectionMode.current
-        val timeFormatter = remember { DateTimeFormatter.ofPattern("HH:mm") }
-        val dateFormatter = remember { DateTimeFormatter.ofPattern("EEEE, MMMM d") }
+        val lifecycleOwner = LocalLifecycleOwner.current
 
-        if (isInspection) {
-            val now = remember { ZonedDateTime.now() }
-            liveTime = now.format(timeFormatter)
-            liveDate = now.format(dateFormatter)
-        } else {
-            DisposableEffect(context) {
+        if (!isInspection) {
+            DisposableEffect(context, lifecycleOwner) {
                 fun updateTime() {
-                    val now = ZonedDateTime.now()
-                    liveTime = now.format(timeFormatter)
-                    liveDate = now.format(dateFormatter)
+                    val now = clockProvider()
+                    liveTime = now.format(TIME_FORMATTER)
+                    liveDate = now.format(DATE_FORMATTER)
                 }
-
-                updateTime()
 
                 val receiver = object : BroadcastReceiver() {
                     override fun onReceive(context: Context?, intent: Intent?) {
@@ -85,17 +90,54 @@ fun ThresholdHomeCanvas(
                     addAction(Intent.ACTION_TIMEZONE_CHANGED)
                 }
 
-                context.registerReceiver(receiver, filter)
+                var isReceiverRegistered = false
+
+                fun registerIfNeeded() {
+                    if (!isReceiverRegistered) {
+                        updateTime()
+                        context.registerReceiver(receiver, filter)
+                        isReceiverRegistered = true
+                    }
+                }
+
+                fun unregisterIfNeeded() {
+                    if (isReceiverRegistered) {
+                        context.unregisterReceiver(receiver)
+                        isReceiverRegistered = false
+                    }
+                }
+
+                val observer = LifecycleEventObserver { _, event ->
+                    when (event) {
+                        Lifecycle.Event.ON_START -> registerIfNeeded()
+                        Lifecycle.Event.ON_STOP -> unregisterIfNeeded()
+                        else -> {}
+                    }
+                }
+
+                if (lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) {
+                    registerIfNeeded()
+                }
+                lifecycleOwner.lifecycle.addObserver(observer)
 
                 onDispose {
-                    context.unregisterReceiver(receiver)
+                    lifecycleOwner.lifecycle.removeObserver(observer)
+                    unregisterIfNeeded()
                 }
             }
         }
     }
 
-    val displayTime = timeText ?: liveTime.ifEmpty { "00:00" }
-    val displayDate = dateText ?: liveDate.ifEmpty { "Threshold" }
+    val displayTime = timeText ?: liveTime
+    val displayDate = dateText ?: liveDate
+    val upperStatusText = remember(statusText) { statusText.uppercase() }
+    val baseLabelSmall = MaterialTheme.typography.labelSmall
+    val statusTextStyle = remember(baseLabelSmall) {
+        baseLabelSmall.copy(
+            letterSpacing = 1.5.sp,
+            fontWeight = FontWeight.SemiBold,
+        )
+    }
 
     Box(
         modifier = modifier
@@ -141,11 +183,8 @@ fun ThresholdHomeCanvas(
 
             // Ambient status readout
             Text(
-                text = statusText.uppercase(),
-                style = MaterialTheme.typography.labelSmall.copy(
-                    letterSpacing = 1.5.sp,
-                    fontWeight = FontWeight.SemiBold,
-                ),
+                text = upperStatusText,
+                style = statusTextStyle,
                 color = SubtleGray,
             )
 
