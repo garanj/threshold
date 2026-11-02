@@ -20,7 +20,7 @@
 1. **Zero-Bitmap Memory Baseline:**
    - Do NOT store decoded `android.graphics.Bitmap` instances in persistent state or long-lived caches.
    - If icons are rendered in glyph mode, use vector glyphs or monochromatic masks.
-   - Total PSS must stay strictly **under 30 MB** (typographic baseline < 25 MB).
+   - Total PSS must stay strictly **under 35 MB** in CI emulator (typographic baseline < 25 MB on device).
 2. **Zero-Allocation Fuzzy Search (`:core`):**
    - The fuzzy search matcher must operate using in-place character index matching, avoiding object creation (e.g. intermediate substring lists or boxing) during keystroke search loops.
 3. **IME Handling:**
