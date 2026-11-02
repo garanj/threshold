@@ -39,7 +39,7 @@ class ThresholdHomeScreenTest {
     )
 
     @Test
-    fun ambientState_backPressed_consumedWithoutFinishingActivity() {
+    fun ambientState_backHandlerDisabled_suppressingSystemUiIndicator() {
         val viewModel = SearchViewModel(packageIndexSource = fakePackageIndexSource)
         val launcher = FakeAppLauncher()
         var imeDismissed = false
@@ -57,18 +57,12 @@ class ThresholdHomeScreenTest {
         composeTestRule.onNodeWithText("THRESHOLD").assertIsDisplayed()
         composeTestRule.onNodeWithText("Type to launch...").assertIsDisplayed()
 
-        // Press back via activity back dispatcher
+        // When in ambient state, back handler should NOT have enabled callbacks
+        // so SystemUI suppresses the edge swipe back indicator.
         composeTestRule.activityRule.scenario.onActivity { activity ->
-            activity.onBackPressedDispatcher.onBackPressed()
-        }
-        composeTestRule.waitForIdle()
-
-        // Verify activity is NOT finishing (back was consumed cleanly as a no-op)
-        composeTestRule.activityRule.scenario.onActivity { activity ->
-            assertThat(activity.isFinishing).isFalse()
+            assertThat(activity.onBackPressedDispatcher.hasEnabledCallbacks()).isFalse()
         }
         assertThat(imeDismissed).isFalse()
-        composeTestRule.onNodeWithText("THRESHOLD").assertIsDisplayed()
     }
 
     @Test
@@ -97,6 +91,9 @@ class ThresholdHomeScreenTest {
 
         assertThat(viewModel.uiState.value.query).isEqualTo("cam")
         composeTestRule.onNodeWithText("Camera").assertIsDisplayed()
+        composeTestRule.activityRule.scenario.onActivity { activity ->
+            assertThat(activity.onBackPressedDispatcher.hasEnabledCallbacks()).isTrue()
+        }
 
         // Press back via activity back dispatcher
         composeTestRule.activityRule.scenario.onActivity { activity ->
@@ -104,9 +101,12 @@ class ThresholdHomeScreenTest {
         }
         composeTestRule.waitForIdle()
 
-        // Verify query cleared, IME dismissed, and back to ambient placeholder
+        // Verify query cleared, IME dismissed, back callback disabled, and back to ambient placeholder
         assertThat(viewModel.uiState.value.query).isEmpty()
         assertThat(imeDismissed).isTrue()
+        composeTestRule.activityRule.scenario.onActivity { activity ->
+            assertThat(activity.onBackPressedDispatcher.hasEnabledCallbacks()).isFalse()
+        }
         composeTestRule.onNodeWithText("Type to launch...").assertIsDisplayed()
         composeTestRule.onNodeWithText("THRESHOLD").assertIsDisplayed()
     }
