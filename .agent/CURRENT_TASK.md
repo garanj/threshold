@@ -1,28 +1,20 @@
-# Active Task: Typographic Surface & Insets Foundation (`:app`)
+# Active Task: CI Sticky PR Comment with Test Summary & Memory Metrics
 
-- **Issue:** [#17 feat(app): typographic surface and window insets foundation](https://github.com/garanj/threshold/issues/17)
-- **Milestone:** Phase 1: Test Infrastructure, Core Architecture & Safe Shell
+- **Issue:** [#19 ci: post sticky PR comment with test summary and memory metrics](https://github.com/garanj/threshold/issues/19)
 - **Status:** Complete / Ready for Review
-- **Branch:** `feat/17-typographic-surface-insets`
+- **Branch:** `feat/19-pr-test-summary-comment`
 
 ---
 
 ## Objectives
-1. [x] **Typographic Foundation (`:app`)**:
-   - Defined `Type.kt` typography hierarchy with OpenType `tnum, zero` (`THRESHOLD_FONT_FEATURE_SETTINGS = "tnum, zero"`).
-   - Configured `PlatformTextStyle(includeFontPadding = false)` across all typography styles to eliminate baseline drift.
-   - Minimalist AMOLED palette: `#000000` (AmoledBlack), `#FFFFFF` (PureWhite), `#888888` (SubtleGray), `#262626` (HairlineBorder).
-2. [x] **Home Display Surface (`ThresholdHomeCanvas`)**:
-   - Typographic clock with hours, minutes, and ambient calendar date format.
-   - Fixed-pitch tabular digits ensuring no horizontal jitter when time changes.
-3. [x] **Edge-to-Edge & Navigation Insets**:
-   - Edge-to-edge support with `enableEdgeToEdge()` and `Modifier.safeDrawingPadding()`.
-   - Supports both gesture navigation bars and 3-button navigation.
-4. [x] **IME Controller & Dismissal Utility**:
-   - Clean keyboard dismissal utility via `WindowInsetsControllerCompat` (`ImeUtils.launchActivityDismissingIme`) before launching activities.
-5. [x] **Roborazzi Golden Screenshot Tests**:
-   - Verified typographic home display across phone configurations.
-   - Golden screenshot tests in host JVM (`ThresholdScreenshotTest`): default, zero-padded, and profile status variants.
-6. [x] **Quality Gates**:
-   - `./gradlew test spotlessCheck` passes on host JVM.
-   - Total PSS remains < 25 MB.
+1. [x] **Update `.github/workflows/ci.yml` Permissions**:
+   - Granted `pull-requests: write` and `issues: write` on the PR commenting job.
+2. [x] **Scorecard Aggregator**:
+   - Aggregated JVM test counts, Roborazzi golden screenshot checks, emulator functional test counts, and PSS memory metrics (< 30 MB ceiling) into outputs.
+3. [x] **Sticky Comment in PR Discussion Thread**:
+   - Implemented native `gh api` comment updater using unique HTML marker (`<!-- threshold-ci-summary -->`).
+   - Ensures zero spam by updating a single designated comment in place across pushes.
+   - Protected with `continue-on-error: true`.
+4. [x] **Verification**:
+   - Validated YAML syntax with `yaml.safe_load`.
+   - Verified spotless code formatting and unit tests pass.

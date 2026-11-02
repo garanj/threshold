@@ -15,6 +15,11 @@ jobs:
     name: Fast Host JVM Gate (Lint, Spotless, Unit & Screenshot Tests)
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    outputs:
+      tests: ${{ steps.test-metrics.outputs.tests }}
+      passed: ${{ steps.test-metrics.outputs.passed }}
+      failed: ${{ steps.test-metrics.outputs.failed }}
+      screenshots: ${{ steps.test-metrics.outputs.screenshots }}
 
     steps:
       - name: Checkout Repository
@@ -59,10 +64,39 @@ jobs:
         with:
           paths: "**/build/test-results/**/TEST-*.xml"
 
+      - name: Extract Host Test Metrics
+        id: test-metrics
+        if: always()
+        run: |
+          python3 -c '
+          import xml.etree.ElementTree as ET, glob, os
+          tests, failures, errors, skipped = 0, 0, 0, 0
+          for f in glob.glob("**/build/test-results/**/TEST-*.xml", recursive=True):
+              try:
+                  root = ET.parse(f).getroot()
+                  tests += int(root.attrib.get("tests", 0))
+                  failures += int(root.attrib.get("failures", 0))
+                  errors += int(root.attrib.get("errors", 0))
+                  skipped += int(root.attrib.get("skipped", 0))
+              except Exception:
+                  pass
+          passed = tests - failures - errors - skipped
+          screenshots = len(glob.glob("app/build/outputs/roborazzi/*.png"))
+          with open(os.environ["GITHUB_OUTPUT"], "a") as gh_out:
+              gh_out.write(f"tests={tests}\n")
+              gh_out.write(f"passed={passed}\n")
+              gh_out.write(f"failed={failures + errors}\n")
+              gh_out.write(f"screenshots={screenshots}\n")
+          '
+
   emulator-smoke-gate:
     name: Headless Emulator Gate (Functional & Smoke Tests)
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    outputs:
+      total_pss: ${{ steps.emulator-metrics.outputs.total_pss }}
+      instrumented_tests: ${{ steps.emulator-metrics.outputs.instrumented_tests }}
+      instrumented_failed: ${{ steps.emulator-metrics.outputs.instrumented_failed }}
 
     steps:
       - name: Checkout Repository
@@ -117,3 +151,127 @@ jobs:
         uses: test-summary/action@v2
         with:
           paths: "**/build/outputs/androidTest-results/**/TEST-*.xml"
+
+      - name: Extract Emulator Metrics
+        id: emulator-metrics
+        if: always()
+        run: |
+          TOTAL_PSS=$(cat build/total_pss.txt 2>/dev/null || echo "N/A")
+          export TOTAL_PSS
+          python3 -c '
+          import xml.etree.ElementTree as ET, glob, os
+          tests, failures, errors = 0, 0, 0
+          for f in glob.glob("**/build/outputs/androidTest-results/**/TEST-*.xml", recursive=True):
+              try:
+                  root = ET.parse(f).getroot()
+                  tests += int(root.attrib.get("tests", 0))
+                  failures += int(root.attrib.get("failures", 0))
+                  errors += int(root.attrib.get("errors", 0))
+              except Exception:
+                  pass
+          with open(os.environ["GITHUB_OUTPUT"], "a") as gh_out:
+              gh_out.write(f"total_pss={os.environ.get(\"TOTAL_PSS\", \"N/A\")}\n")
+              gh_out.write(f"instrumented_tests={tests}\n")
+              gh_out.write(f"instrumented_failed={failures + errors}\n")
+          '
+
+  pr-comment:
+    name: Post PR CI Scorecard
+    needs: [host-jvm-gate, emulator-smoke-gate]
+    if: always() && github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+      issues: write
+    steps:
+      - name: Post or Update PR Sticky Comment
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          COMMIT_SHA: ${{ github.event.pull_request.head.sha }}
+          RUN_ID: ${{ github.run_id }}
+          HOST_RESULT: ${{ needs.host-jvm-gate.result }}
+          EMULATOR_RESULT: ${{ needs.emulator-smoke-gate.result }}
+          TEST_COUNT: ${{ needs.host-jvm-gate.outputs.tests }}
+          TEST_PASSED: ${{ needs.host-jvm-gate.outputs.passed }}
+          TEST_FAILED: ${{ needs.host-jvm-gate.outputs.failed }}
+          SCREENSHOTS: ${{ needs.host-jvm-gate.outputs.screenshots }}
+          TOTAL_PSS: ${{ needs.emulator-smoke-gate.outputs.total_pss }}
+          INSTR_TESTS: ${{ needs.emulator-smoke-gate.outputs.instrumented_tests }}
+          INSTR_FAILED: ${{ needs.emulator-smoke-gate.outputs.instrumented_failed }}
+        run: |
+          if [ "$HOST_RESULT" = "success" ]; then
+            HOST_STATUS="✅ Pass"
+            HOST_DETAILS="${TEST_PASSED:-0}/${TEST_COUNT:-0} unit tests passed · Spotless clean"
+          else
+            HOST_STATUS="❌ Fail"
+            HOST_DETAILS="${TEST_FAILED:-0} failed out of ${TEST_COUNT:-0} tests"
+          fi
+
+          if [ "${SCREENSHOTS:-0}" -gt 0 ] && [ "$HOST_RESULT" = "success" ]; then
+            SCREENSHOT_STATUS="✅ Pass"
+            SCREENSHOT_DETAILS="${SCREENSHOTS} golden screenshots verified"
+          elif [ "$HOST_RESULT" = "success" ]; then
+            SCREENSHOT_STATUS="⚠️ None"
+            SCREENSHOT_DETAILS="No screenshot goldens detected"
+          else
+            SCREENSHOT_STATUS="❌ Fail"
+            SCREENSHOT_DETAILS="Screenshot tests failed or aborted"
+          fi
+
+          if [ "$EMULATOR_RESULT" = "success" ]; then
+            EMULATOR_STATUS="✅ Pass"
+            EMULATOR_DETAILS="${INSTR_TESTS:-0} instrumented tests passed"
+          else
+            EMULATOR_STATUS="❌ Fail"
+            EMULATOR_DETAILS="Functional tests failed (${INSTR_FAILED:-0} failures)"
+          fi
+
+          if [ "$TOTAL_PSS" != "N/A" ] && [ -n "$TOTAL_PSS" ] && [ "$TOTAL_PSS" != "0" ]; then
+            if [ "$TOTAL_PSS" -le 30000 ]; then
+              MEM_STATUS="✅ Pass"
+              MEM_DETAILS="**${TOTAL_PSS} KB PSS** (Ceiling: 30,000 KB)"
+            else
+              MEM_STATUS="❌ Fail"
+              MEM_DETAILS="**${TOTAL_PSS} KB PSS** (Exceeded 30,000 KB ceiling)"
+            fi
+          else
+            if [ "$EMULATOR_RESULT" = "success" ]; then
+              MEM_STATUS="⚠️ N/A"
+              MEM_DETAILS="Memory metric not captured"
+            else
+              MEM_STATUS="❌ Fail"
+              MEM_DETAILS="Emulator run failed before memory check"
+            fi
+          fi
+
+          SHORT_SHA="${COMMIT_SHA:0:7}"
+          RUN_URL="https://github.com/${REPO}/actions/runs/${RUN_ID}"
+
+          cat << EOF > /tmp/ci_scorecard.md
+          <!-- threshold-ci-summary -->
+          ## ⏱️ Threshold CI Scorecard
+
+          | Gate | Status | Details |
+          | :--- | :---: | :--- |
+          | **Host JVM Quality** | ${HOST_STATUS} | ${HOST_DETAILS} |
+          | **Roborazzi Golden Screenshots** | ${SCREENSHOT_STATUS} | ${SCREENSHOT_DETAILS} |
+          | **Emulator Functional Tests** | ${EMULATOR_STATUS} | ${EMULATOR_DETAILS} |
+          | **Memory Ceiling Check** | ${MEM_STATUS} | ${MEM_DETAILS} |
+
+          > _Commit: \`${SHORT_SHA}\` · Full Run Logs: [#${RUN_ID}](${RUN_URL})_
+          EOF
+          sed -i 's/^[ \t]*//' /tmp/ci_scorecard.md
+
+          COMMENT_ID=$(gh api "repos/${REPO}/issues/${PR_NUMBER}/comments" --paginate \
+            --jq '.[] | select(.body | contains("<!-- threshold-ci-summary -->")) | .id' | head -n 1 || true)
+
+          if [ -n "$COMMENT_ID" ]; then
+            echo "Updating existing CI scorecard comment $COMMENT_ID..."
+            gh api --method PATCH "repos/${REPO}/issues/comments/${COMMENT_ID}" -F body=@/tmp/ci_scorecard.md
+          else
+            echo "Creating new CI scorecard comment on PR #${PR_NUMBER}..."
+            gh api --method POST "repos/${REPO}/issues/${PR_NUMBER}/comments" -F body=@/tmp/ci_scorecard.md
+          fi
