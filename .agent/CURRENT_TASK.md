@@ -1,20 +1,33 @@
-# Active Task: CI Sticky PR Comment with Test Summary & Memory Metrics
+# Active Task: Search Interface & Golden Screenshot Verification (`:app`)
 
-- **Issue:** [#19 ci: post sticky PR comment with test summary and memory metrics](https://github.com/garanj/threshold/issues/19)
+- **Issue:** [#21 feat(app): implement search interface and golden screenshot verification](https://github.com/garanj/threshold/issues/21)
+- **Milestone:** Phase 1: Test Infrastructure, Core Architecture & Safe Shell
 - **Status:** Complete / Ready for Review
-- **Branch:** `feat/19-pr-test-summary-comment`
+- **Branch:** `feat/21-search-interface`
 
 ---
 
 ## Objectives
-1. [x] **Update `.github/workflows/ci.yml` Permissions**:
-   - Granted `pull-requests: write` and `issues: write` on the PR commenting job.
-2. [x] **Scorecard Aggregator**:
-   - Aggregated JVM test counts, Roborazzi golden screenshot checks, emulator functional test counts, and PSS memory metrics (< 30 MB ceiling) into outputs.
-3. [x] **Sticky Comment in PR Discussion Thread**:
-   - Implemented native `gh api` comment updater using unique HTML marker (`<!-- threshold-ci-summary -->`).
-   - Ensures zero spam by updating a single designated comment in place across pushes.
-   - Protected with `continue-on-error: true`.
-4. [x] **Verification**:
-   - Validated YAML syntax with `yaml.safe_load`.
-   - Verified spotless code formatting and unit tests pass.
+1. [x] **Search ViewModel / State Holder (`:app`)**:
+   - Bound `PackageIndexSource` (`:data`) and `SearchEngine` (`:core`) via `SearchViewModel`.
+   - Reactive updates on `observePackageChanges()` so package install/uninstall updates search candidates in real-time.
+   - Preserves `AppAccessState` (Direct, Guarded, Blocked).
+   - Unit tested with `SearchViewModelTest`.
+2. [x] **App Launcher Helper (`:app`)**:
+   - `AndroidAppLauncher` dismissing IME cleanly before triggering `LauncherApps.startMainActivity`.
+   - Unit tested with `AndroidAppLauncherTest`.
+3. [x] **Search Surface UI (`ThresholdSearchSurface.kt`)**:
+   - Typographic search input field with `BasicTextField` and pure white cursor.
+   - Results list displaying filtered apps with fixed-pitch alignment.
+   - Visual indicator (`GUARDED`, `ACTION`) for friction-guarded applications and shortcuts.
+   - Empty state (`NO MATCHING APPS`) when no candidates match.
+4. [x] **Integration in `MainActivity`**:
+   - Embedded `ThresholdSearchSurface` inside `ThresholdHomeCanvas`.
+5. [x] **Roborazzi Golden Screenshot Tests**:
+   - `snapshotSearchSurfaceWithResults`: App appears in search results when user types query.
+   - `snapshotSearchSurfaceGuardedFriction`: Guarded friction visual indicator state.
+   - `snapshotSearchSurfaceEmptyState`: Empty state when query has no matches.
+6. [x] **Verification**:
+   - JVM unit tests and Roborazzi golden screenshot tests passed (`./gradlew test`).
+   - Spotless check passed (`./gradlew spotlessCheck`).
+   - Release APK minified and built cleanly: 2.5 MB (`./gradlew :app:assembleRelease`).

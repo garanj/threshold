@@ -48,6 +48,7 @@ fun ThresholdHomeCanvas(
     timeText: String? = null,
     dateText: String? = null,
     statusText: String = "Threshold",
+    content: @Composable () -> Unit = {},
 ) {
     var liveTime by remember { mutableStateOf("") }
     var liveDate by remember { mutableStateOf("") }
@@ -147,6 +148,8 @@ fun ThresholdHomeCanvas(
                 ),
                 color = SubtleGray,
             )
+
+            content()
         }
     }
 }
