@@ -30,7 +30,7 @@
   - WindowInsets handling (3-button vs gesture navigation).
   - Programmatic IME dismissal prior to `startActivity()`.
   - Roborazzi golden screenshot tests for insets and typography modes.
-- [ ] **Task 1.8: Search Interface & Golden Screenshot Verification (`:app`)**
+- [x] **Task 1.8: Search Interface & Golden Screenshot Verification (`:app`)**
   - Search surface binding `SearchEngine` (`:core`) to reactive `PackageIndexSource` (`:data`).
   - Reverse-search friction UI and command prefixing (`:` / `,`).
   - Roborazzi host JVM screenshot tests:
