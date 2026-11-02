@@ -1,5 +1,9 @@
 package com.garan.threshold.ui.home
 
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -14,13 +18,15 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -28,8 +34,6 @@ import com.garan.threshold.ui.theme.AmoledBlack
 import com.garan.threshold.ui.theme.HairlineBorder
 import com.garan.threshold.ui.theme.PureWhite
 import com.garan.threshold.ui.theme.SubtleGray
-import kotlinx.coroutines.delay
-import java.time.LocalTime
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 
@@ -49,17 +53,42 @@ fun ThresholdHomeCanvas(
     var liveDate by remember { mutableStateOf("") }
 
     if (timeText == null || dateText == null) {
+        val context = LocalContext.current
+        val isInspection = LocalInspectionMode.current
         val timeFormatter = remember { DateTimeFormatter.ofPattern("HH:mm") }
         val dateFormatter = remember { DateTimeFormatter.ofPattern("EEEE, MMMM d") }
 
-        LaunchedEffect(Unit) {
-            while (true) {
-                val now = ZonedDateTime.now()
-                liveTime = now.format(timeFormatter)
-                liveDate = now.format(dateFormatter)
-                // Update every minute (or sync with next minute boundary)
-                val millisUntilNextMinute = ((60 - LocalTime.now().second) * 1000L)
-                delay(millisUntilNextMinute.coerceAtLeast(1000L))
+        if (isInspection) {
+            val now = remember { ZonedDateTime.now() }
+            liveTime = now.format(timeFormatter)
+            liveDate = now.format(dateFormatter)
+        } else {
+            DisposableEffect(context) {
+                fun updateTime() {
+                    val now = ZonedDateTime.now()
+                    liveTime = now.format(timeFormatter)
+                    liveDate = now.format(dateFormatter)
+                }
+
+                updateTime()
+
+                val receiver = object : BroadcastReceiver() {
+                    override fun onReceive(context: Context?, intent: Intent?) {
+                        updateTime()
+                    }
+                }
+
+                val filter = IntentFilter().apply {
+                    addAction(Intent.ACTION_TIME_TICK)
+                    addAction(Intent.ACTION_TIME_CHANGED)
+                    addAction(Intent.ACTION_TIMEZONE_CHANGED)
+                }
+
+                context.registerReceiver(receiver, filter)
+
+                onDispose {
+                    context.unregisterReceiver(receiver)
+                }
             }
         }
     }
