@@ -37,6 +37,20 @@ class FuzzyMatcherTest {
     }
 
     @Test
+    fun `word boundary prefix matches multi character second word and ranks above acronym`() {
+        val googleMapsScore = matcher.match(query = "maps", target = "Google Maps")
+        val myGoogleMapsScore = matcher.match(query = "maps", target = "My Google Maps")
+        val acronymScore = matcher.match(query = "maps", target = "My Awesome Photo Studio")
+        val substringScore = matcher.match(query = "maps", target = "Synapse Mapsy")
+
+        assertThat(matcher.getMatchType(googleMapsScore)).isEqualTo(MatchType.WORD_BOUNDARY)
+        assertThat(matcher.getMatchType(myGoogleMapsScore)).isEqualTo(MatchType.WORD_BOUNDARY)
+        assertThat(matcher.getMatchType(acronymScore)).isEqualTo(MatchType.WORD_BOUNDARY)
+        assertThat(googleMapsScore).isGreaterThan(acronymScore)
+        assertThat(googleMapsScore).isGreaterThan(substringScore)
+    }
+
+    @Test
     fun `subsequence match matches scattered characters in order`() {
         val score = matcher.match(query = "pne", target = "Phone")
         assertThat(score).isGreaterThan(FuzzyMatcher.NO_MATCH)

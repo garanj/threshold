@@ -1,14 +1,20 @@
 package com.garan.threshold.ui.home
 
+import android.content.Intent
 import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performImeAction
 import androidx.compose.ui.test.performTextInput
+import com.garan.threshold.MainActivity
+import com.garan.threshold.core.model.AppAccessState
 import com.garan.threshold.core.model.ComponentKey
+import com.garan.threshold.core.model.FrictionPolicy
 import com.garan.threshold.core.model.InstalledApp
+import com.garan.threshold.core.model.Profile
 import com.garan.threshold.core.port.PackageChangeEvent
 import com.garan.threshold.core.port.PackageIndexSource
 import com.garan.threshold.ui.launcher.AppLauncher
@@ -20,6 +26,7 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.robolectric.Robolectric
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
@@ -138,6 +145,73 @@ class ThresholdHomeScreenTest {
         assertThat(launcher.launchedComponents).containsExactly(cameraComponent)
         assertThat(viewModel.uiState.value.query).isEmpty()
         composeTestRule.onNodeWithText("Type to launch...").assertIsDisplayed()
+    }
+
+    @Test
+    fun guardedApp_imeGoOnPartialPrefix_doesNotBypassGatekeeper() {
+        val socialComponent = ComponentKey("com.example.social", "com.example.social.MainActivity", 0L)
+        val guardedSource = FakePackageIndexSource(
+            initialApps = listOf(InstalledApp(socialComponent, "Social Feed")),
+        )
+        val focusProfile = Profile(
+            id = "focus",
+            name = "Focus",
+            defaultAccess = AppAccessState.Direct,
+            appRules = mapOf(
+                socialComponent to AppAccessState.Guarded(FrictionPolicy.TimedDelay(10)),
+            ),
+        )
+        val viewModel = SearchViewModel(
+            packageIndexSource = guardedSource,
+            initialProfile = focusProfile,
+        )
+        val launcher = FakeAppLauncher()
+
+        composeTestRule.setContent {
+            ThresholdTheme {
+                ThresholdHomeScreen(
+                    viewModel = viewModel,
+                    appLauncher = launcher,
+                )
+            }
+        }
+
+        composeTestRule.onNodeWithText("Type to launch...").performClick()
+        composeTestRule.waitForIdle()
+
+        // Type partial prefix "soc" and press IME Go
+        composeTestRule.onNode(hasSetTextAction()).performTextInput("soc")
+        composeTestRule.waitForIdle()
+        composeTestRule.onNode(hasSetTextAction()).performImeAction()
+        composeTestRule.waitForIdle()
+
+        // Guarded app must NOT launch without passing friction gatekeeper
+        assertThat(launcher.launchedComponents).isEmpty()
+        assertThat(viewModel.uiState.value.query).isEqualTo("soc")
+    }
+
+    @Test
+    fun mainActivity_onNewIntentHome_collapsesActiveSearchAndClearsQuery() {
+        Robolectric.buildActivity(MainActivity::class.java).use { controller ->
+            controller.setup()
+            val activity = controller.get()
+
+            // Simulate user typing a search query on MainActivity
+            activity.searchViewModel.activateSearch()
+            activity.searchViewModel.onQueryChanged("cam")
+            assertThat(activity.searchViewModel.uiState.value.isSearching).isTrue()
+            assertThat(activity.searchViewModel.uiState.value.query).isEqualTo("cam")
+
+            // Simulate pressing system Home button while already on MainActivity (singleTask)
+            val homeIntent = Intent(Intent.ACTION_MAIN).apply {
+                addCategory(Intent.CATEGORY_HOME)
+            }
+            controller.newIntent(homeIntent)
+
+            // Search must be collapsed and query cleared
+            assertThat(activity.searchViewModel.uiState.value.query).isEmpty()
+            assertThat(activity.searchViewModel.uiState.value.isSearching).isFalse()
+        }
     }
 
     private class FakeAppLauncher : AppLauncher {

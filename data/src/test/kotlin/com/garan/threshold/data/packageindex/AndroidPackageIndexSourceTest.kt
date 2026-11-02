@@ -231,4 +231,91 @@ class AndroidPackageIndexSourceTest {
         job.cancel()
         testScheduler.advanceUntilIdle()
     }
+
+    @Test
+    fun `getInstalledApps and callbacks exclude Threshold self package`() = runTest(testDispatcher) {
+        val user = Process.myUserHandle()
+        shadowUserManager.addUserProfile(user)
+        shadowUserManager.setSerialNumberForUser(user, 0L)
+
+        val selfActivity = createLauncherActivityInfo(
+            ComponentName("com.garan.threshold", "com.garan.threshold.MainActivity"),
+            "Threshold",
+            user,
+        )
+        val cameraActivity = createLauncherActivityInfo(
+            ComponentName("com.android.camera", "com.android.camera.CameraActivity"),
+            "Camera",
+            user,
+        )
+        shadowLauncherApps.addActivity(user, selfActivity)
+        shadowLauncherApps.addActivity(user, cameraActivity)
+
+        val apps = packageIndexSource.getInstalledApps()
+        assertThat(apps).hasSize(1)
+        assertThat(apps.first().component.packageName).isEqualTo("com.android.camera")
+
+        val events = mutableListOf<PackageChangeEvent>()
+        val callback = packageIndexSource.createLauncherCallback { events.add(it) }
+        callback.onPackageAdded("com.garan.threshold", user)
+        callback.onPackageChanged("com.garan.threshold", user)
+        assertThat(events).isEmpty()
+    }
+
+    @Test
+    fun `onPackageAdded for headless package never blocks caller thread`() = runTest(testDispatcher) {
+        val user = Process.myUserHandle()
+        shadowUserManager.addUserProfile(user)
+        shadowUserManager.setSerialNumberForUser(user, 0L)
+
+        val events = mutableListOf<PackageChangeEvent>()
+        val callback = packageIndexSource.createLauncherCallback { events.add(it) }
+
+        val startNanos = System.nanoTime()
+        callback.onPackageAdded("com.example.headless.service", user)
+        val elapsedMs = (System.nanoTime() - startNanos) / 1_000_000
+
+        // Must return immediately (< 50ms), never blocking the main thread with Thread.sleep(200) * 5
+        assertThat(elapsedMs).isLessThan(50L)
+        assertThat(events).isEmpty()
+    }
+
+    @Test
+    fun `observePackageChanges retries delayed package parsing asynchronously without blocking main thread`() =
+        runTest(testDispatcher) {
+            val user = Process.myUserHandle()
+            shadowUserManager.addUserProfile(user)
+            shadowUserManager.setSerialNumberForUser(user, 0L)
+
+            val collected = mutableListOf<PackageChangeEvent>()
+            val job = launch(testDispatcher) {
+                packageIndexSource.observePackageChanges().collect {
+                    collected.add(it)
+                }
+            }
+            testScheduler.advanceUntilIdle()
+
+            // Notify package added BEFORE activity is registered in PackageManager/LauncherApps
+            val startNanos = System.nanoTime()
+            shadowLauncherApps.notifyPackageAdded("com.example.delayed")
+            Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
+            val mainThreadElapsedMs = (System.nanoTime() - startNanos) / 1_000_000
+            assertThat(mainThreadElapsedMs).isLessThan(50L)
+
+            // Register activity 150ms later in virtual time
+            testScheduler.advanceTimeBy(150)
+            val delayedInfo = createLauncherActivityInfo(
+                ComponentName("com.example.delayed", "com.example.delayed.MainActivity"),
+                "Delayed App",
+                user,
+            )
+            shadowLauncherApps.addActivity(user, delayedInfo)
+
+            testScheduler.advanceUntilIdle()
+            assertThat(collected).hasSize(1)
+            val added = collected.first() as PackageChangeEvent.Added
+            assertThat(added.app.label).isEqualTo("Delayed App")
+
+            job.cancel()
+        }
 }

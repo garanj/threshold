@@ -144,4 +144,66 @@ class SearchEngineTest {
         assertThat(searchResponse.autoLaunchCandidate).isNotNull()
         assertThat((searchResponse.autoLaunchCandidate as SearchItem.App).component).isEqualTo(clockKey)
     }
+
+    @Test
+    fun `equal score candidates are sorted deterministically by label then component key`() {
+        val ambientProfile = Profile(id = "ambient", name = "Ambient")
+        val tiedCandidates = listOf(
+            AppSearchCandidate(ComponentKey("com.example.z", "MainActivity"), "Canvas"),
+            AppSearchCandidate(ComponentKey("com.example.b", "MainActivity"), "Camera"),
+            AppSearchCandidate(ComponentKey("com.example.a", "MainActivity"), "Camera"),
+        )
+
+        val results = engine.search(
+            query = "ca",
+            candidates = tiedCandidates,
+            actions = emptyList(),
+            profile = ambientProfile,
+            defaultDialerPackage = defaultDialerPackage,
+        )
+
+        assertThat(results).hasSize(3)
+        assertThat(results[0].item.label).isEqualTo("Camera")
+        assertThat((results[0].item as SearchItem.App).component.packageName).isEqualTo("com.example.a")
+        assertThat(results[1].item.label).isEqualTo("Camera")
+        assertThat((results[1].item as SearchItem.App).component.packageName).isEqualTo("com.example.b")
+        assertThat(results[2].item.label).isEqualTo("Canvas")
+    }
+
+    @Test
+    fun `action candidate uses maxOf keywordScore and labelScore`() {
+        val ambientProfile = Profile(id = "ambient", name = "Ambient")
+        val actions = listOf(
+            ActionCandidate(id = "clock_action", label = "Clock", shortcutKeyword = "alarm clock"),
+        )
+
+        val results = engine.search(
+            query = "clock",
+            candidates = emptyList(),
+            actions = actions,
+            profile = ambientProfile,
+            defaultDialerPackage = defaultDialerPackage,
+        )
+
+        assertThat(results).hasSize(1)
+        assertThat(results.first().score).isEqualTo(FuzzyMatcher.SCORE_EXACT)
+        assertThat(results.first().matchType).isEqualTo(MatchType.EXACT)
+    }
+
+    @Test
+    fun `direct app search reuses cached directItem instance without allocating new wrapper`() {
+        val ambientProfile = Profile(id = "ambient", name = "Ambient")
+        val candidate = AppSearchCandidate(clockKey, "Clock")
+
+        val results = engine.search(
+            query = "clo",
+            candidates = listOf(candidate),
+            actions = emptyList(),
+            profile = ambientProfile,
+            defaultDialerPackage = defaultDialerPackage,
+        )
+
+        assertThat(results).hasSize(1)
+        assertThat(results.first().item).isSameInstanceAs(candidate.directItem)
+    }
 }

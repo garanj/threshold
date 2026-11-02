@@ -6,6 +6,7 @@ import com.garan.threshold.core.model.ComponentKey
 import com.garan.threshold.core.model.FrictionPolicy
 import com.garan.threshold.core.model.InstalledApp
 import com.garan.threshold.core.model.Profile
+import com.garan.threshold.core.port.LaunchResult
 import com.garan.threshold.core.port.PackageChangeEvent
 import com.garan.threshold.core.port.PackageIndexSource
 import com.garan.threshold.core.search.ActionCandidate
@@ -13,6 +14,7 @@ import com.garan.threshold.core.search.FuzzyMatcher
 import com.garan.threshold.core.search.SearchEngine
 import com.garan.threshold.core.search.SearchItem
 import com.google.common.truth.Truth.assertThat
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
@@ -171,6 +173,105 @@ class SearchViewModelTest {
 
         val results = viewModel.uiState.value.results
         assertThat(results).isEmpty()
+    }
+
+    @Test
+    fun coldStartRace_queryTypedBeforeGetInstalledAppsCompletes_updatesResultsWhenScanFinishes() =
+        runTest(testDispatcher) {
+            val deferredApps = CompletableDeferred<List<InstalledApp>>()
+            val delayedSource = object : PackageIndexSource {
+                override suspend fun getInstalledApps(): List<InstalledApp> = deferredApps.await()
+                override fun observePackageChanges(): Flow<PackageChangeEvent> = MutableSharedFlow()
+            }
+
+            val coldViewModel = SearchViewModel(
+                packageIndexSource = delayedSource,
+                searchEngine = searchEngine,
+                defaultDialerPackage = "com.google.android.dialer",
+                initialProfile = profile,
+                ioDispatcher = testDispatcher,
+            )
+
+            // User types "cam" on cold start before getInstalledApps() finishes
+            coldViewModel.onQueryChanged("cam")
+            assertThat(coldViewModel.uiState.value.results).isEmpty()
+
+            // Background scan completes
+            deferredApps.complete(
+                listOf(
+                    InstalledApp(cameraComponent, "Camera"),
+                ),
+            )
+            advanceUntilIdle()
+
+            // Results must automatically populate without requiring another keystroke
+            val results = coldViewModel.uiState.value.results
+            assertThat(results).hasSize(1)
+            assertThat((results.first().item as SearchItem.App).label).isEqualTo("Camera")
+        }
+
+    @Test
+    fun searchWithAutoLaunch_populatesAutoLaunchForDirectAndRequiresExactMatchForGuarded() = runTest(testDispatcher) {
+        advanceUntilIdle()
+
+        // Direct app ("Camera") uniquely matched with >= 2 chars -> autoLaunchCandidate populated
+        viewModel.onQueryChanged("cam")
+        assertThat(viewModel.uiState.value.autoLaunchCandidate).isNotNull()
+        assertThat((viewModel.uiState.value.autoLaunchCandidate as SearchItem.App).component)
+            .isEqualTo(cameraComponent)
+
+        // Guarded app ("Social Feed") uniquely matched on prefix "soc" -> autoLaunchCandidate is null
+        viewModel.onQueryChanged("soc")
+        assertThat(viewModel.uiState.value.results).hasSize(1)
+        assertThat(viewModel.uiState.value.autoLaunchCandidate).isNull()
+
+        // Guarded app matched with full exact label -> autoLaunchCandidate populated
+        viewModel.onQueryChanged("Social Feed")
+        assertThat(viewModel.uiState.value.autoLaunchCandidate).isNotNull()
+        assertThat((viewModel.uiState.value.autoLaunchCandidate as SearchItem.App).component)
+            .isEqualTo(socialComponent)
+    }
+
+    @Test
+    fun evaluateLaunch_enforcesIntentGatekeeperAndUniversalDialerSafetyInvariant() = runTest(testDispatcher) {
+        val pixelDialer = ComponentKey("com.google.android.dialer", "com.google.android.dialer.DialtactsActivity", 0L)
+        val bedtimeLockoutProfile = Profile(
+            id = "bedtime",
+            name = "Bedtime",
+            defaultAccess = AppAccessState.Blocked,
+            appRules = mapOf(
+                pixelDialer to AppAccessState.Blocked,
+                socialComponent to AppAccessState.Guarded(FrictionPolicy.TimedDelay(10)),
+            ),
+        )
+        val pixelViewModel = SearchViewModel(
+            packageIndexSource = fakePackageIndexSource,
+            searchEngine = searchEngine,
+            defaultDialerPackage = "com.google.android.dialer",
+            initialProfile = bedtimeLockoutProfile,
+            ioDispatcher = testDispatcher,
+        )
+
+        // Dialer is always LaunchResult.Launched even when profile defaultAccess is Blocked
+        assertThat(
+            pixelViewModel.evaluateLaunch(SearchItem.App(pixelDialer, "Phone", AppAccessState.Direct)),
+        ).isEqualTo(LaunchResult.Launched)
+
+        // Guarded app requires friction
+        assertThat(
+            pixelViewModel.evaluateLaunch(
+                SearchItem.App(
+                    socialComponent,
+                    "Social Feed",
+                    AppAccessState.Guarded(FrictionPolicy.TimedDelay(10)),
+                ),
+            ),
+        ).isInstanceOf(LaunchResult.FrictionRequired::class.java)
+
+        // Blocked app is rejected
+        assertThat(
+            pixelViewModel.evaluateLaunch(SearchItem.App(blockedComponent, "Arcade Games", AppAccessState.Blocked)),
+        ).isEqualTo(LaunchResult.Blocked)
     }
 
     private class FakePackageIndexSource(initialApps: List<InstalledApp> = emptyList()) : PackageIndexSource {

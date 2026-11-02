@@ -23,6 +23,7 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
+import java.io.File
 
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
@@ -31,6 +32,16 @@ class ThresholdScreenshotTest {
 
     @get:Rule
     val composeTestRule = createComposeRule()
+
+    private fun verifyAndArchiveSnapshot(fileName: String) {
+        val goldenFile = File("src/test/snapshots/$fileName")
+        composeTestRule.onRoot().captureRoboImage(goldenFile)
+        val ciArtifactFile = File("build/outputs/roborazzi/$fileName")
+        if (goldenFile.exists()) {
+            ciArtifactFile.parentFile?.mkdirs()
+            goldenFile.copyTo(ciArtifactFile, overwrite = true)
+        }
+    }
 
     @Test
     fun snapshotHomeCanvasDefault() {
@@ -43,7 +54,7 @@ class ThresholdScreenshotTest {
                 )
             }
         }
-        composeTestRule.onRoot().captureRoboImage("build/outputs/roborazzi/home_canvas.png")
+        verifyAndArchiveSnapshot("home_canvas.png")
     }
 
     @Test
@@ -57,7 +68,7 @@ class ThresholdScreenshotTest {
                 )
             }
         }
-        composeTestRule.onRoot().captureRoboImage("build/outputs/roborazzi/home_canvas_zeros.png")
+        verifyAndArchiveSnapshot("home_canvas_zeros.png")
     }
 
     @Test
@@ -71,7 +82,7 @@ class ThresholdScreenshotTest {
                 )
             }
         }
-        composeTestRule.onRoot().captureRoboImage("build/outputs/roborazzi/home_canvas_status.png")
+        verifyAndArchiveSnapshot("home_canvas_status.png")
     }
 
     @Test
@@ -109,7 +120,7 @@ class ThresholdScreenshotTest {
                 }
             }
         }
-        composeTestRule.onRoot().captureRoboImage("build/outputs/roborazzi/search_results.png")
+        verifyAndArchiveSnapshot("search_results.png")
     }
 
     @Test
@@ -145,7 +156,7 @@ class ThresholdScreenshotTest {
                 }
             }
         }
-        composeTestRule.onRoot().captureRoboImage("build/outputs/roborazzi/search_guarded.png")
+        verifyAndArchiveSnapshot("search_guarded.png")
     }
 
     @Test
@@ -167,6 +178,6 @@ class ThresholdScreenshotTest {
                 }
             }
         }
-        composeTestRule.onRoot().captureRoboImage("build/outputs/roborazzi/search_empty.png")
+        verifyAndArchiveSnapshot("search_empty.png")
     }
 }

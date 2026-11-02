@@ -31,6 +31,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.garan.threshold.core.model.AppAccessState
+import com.garan.threshold.core.search.MatchType
 import com.garan.threshold.core.search.SearchItem
 import com.garan.threshold.core.search.SearchResult
 import com.garan.threshold.ui.theme.AmoledBlack
@@ -38,6 +39,9 @@ import com.garan.threshold.ui.theme.HairlineBorder
 import com.garan.threshold.ui.theme.PureWhite
 import com.garan.threshold.ui.theme.SubtleGray
 import kotlinx.collections.immutable.ImmutableList
+
+private val CursorSolidBrush = SolidColor(PureWhite)
+private val SearchKeyboardOptions = KeyboardOptions(imeAction = ImeAction.Go)
 
 /**
  * Mechanical, typographic search surface for Threshold.
@@ -55,6 +59,16 @@ fun ThresholdSearchSurface(
     isSearchActive: Boolean = query.isNotEmpty(),
     onActivateSearch: () -> Unit = {},
 ) {
+    val baseBodyLarge = MaterialTheme.typography.bodyLarge
+    val inputTextStyle = remember(baseBodyLarge) { baseBodyLarge.copy(color = PureWhite) }
+    val baseLabelSmall = MaterialTheme.typography.labelSmall
+    val emptyStateTextStyle = remember(baseLabelSmall) {
+        baseLabelSmall.copy(
+            letterSpacing = 1.5.sp,
+            fontWeight = FontWeight.SemiBold,
+        )
+    }
+
     Column(
         modifier = modifier
             .fillMaxWidth()
@@ -70,7 +84,7 @@ fun ThresholdSearchSurface(
             if (!isSearchActive && query.isEmpty()) {
                 Text(
                     text = placeholderText,
-                    style = MaterialTheme.typography.bodyLarge,
+                    style = baseBodyLarge,
                     color = SubtleGray,
                     modifier = Modifier
                         .fillMaxWidth()
@@ -80,7 +94,7 @@ fun ThresholdSearchSurface(
                 if (query.isEmpty()) {
                     Text(
                         text = placeholderText,
-                        style = MaterialTheme.typography.bodyLarge,
+                        style = baseBodyLarge,
                         color = SubtleGray,
                     )
                 }
@@ -96,15 +110,22 @@ fun ThresholdSearchSurface(
                     modifier = Modifier
                         .fillMaxWidth()
                         .focusRequester(focusRequester),
-                    textStyle = MaterialTheme.typography.bodyLarge.copy(color = PureWhite),
-                    cursorBrush = SolidColor(PureWhite),
+                    textStyle = inputTextStyle,
+                    cursorBrush = CursorSolidBrush,
                     singleLine = true,
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Go),
+                    keyboardOptions = SearchKeyboardOptions,
                     keyboardActions = KeyboardActions(
                         onGo = {
-                            val first = results.firstOrNull()?.item
-                            if (first != null) {
-                                onItemClick(first)
+                            val topResult = results.firstOrNull()
+                            if (topResult != null) {
+                                val item = topResult.item
+                                // Reverse Search Drag: Guarded apps require full exact match on IME Go
+                                val canQuickLaunch = item !is SearchItem.App ||
+                                    item.accessState !is AppAccessState.Guarded ||
+                                    topResult.matchType == MatchType.EXACT
+                                if (canQuickLaunch) {
+                                    onItemClick(item)
+                                }
                             }
                         },
                     ),
@@ -127,10 +148,7 @@ fun ThresholdSearchSurface(
             if (results.isEmpty()) {
                 Text(
                     text = "NO MATCHING APPS",
-                    style = MaterialTheme.typography.labelSmall.copy(
-                        letterSpacing = 1.5.sp,
-                        fontWeight = FontWeight.SemiBold,
-                    ),
+                    style = emptyStateTextStyle,
                     color = SubtleGray,
                     modifier = Modifier.padding(vertical = 12.dp),
                 )
@@ -141,12 +159,7 @@ fun ThresholdSearchSurface(
                 ) {
                     items(
                         items = results,
-                        key = { result ->
-                            when (val item = result.item) {
-                                is SearchItem.App -> item.component.toString()
-                                is SearchItem.Action -> "action:${item.id}"
-                            }
-                        },
+                        key = { result -> result.item.key },
                     ) { result ->
                         SearchResultRow(
                             result = result,
@@ -161,6 +174,14 @@ fun ThresholdSearchSurface(
 
 @Composable
 fun SearchResultRow(result: SearchResult, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    val baseLabelSmall = MaterialTheme.typography.labelSmall
+    val badgeTextStyle = remember(baseLabelSmall) {
+        baseLabelSmall.copy(
+            letterSpacing = 1.2.sp,
+            fontWeight = FontWeight.SemiBold,
+        )
+    }
+
     Row(
         modifier = modifier
             .fillMaxWidth()
@@ -169,38 +190,29 @@ fun SearchResultRow(result: SearchResult, onClick: () -> Unit, modifier: Modifie
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        val label = when (val item = result.item) {
-            is SearchItem.App -> item.label
-            is SearchItem.Action -> item.label
-        }
-
         Text(
-            text = label,
+            text = result.item.label,
             style = MaterialTheme.typography.titleMedium,
             color = PureWhite,
         )
 
-        if (result.item is SearchItem.App) {
-            val app = result.item as SearchItem.App
-            if (app.accessState is AppAccessState.Guarded) {
+        when (val item = result.item) {
+            is SearchItem.App -> {
+                if (item.accessState is AppAccessState.Guarded) {
+                    Text(
+                        text = "GUARDED",
+                        style = badgeTextStyle,
+                        color = SubtleGray,
+                    )
+                }
+            }
+            is SearchItem.Action -> {
                 Text(
-                    text = "GUARDED",
-                    style = MaterialTheme.typography.labelSmall.copy(
-                        letterSpacing = 1.2.sp,
-                        fontWeight = FontWeight.SemiBold,
-                    ),
+                    text = "ACTION",
+                    style = badgeTextStyle,
                     color = SubtleGray,
                 )
             }
-        } else if (result.item is SearchItem.Action) {
-            Text(
-                text = "ACTION",
-                style = MaterialTheme.typography.labelSmall.copy(
-                    letterSpacing = 1.2.sp,
-                    fontWeight = FontWeight.SemiBold,
-                ),
-                color = SubtleGray,
-            )
         }
     }
 }
