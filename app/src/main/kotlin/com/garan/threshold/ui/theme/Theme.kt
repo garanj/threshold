@@ -20,6 +20,7 @@ private val DarkColorScheme =
 fun ThresholdTheme(content: @Composable () -> Unit) {
     MaterialTheme(
         colorScheme = DarkColorScheme,
+        typography = ThresholdTypography,
         content = content,
     )
 }
