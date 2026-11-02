@@ -16,7 +16,7 @@
   - Test and verify permanent AllowListing of the system default dialer across all profile filters.
 - [x] **Task 1.5: Fast Zero-Allocation Fuzzy Search (`:core`)**
   - Unicode-normalized, zero-allocation fuzzy matching with reverse-search friction logic.
-- [ ] **Task 1.6: Android Launcher Shell & Package Index (`:data` / `:app`)**
+- [x] **Task 1.6: Android Launcher Shell & Package Index (`:data` / `:app`)**
   - **Task 1.6a: `AndroidPackageIndexSource` Implementation & Robolectric Suite (`:data`)**
     - `LauncherApps.getActivityList` for launchable activities across personal and work profiles.
     - Multi-user mapping via `UserManager.getSerialNumberForUser`.
@@ -25,7 +25,7 @@
   - **Task 1.6b: Real OS Package Lifecycle Instrumented Test (`:data:androidTest`)**
     - Minimal in-tree test fixture APK (`:fixtures:dummy-app`) compiled directly by Gradle.
     - Device / emulator integration test using `pm install` / `pm uninstall` to verify real Android OS Binder callback delivery.
-- [ ] **Task 1.7: Typographic Surface & Insets Foundation (`:app`)**
+- [x] **Task 1.7: Typographic Surface & Insets Foundation (`:app`)**
   - Clean typographic home display with OpenType `tnum, zero` numerals and `PlatformTextStyle(includeFontPadding = false)`.
   - WindowInsets handling (3-button vs gesture navigation).
   - Programmatic IME dismissal prior to `startActivity()`.
