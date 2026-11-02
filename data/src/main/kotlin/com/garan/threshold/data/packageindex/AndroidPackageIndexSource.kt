@@ -99,7 +99,19 @@ class AndroidPackageIndexSource(
         object : LauncherApps.Callback() {
             override fun onPackageAdded(packageName: String, user: UserHandle) {
                 val serial = userManager.getSerialNumberForUser(user)
-                val activities = launcherApps.getActivityList(packageName, user)
+                var activities = launcherApps.getActivityList(packageName, user)
+
+                // When dynamically installed, give the system up to 1 second to parse launcher activity intents
+                var retries = 0
+                while (activities.isEmpty() && retries < 5) {
+                    try {
+                        Thread.sleep(200)
+                    } catch (_: InterruptedException) {
+                        break
+                    }
+                    activities = launcherApps.getActivityList(packageName, user)
+                    retries++
+                }
 
                 for (info in activities) {
                     val component = ComponentKey(

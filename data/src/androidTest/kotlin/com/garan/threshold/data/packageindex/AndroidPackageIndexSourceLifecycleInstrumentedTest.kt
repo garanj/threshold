@@ -1,0 +1,204 @@
+package com.garan.threshold.data.packageindex
+
+import android.content.Context
+import android.os.Build
+import android.os.ParcelFileDescriptor
+import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
+import androidx.test.uiautomator.UiDevice
+import com.garan.threshold.core.port.PackageChangeEvent
+import com.google.common.truth.Truth.assertThat
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
+import org.junit.After
+import org.junit.Before
+import org.junit.Test
+import org.junit.runner.RunWith
+import java.io.File
+import java.io.FileOutputStream
+
+@RunWith(AndroidJUnit4::class)
+class AndroidPackageIndexSourceLifecycleInstrumentedTest {
+
+    private val targetPackage = "com.garan.threshold.fixtures.dummy"
+    private lateinit var device: UiDevice
+    private lateinit var targetContext: Context
+    private lateinit var testContext: Context
+    private lateinit var apkFile: File
+    private lateinit var packageIndexSource: AndroidPackageIndexSource
+    private var testScope: CoroutineScope? = null
+
+    @Before
+    fun setUp() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        device = UiDevice.getInstance(instrumentation)
+        targetContext = instrumentation.targetContext
+        testContext = instrumentation.context
+
+        // Extract fixture APK from androidTest assets to target cache directory as fallback
+        apkFile = File(targetContext.cacheDir, "dummy-app.apk")
+        testContext.assets.open("dummy-app.apk").use { input ->
+            FileOutputStream(apkFile).use { output ->
+                input.copyTo(output)
+            }
+        }
+
+        // Disable package verifiers to prevent package manager verification pauses
+        device.executeShellCommand("settings put global package_verifier_enable 0")
+        device.executeShellCommand("settings put global verifier_verify_adb_installs 0")
+        device.executeShellCommand("settings put global package_verifier_user_consent -1")
+
+        // Clean up any stale fixture install prior to test run
+        device.executeShellCommand("pm uninstall $targetPackage")
+
+        instrumentation.uiAutomation.adoptShellPermissionIdentity("android.permission.QUERY_ALL_PACKAGES")
+
+        packageIndexSource = AndroidPackageIndexSource(targetContext)
+    }
+
+    @After
+    fun tearDown() {
+        testScope?.cancel()
+        device.executeShellCommand("pm uninstall $targetPackage")
+        if (apkFile.exists()) {
+            apkFile.delete()
+        }
+        val stagedFile = File("/data/local/tmp/dummy-app.apk")
+        if (stagedFile.exists()) {
+            device.executeShellCommand("rm -f /data/local/tmp/dummy-app.apk")
+        }
+        try {
+            InstrumentationRegistry.getInstrumentation().uiAutomation.dropShellPermissionIdentity()
+        } catch (_: Exception) {}
+    }
+
+    private fun installFixtureApk(): String {
+        val apkBytes = testContext.assets.open("dummy-app.apk").use { it.readBytes() }
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val uiAutomation = instrumentation.uiAutomation
+
+        // On Android 14+ (API 34+), stream bytes directly via stdin to bypass SELinux file-path restrictions
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            val pfd = uiAutomation.executeShellCommandRwe("pm install -t -r -d -g -S ${apkBytes.size}")
+            val stdout = ParcelFileDescriptor.AutoCloseInputStream(pfd[0])
+            val stdin = ParcelFileDescriptor.AutoCloseOutputStream(pfd[1])
+            val stderr = ParcelFileDescriptor.AutoCloseInputStream(pfd[2])
+
+            val writer = Thread {
+                stdin.use { it.write(apkBytes) }
+            }
+            writer.start()
+
+            val outText = stdout.bufferedReader().use { it.readText() }
+            val errText = stderr.bufferedReader().use { it.readText() }
+            writer.join()
+
+            return if (outText.isNotBlank()) outText else errText
+        } else {
+            // Check if staged to world-readable /data/local/tmp
+            val stagedFile = File("/data/local/tmp/dummy-app.apk")
+            if (stagedFile.exists()) {
+                return device.executeShellCommand("pm install -t -r -d -g /data/local/tmp/dummy-app.apk")
+            }
+            return device.executeShellCommand("pm install -t -r -d -g ${apkFile.absolutePath}")
+        }
+    }
+
+    @Test
+    fun realOsPackageInstallAndUninstallEmitsAddedAndRemovedEvents() = runBlocking {
+        testScope = CoroutineScope(Dispatchers.Default + Job())
+
+        val events = mutableListOf<PackageChangeEvent>()
+        val collectionJob = testScope!!.launch {
+            packageIndexSource.observePackageChanges()
+                .collect { event ->
+                    println("[TEST-LIFECYCLE] Observed PackageChangeEvent: $event")
+                    when (event) {
+                        is PackageChangeEvent.Added -> if (event.component.packageName ==
+                            targetPackage
+                        ) {
+                            events.add(event)
+                        }
+                        is PackageChangeEvent.Removed -> if (event.component.packageName ==
+                            targetPackage
+                        ) {
+                            events.add(event)
+                        }
+                        is PackageChangeEvent.Changed -> if (event.component.packageName ==
+                            targetPackage
+                        ) {
+                            events.add(event)
+                        }
+                    }
+                }
+        }
+
+        // 1. Install fixture APK via real Android OS package manager streaming shell command
+        val installOutput = installFixtureApk()
+        println("[TEST-LIFECYCLE] installOutput: $installOutput")
+        assertThat(installOutput.lowercase()).contains("success")
+
+        // Wait up to 15 seconds for OS LauncherApps.Callback Binder dispatch
+        try {
+            withTimeout(15_000) {
+                while (events.none { it is PackageChangeEvent.Added }) {
+                    kotlinx.coroutines.delay(200)
+                }
+            }
+        } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
+            val user = android.os.Process.myUserHandle()
+            val la = targetContext.getSystemService(android.content.pm.LauncherApps::class.java)
+            val activities = la?.getActivityList(targetPackage, user) ?: emptyList()
+            val pmList = device.executeShellCommand("pm list packages $targetPackage")
+            throw AssertionError(
+                "Timed out waiting for PackageChangeEvent.Added for $targetPackage.\n" +
+                    "Events received: $events\n" +
+                    "getActivityList count: ${activities.size} (${activities.map { it.componentName }})\n" +
+                    "pm list packages: $pmList",
+                e,
+            )
+        }
+
+        val addedEvent = events.first { it is PackageChangeEvent.Added } as PackageChangeEvent.Added
+        assertThat(addedEvent.component.packageName).isEqualTo(targetPackage)
+        assertThat(addedEvent.app.label).isNotNull()
+
+        // Verify package now appears in real query
+        val installedApps = packageIndexSource.getInstalledApps()
+        assertThat(installedApps.any { it.component.packageName == targetPackage }).isTrue()
+
+        // 2. Uninstall fixture APK via real Android OS package manager shell command
+        val uninstallOutput = device.executeShellCommand("pm uninstall $targetPackage")
+        println("[TEST-LIFECYCLE] uninstallOutput: $uninstallOutput")
+        assertThat(uninstallOutput.lowercase()).contains("success")
+
+        // Wait up to 15 seconds for OS LauncherApps.Callback uninstall dispatch
+        try {
+            withTimeout(15_000) {
+                while (events.none { it is PackageChangeEvent.Removed }) {
+                    kotlinx.coroutines.delay(200)
+                }
+            }
+        } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
+            throw AssertionError(
+                "Timed out waiting for PackageChangeEvent.Removed for $targetPackage. Events received: $events",
+                e,
+            )
+        }
+
+        val removedEvent = events.first { it is PackageChangeEvent.Removed } as PackageChangeEvent.Removed
+        assertThat(removedEvent.component.packageName).isEqualTo(targetPackage)
+
+        // Verify package no longer appears in real query
+        val postUninstallApps = packageIndexSource.getInstalledApps()
+        assertThat(postUninstallApps.none { it.component.packageName == targetPackage }).isTrue()
+
+        collectionJob.cancel()
+    }
+}
