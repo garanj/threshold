@@ -7,6 +7,9 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
@@ -41,6 +44,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             ThresholdTheme {
                 val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+                var isSearchActive by remember { mutableStateOf(false) }
 
                 ThresholdHomeCanvas {
                     Spacer(modifier = Modifier.height(24.dp))
@@ -53,6 +57,11 @@ class MainActivity : ComponentActivity() {
                             if (item is SearchItem.App) {
                                 appLauncher.launchApp(item.component)
                             }
+                        },
+                        isSearchActive = isSearchActive || uiState.query.isNotEmpty(),
+                        onActivateSearch = {
+                            isSearchActive = true
+                            viewModel.ensureIndexLoaded()
                         },
                     )
                 }

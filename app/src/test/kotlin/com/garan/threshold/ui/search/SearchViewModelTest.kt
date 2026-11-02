@@ -74,7 +74,9 @@ class SearchViewModelTest {
             ),
             initialProfile = profile,
             ioDispatcher = testDispatcher,
-        )
+        ).apply {
+            ensureIndexLoaded()
+        }
     }
 
     @After

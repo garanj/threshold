@@ -51,8 +51,12 @@ class SearchViewModel(
 
     private val candidates = mutableListOf<AppSearchCandidate>()
     private var activeProfile: Profile = initialProfile
+    private var isIndexInitialized = false
 
-    init {
+    fun ensureIndexLoaded() {
+        if (isIndexInitialized) return
+        isIndexInitialized = true
+
         viewModelScope.launch(ioDispatcher) {
             val apps = packageIndexSource.getInstalledApps()
             synchronized(candidates) {
@@ -85,6 +89,7 @@ class SearchViewModel(
     }
 
     fun onQueryChanged(newQuery: String) {
+        ensureIndexLoaded()
         _uiState.update { it.copy(query = newQuery, isSearching = newQuery.isNotBlank()) }
         performSearch(newQuery)
     }

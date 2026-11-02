@@ -19,8 +19,12 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -48,6 +52,8 @@ fun ThresholdSearchSurface(
     onItemClick: (SearchItem) -> Unit,
     modifier: Modifier = Modifier,
     placeholderText: String = "Type to launch...",
+    isSearchActive: Boolean = query.isNotEmpty(),
+    onActivateSearch: () -> Unit = {},
 ) {
     Column(
         modifier = modifier
@@ -61,31 +67,49 @@ fun ThresholdSearchSurface(
                 .padding(vertical = 8.dp),
             contentAlignment = Alignment.CenterStart,
         ) {
-            if (query.isEmpty()) {
+            if (!isSearchActive && query.isEmpty()) {
                 Text(
                     text = placeholderText,
                     style = MaterialTheme.typography.bodyLarge,
                     color = SubtleGray,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable(onClick = onActivateSearch),
+                )
+            } else {
+                if (query.isEmpty()) {
+                    Text(
+                        text = placeholderText,
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = SubtleGray,
+                    )
+                }
+
+                val focusRequester = remember { FocusRequester() }
+                LaunchedEffect(Unit) {
+                    focusRequester.requestFocus()
+                }
+
+                BasicTextField(
+                    value = query,
+                    onValueChange = onQueryChange,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .focusRequester(focusRequester),
+                    textStyle = MaterialTheme.typography.bodyLarge.copy(color = PureWhite),
+                    cursorBrush = SolidColor(PureWhite),
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Go),
+                    keyboardActions = KeyboardActions(
+                        onGo = {
+                            val first = results.firstOrNull()?.item
+                            if (first != null) {
+                                onItemClick(first)
+                            }
+                        },
+                    ),
                 )
             }
-
-            BasicTextField(
-                value = query,
-                onValueChange = onQueryChange,
-                modifier = Modifier.fillMaxWidth(),
-                textStyle = MaterialTheme.typography.bodyLarge.copy(color = PureWhite),
-                cursorBrush = SolidColor(PureWhite),
-                singleLine = true,
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Go),
-                keyboardActions = KeyboardActions(
-                    onGo = {
-                        val first = results.firstOrNull()?.item
-                        if (first != null) {
-                            onItemClick(first)
-                        }
-                    },
-                ),
-            )
         }
 
         Spacer(modifier = Modifier.height(6.dp))

@@ -66,24 +66,6 @@ class AndroidPackageIndexSource(
     }
 
     override fun observePackageChanges(): Flow<PackageChangeEvent> = callbackFlow {
-        // Seed known components if not yet cached
-        if (knownComponents.isEmpty()) {
-            val profiles = launcherApps.profiles
-            for (user in profiles) {
-                val serial = userManager.getSerialNumberForUser(user)
-                val activities = launcherApps.getActivityList(null, user)
-                for (info in activities) {
-                    val component = ComponentKey(
-                        packageName = info.componentName.packageName,
-                        activityName = info.componentName.className,
-                        userSerial = serial,
-                    )
-                    val label = info.label?.toString()?.ifBlank { null } ?: info.componentName.packageName
-                    knownComponents[component] = label
-                }
-            }
-        }
-
         val callback = createLauncherCallback { event ->
             trySend(event)
         }
