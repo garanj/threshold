@@ -18,6 +18,11 @@ class MainActivity : ComponentActivity() {
     private val packageIndexSource by lazy { AndroidPackageIndexSource(this) }
     private val appLauncher by lazy { AndroidAppLauncher(this) }
 
+    @Deprecated("Deprecated in Java")
+    override fun onBackPressed() {
+        // As a root home launcher, never delegate to super.onBackPressed() which finishes the activity
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()

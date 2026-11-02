@@ -23,11 +23,10 @@ import com.garan.threshold.ui.search.ThresholdSearchSurface
  * Houses the ambient typographic canvas, search surface, and back navigation handling.
  *
  * Back Navigation Policy:
- * 1. When in search mode (active search or query non-empty), BackHandler is dynamically enabled.
- *    Swiping/pressing back dismisses search mode, resets the query, and hides the soft keyboard.
- * 2. When in ambient home mode, BackHandler is disabled (enabled = false). Combined with
- *    android:enableOnBackInvokedCallback="true", SystemUI suppresses the back gesture indicator
- *    entirely on the root home canvas without flickering.
+ * 1. When in search mode (active search or query non-empty), swiping/pressing back dismisses
+ *    search mode, resets the query, and hides the soft keyboard.
+ * 2. When in ambient home mode, back navigation is consumed cleanly as a no-op so the OS
+ *    never finishes or restarts the root launcher activity window.
  */
 @Composable
 fun ThresholdHomeScreen(
@@ -43,12 +42,17 @@ fun ThresholdHomeScreen(
 
     val inSearch = isSearchActive || uiState.query.isNotEmpty()
 
-    BackHandler(enabled = inSearch) {
-        isSearchActive = false
-        viewModel.onQueryChanged("")
-        keyboardController?.hide()
-        focusManager.clearFocus()
-        onDismissIme()
+    BackHandler(enabled = true) {
+        if (inSearch) {
+            isSearchActive = false
+            viewModel.onQueryChanged("")
+            keyboardController?.hide()
+            focusManager.clearFocus()
+            onDismissIme()
+        } else {
+            // Ambient home canvas: consume back navigation cleanly as a no-op so the OS
+            // never invokes finishAfterTransition() or restarts the launcher activity.
+        }
     }
 
     ThresholdHomeCanvas(modifier = modifier) {
