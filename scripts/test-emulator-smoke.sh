@@ -84,6 +84,9 @@ echo "==> Step 6: Asserting TOTAL PSS memory budget (< ${CEILING_KB} KB)..."
 TOTAL_PSS=$(adb shell dumpsys meminfo "$PACKAGE_NAME" 2>/dev/null | (grep "TOTAL PSS:" || true) | awk '{print $3}' || echo "0")
 echo "    Observed TOTAL PSS: ${TOTAL_PSS} KB (Budget: ${CEILING_KB} KB)"
 
+mkdir -p build
+echo "${TOTAL_PSS:-0}" > build/total_pss.txt
+
 if [ -n "$TOTAL_PSS" ] && [ "$TOTAL_PSS" -gt "$CEILING_KB" ]; then
     echo "ERROR: Memory ceiling exceeded! ${TOTAL_PSS} KB > ${CEILING_KB} KB" >&2
     exit 1
