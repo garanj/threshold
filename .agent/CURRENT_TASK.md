@@ -1,33 +1,20 @@
-# Active Task: Search Interface & Golden Screenshot Verification (`:app`)
+# Active Task: Home Back Navigation & Flicker Prevention (`:app`)
 
-- **Issue:** [#21 feat(app): implement search interface and golden screenshot verification](https://github.com/garanj/threshold/issues/21)
-- **Milestone:** Phase 1: Test Infrastructure, Core Architecture & Safe Shell
+- **Issue:** [#23 fix(app): handle back gesture on home canvas and search to prevent flicker](https://github.com/garanj/threshold/issues/23)
+- **Milestone:** Phase 1 Hardening & Physical Device Testing
 - **Status:** Complete / Ready for Review
-- **Branch:** `feat/21-search-interface`
+- **Branch:** `fix/23-home-back-navigation`
 
 ---
 
 ## Objectives
-1. [x] **Search ViewModel / State Holder (`:app`)**:
-   - Bound `PackageIndexSource` (`:data`) and `SearchEngine` (`:core`) via `SearchViewModel`.
-   - Reactive updates on `observePackageChanges()` so package install/uninstall updates search candidates in real-time.
-   - Preserves `AppAccessState` (Direct, Guarded, Blocked).
-   - Unit tested with `SearchViewModelTest`.
-2. [x] **App Launcher Helper (`:app`)**:
-   - `AndroidAppLauncher` dismissing IME cleanly before triggering `LauncherApps.startMainActivity`.
-   - Unit tested with `AndroidAppLauncherTest`.
-3. [x] **Search Surface UI (`ThresholdSearchSurface.kt`)**:
-   - Typographic search input field with `BasicTextField` and pure white cursor.
-   - Results list displaying filtered apps with fixed-pitch alignment.
-   - Visual indicator (`GUARDED`, `ACTION`) for friction-guarded applications and shortcuts.
-   - Empty state (`NO MATCHING APPS`) when no candidates match.
-4. [x] **Integration in `MainActivity`**:
-   - Embedded `ThresholdSearchSurface` inside `ThresholdHomeCanvas`.
-5. [x] **Roborazzi Golden Screenshot Tests**:
-   - `snapshotSearchSurfaceWithResults`: App appears in search results when user types query.
-   - `snapshotSearchSurfaceGuardedFriction`: Guarded friction visual indicator state.
-   - `snapshotSearchSurfaceEmptyState`: Empty state when query has no matches.
-6. [x] **Verification**:
-   - JVM unit tests and Roborazzi golden screenshot tests passed (`./gradlew test`).
-   - Spotless check passed (`./gradlew spotlessCheck`).
-   - Release APK minified and built cleanly: 2.5 MB (`./gradlew :app:assembleRelease`).
+1. [x] **Back Navigation Handling (`:app`)**:
+   - Implemented `ThresholdHomeScreen` registering Compose `BackHandler(enabled = true)` and set `android:enableOnBackInvokedCallback="true"`.
+   - When search is active or query is typed: dismisses search mode, resets query to empty, clears focus, and hides the IME keyboard via `ImeUtils.dismissIme(activity)` and `SoftwareKeyboardController`.
+   - When in ambient home state: cleanly consumes back navigation as a no-op so the OS predictive back gesture does not dismiss or flicker the home activity.
+2. [x] **Test Coverage**:
+   - Added `ThresholdHomeScreenTest` with unit/Compose tests asserting back gesture behavior for ambient-home state, search-active state, and app launch state.
+3. [x] **Verification & Deployment**:
+   - Verified `./gradlew test spotlessCheck`.
+   - Built release APK (`./gradlew :app:assembleRelease`) and installed to connected Pixel 9a (`54241JEBF07233`).
+   - Verified activity running top-most on device.
