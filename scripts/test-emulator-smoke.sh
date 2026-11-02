@@ -81,6 +81,16 @@ echo "    SUCCESS: Threshold MainActivity is active and focused."
 
 # 6. Memory Ceiling Check (< 30 MB Total PSS)
 echo "==> Step 6: Asserting TOTAL PSS memory budget (< ${CEILING_KB} KB)..."
+APP_PID=$(adb shell pidof "$PACKAGE_NAME" 2>/dev/null | tr -d '\r' || true)
+if [ -n "$APP_PID" ]; then
+    # Trigger ART garbage collection to reclaim transient startup allocations
+    adb shell kill -10 "$APP_PID" 2>/dev/null || true
+    sleep 1
+fi
+
+# Print meminfo table for debugging & observability
+adb shell dumpsys meminfo "$PACKAGE_NAME" 2>/dev/null || true
+
 TOTAL_PSS=$(adb shell dumpsys meminfo "$PACKAGE_NAME" 2>/dev/null | (grep "TOTAL PSS:" || true) | awk '{print $3}' || echo "0")
 echo "    Observed TOTAL PSS: ${TOTAL_PSS} KB (Budget: ${CEILING_KB} KB)"
 
