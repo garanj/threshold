@@ -36,10 +36,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.garan.threshold.R
 import com.garan.threshold.core.model.AppAccessState
 import com.garan.threshold.core.port.HapticEngine
 import com.garan.threshold.core.port.NoOpHapticEngine
@@ -70,7 +72,7 @@ fun ThresholdSearchSurface(
     results: ImmutableList<SearchResult>,
     onItemClick: (SearchItem) -> Unit,
     modifier: Modifier = Modifier,
-    placeholderText: String = "Type to launch...",
+    placeholderText: String = stringResource(R.string.search_placeholder),
     isSearchActive: Boolean = query.isNotEmpty(),
     onActivateSearch: () -> Unit = {},
     onItemLongClick: ((SearchItem) -> Unit)? = null,
@@ -184,7 +186,7 @@ fun ThresholdSearchSurface(
 
                 if (results.isEmpty()) {
                     Text(
-                        text = "NO MATCHING APPS",
+                        text = stringResource(R.string.search_no_matching_apps),
                         style = emptyStateTextStyle,
                         color = SubtleGray,
                         modifier = Modifier.padding(vertical = 12.dp),
@@ -275,7 +277,7 @@ fun SearchResultRow(
             is SearchItem.App -> {
                 if (item.accessState is AppAccessState.Guarded) {
                     Text(
-                        text = "GUARDED",
+                        text = stringResource(R.string.badge_guarded),
                         style = badgeTextStyle,
                         color = SubtleGray,
                     )
@@ -283,7 +285,7 @@ fun SearchResultRow(
             }
             is SearchItem.Action -> {
                 Text(
-                    text = "ACTION",
+                    text = stringResource(R.string.badge_action),
                     style = badgeTextStyle,
                     color = SubtleGray,
                 )

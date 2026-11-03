@@ -2,6 +2,12 @@
 <resources>
     <string name="app_name">Threshold</string>
 
+    <!-- Search Surface -->
+    <string name="search_placeholder">Type to launch...</string>
+    <string name="search_no_matching_apps">NO MATCHING APPS</string>
+    <string name="badge_guarded">GUARDED</string>
+    <string name="badge_action">ACTION</string>
+
     <!-- Action Labels -->
     <string name="action_go_back">Go back</string>
     <string name="action_open">Open</string>

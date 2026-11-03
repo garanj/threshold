@@ -27,12 +27,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalInspectionMode
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.garan.threshold.R
 import com.garan.threshold.ui.theme.AmoledBlack
 import com.garan.threshold.ui.theme.HairlineBorder
 import com.garan.threshold.ui.theme.PureWhite
@@ -53,7 +55,7 @@ fun ThresholdHomeCanvas(
     modifier: Modifier = Modifier,
     timeText: String? = null,
     dateText: String? = null,
-    statusText: String = "Threshold",
+    statusText: String = stringResource(R.string.app_name),
     clockProvider: () -> ZonedDateTime = { ZonedDateTime.now() },
     content: @Composable () -> Unit = {},
 ) {
