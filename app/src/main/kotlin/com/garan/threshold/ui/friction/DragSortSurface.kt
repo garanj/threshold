@@ -41,6 +41,7 @@ import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.garan.threshold.R
 import com.garan.threshold.core.friction.DragSortSession
@@ -317,7 +318,7 @@ fun DragSortSurface(
                 label = "ActionButtonTransition",
             ) { complete ->
                 Text(
-                    text = if (complete) "Open" else "Go back",
+                    text = stringResource(if (complete) R.string.action_open else R.string.action_go_back),
                     style = MaterialTheme.typography.titleMedium,
                     color = if (complete) PureWhite else SubtleGray,
                     modifier = Modifier

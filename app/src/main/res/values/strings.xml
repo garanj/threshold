@@ -2,6 +2,13 @@
 <resources>
     <string name="app_name">Threshold</string>
 
+    <!-- Action Labels -->
+    <string name="action_go_back">Go back</string>
+    <string name="action_open">Open</string>
+
+    <!-- Friction Headers -->
+    <string name="friction_typed_intention_header">TYPED INTENTION</string>
+
     <string-array name="typed_intention_phrases">
         <!-- Category A: App-Conscious -->
         <item>I need to use %s right now</item>
