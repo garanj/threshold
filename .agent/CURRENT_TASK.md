@@ -44,3 +44,13 @@
    - `./gradlew test spotlessCheck`.
    - Release build and install to connected Pixel 9a (`54241JEBF07233`).
    - Open PR and assign to `garanj`.
+
+---
+
+## Handoff & Next Steps
+- **PR #38**: [feat(friction): implement drag-to-match icon sorting checkpoint (#37)](https://github.com/garanj/threshold/pull/38) is awaiting review and merge by `garanj`.
+- **Next Session**: User has one more checkpoint to share specifications for tomorrow to complete Task 2.3.
+- **Decisions Log**:
+  - Pre-session budgeting: Deferred to Phase 4 / DeviceOwner mode.
+  - App decay mode: Discarded per user decision.
+
