@@ -1,7 +1,9 @@
 package com.garan.threshold.ui.search
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -58,6 +60,7 @@ fun ThresholdSearchSurface(
     placeholderText: String = "Type to launch...",
     isSearchActive: Boolean = query.isNotEmpty(),
     onActivateSearch: () -> Unit = {},
+    onItemLongClick: ((SearchItem) -> Unit)? = null,
 ) {
     val baseBodyLarge = MaterialTheme.typography.bodyLarge
     val inputTextStyle = remember(baseBodyLarge) { baseBodyLarge.copy(color = PureWhite) }
@@ -161,9 +164,15 @@ fun ThresholdSearchSurface(
                         items = results,
                         key = { result -> result.item.key },
                     ) { result ->
+                        val item = result.item
                         SearchResultRow(
                             result = result,
-                            onClick = { onItemClick(result.item) },
+                            onClick = { onItemClick(item) },
+                            onLongClick = if (item is SearchItem.App && onItemLongClick != null) {
+                                { onItemLongClick(item) }
+                            } else {
+                                null
+                            },
                         )
                     }
                 }
@@ -172,8 +181,14 @@ fun ThresholdSearchSurface(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun SearchResultRow(result: SearchResult, onClick: () -> Unit, modifier: Modifier = Modifier) {
+fun SearchResultRow(
+    result: SearchResult,
+    onClick: () -> Unit,
+    onLongClick: (() -> Unit)? = null,
+    modifier: Modifier = Modifier,
+) {
     val baseLabelSmall = MaterialTheme.typography.labelSmall
     val badgeTextStyle = remember(baseLabelSmall) {
         baseLabelSmall.copy(
@@ -185,7 +200,10 @@ fun SearchResultRow(result: SearchResult, onClick: () -> Unit, modifier: Modifie
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick)
+            .combinedClickable(
+                onClick = onClick,
+                onLongClick = onLongClick,
+            )
             .padding(vertical = 12.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,

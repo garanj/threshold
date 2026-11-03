@@ -65,6 +65,9 @@ fun ThresholdHomeScreen(
                             val launched = appLauncher.launchApp(item.component)
                             if (launched) {
                                 viewModel.dismissSearch()
+                                keyboardController?.hide()
+                                focusManager.clearFocus()
+                                onDismissIme()
                             }
                         }
                         is LaunchResult.FrictionRequired,
@@ -73,6 +76,17 @@ fun ThresholdHomeScreen(
                             // Guarded apps require passing a friction checkpoint (Phase 2 Task 2.3)
                             // and Blocked apps are never launched.
                         }
+                    }
+                }
+            },
+            onItemLongClick = { item ->
+                if (item is SearchItem.App) {
+                    val opened = appLauncher.openAppInfo(item.component)
+                    if (opened) {
+                        viewModel.dismissSearch()
+                        keyboardController?.hide()
+                        focusManager.clearFocus()
+                        onDismissIme()
                     }
                 }
             },

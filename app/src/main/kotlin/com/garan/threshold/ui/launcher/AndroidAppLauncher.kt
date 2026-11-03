@@ -5,13 +5,16 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.pm.LauncherApps
+import android.net.Uri
 import android.os.UserManager
+import android.provider.Settings
 import com.garan.threshold.core.model.ComponentKey
 import com.garan.threshold.ui.util.ImeUtils
 import com.garan.threshold.ui.util.ImeUtils.findActivity
 
 interface AppLauncher {
     fun launchApp(component: ComponentKey): Boolean
+    fun openAppInfo(component: ComponentKey): Boolean
 }
 
 class AndroidAppLauncher(
@@ -48,5 +51,47 @@ class AndroidAppLauncher(
         } catch (_: Exception) {
             false
         }
+    }
+
+    override fun openAppInfo(component: ComponentKey): Boolean {
+        context.findActivity()?.let { ImeUtils.dismissIme(it) }
+
+        val componentName = ComponentName(component.packageName, component.activityName)
+        val userHandle = userManager.getUserForSerialNumber(component.userSerial)
+
+        return try {
+            if (userHandle != null) {
+                try {
+                    val options = ActivityOptions.makeBasic().toBundle()
+                    launcherApps.startAppDetailsActivity(componentName, userHandle, null, options)
+                    true
+                } catch (_: UnsupportedOperationException) {
+                    if (component.userSerial == 0L) {
+                        startAppDetailsSettings(component.packageName)
+                        true
+                    } else {
+                        false
+                    }
+                }
+            } else if (component.userSerial == 0L) {
+                startAppDetailsSettings(component.packageName)
+                true
+            } else {
+                // Never silently open personal App Info when a Work/Secondary profile
+                // UserHandle (userSerial > 0L) is unavailable or removed.
+                false
+            }
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    private fun startAppDetailsSettings(packageName: String) {
+        val options = ActivityOptions.makeBasic().toBundle()
+        val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+            data = Uri.fromParts("package", packageName, null)
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        context.startActivity(intent, options)
     }
 }
