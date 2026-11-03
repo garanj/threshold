@@ -43,7 +43,7 @@
 ## Phase 2: Sensory Mechanics & Friction Engine (Milestone 2)
 - [x] **Task 2.1: Micro-Haptics Engine (`:data` / `:app`)**
   - `VibrationEffect.Composition` implementation: Rotary Detent (`PRIMITIVE_CLICK`), Relay Snap (`PRIMITIVE_HEAVY_CLICK` + 30ms tick), Resistance Detent.
-- [ ] **Task 2.2: Motion System (Optics, Not Cartoons)**
+- [x] **Task 2.2: Motion System (Optics, Not Cartoons)**
   - 120Hz decelerating optical curves (`cubic-bezier(0.16, 1, 0.3, 1)`), 80ms–140ms durations.
   - Hairline Shutter Wipe transition (1dp rule).
 - [ ] **Task 2.3: Intentional Friction Checkpoints**
