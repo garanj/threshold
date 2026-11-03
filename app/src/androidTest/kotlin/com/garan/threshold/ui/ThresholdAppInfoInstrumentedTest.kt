@@ -1,0 +1,96 @@
+package com.garan.threshold.ui
+
+import android.content.Context
+import android.content.Intent
+import android.content.pm.LauncherApps
+import android.os.Process
+import androidx.test.core.app.ActivityScenario
+import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
+import androidx.test.uiautomator.By
+import androidx.test.uiautomator.UiDevice
+import androidx.test.uiautomator.Until
+import com.garan.threshold.MainActivity
+import com.google.common.truth.Truth.assertThat
+import org.junit.After
+import org.junit.Before
+import org.junit.Test
+import org.junit.runner.RunWith
+import java.util.regex.Pattern
+
+@RunWith(AndroidJUnit4::class)
+class ThresholdAppInfoInstrumentedTest {
+
+    private lateinit var device: UiDevice
+    private var scenario: ActivityScenario<MainActivity>? = null
+
+    @Before
+    fun setUp() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        device = UiDevice.getInstance(instrumentation)
+        instrumentation.uiAutomation.adoptShellPermissionIdentity("android.permission.QUERY_ALL_PACKAGES")
+
+        // Ensure device is awake and keyguard dismissed
+        device.wakeUp()
+        device.executeShellCommand("wm dismiss-keyguard")
+    }
+
+    @After
+    fun tearDown() {
+        scenario?.close()
+        try {
+            InstrumentationRegistry.getInstrumentation().uiAutomation.dropShellPermissionIdentity()
+        } catch (_: Exception) {}
+        device.pressHome()
+    }
+
+    @Test
+    fun longPressAppSearchResult_opensSystemAppInfoAndDismissesSearch() {
+        val targetContext = InstrumentationRegistry.getInstrumentation().targetContext
+        val launcherApps = targetContext.getSystemService(Context.LAUNCHER_APPS_SERVICE) as LauncherApps
+        val myUser = Process.myUserHandle()
+
+        // Locate an installed launcher app (prefer Settings if available)
+        val activities = launcherApps.getActivityList(null, myUser)
+        val candidate = activities.firstOrNull { it.applicationInfo.packageName == "com.android.settings" }
+            ?: activities.firstOrNull { it.applicationInfo.packageName != targetContext.packageName }
+            ?: error("No launchable activities found on device for testing")
+
+        val targetLabel = candidate.label.toString()
+
+        val intent = Intent(targetContext, MainActivity::class.java).apply {
+            action = Intent.ACTION_MAIN
+            addCategory(Intent.CATEGORY_HOME)
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK
+        }
+        scenario = ActivityScenario.launch(intent)
+        scenario?.onActivity { activity ->
+            activity.setShowWhenLocked(true)
+            activity.setTurnScreenOn(true)
+        }
+
+        // 1. Activate search mode and set query to target app label
+        scenario?.onActivity { activity ->
+            activity.searchViewModel.activateSearch()
+            activity.searchViewModel.onQueryChanged(targetLabel)
+        }
+
+        // 2. Find target app in search results and perform long click
+        val resultRow = device.wait(Until.findObject(By.text(targetLabel)), 5000L)
+        assertThat(resultRow).isNotNull()
+        resultRow.longClick()
+
+        // 3. Verify that Android App Info / Settings screen is launched
+        val settingsPattern = Pattern.compile("com\\.android\\.settings|com\\.google\\.android\\.settings.*")
+        val appDetailsAppeared = device.wait(
+            Until.hasObject(By.pkg(settingsPattern)),
+            7000L,
+        )
+        assertThat(appDetailsAppeared).isTrue()
+
+        // 4. Navigate back to Threshold and verify search state was dismissed
+        device.pressBack()
+        val restoredPlaceholder = device.wait(Until.findObject(By.text("Type to launch...")), 5000L)
+        assertThat(restoredPlaceholder).isNotNull()
+    }
+}

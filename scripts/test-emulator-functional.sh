@@ -32,7 +32,7 @@ echo "==> Step 3: Staging fixture APK to /data/local/tmp/dummy-app.apk..."
 adb push fixtures/dummy-app/build/outputs/apk/debug/dummy-app-debug.apk /data/local/tmp/dummy-app.apk
 
 echo "==> Step 4: Running connected Android instrumented tests..."
-./gradlew :data:connectedDebugAndroidTest --continue --info
+./gradlew :data:connectedDebugAndroidTest :app:connectedDebugAndroidTest --continue --info
 
 echo "=========================================================="
 echo "  ALL FUNCTIONAL INSTRUMENTED TESTS PASSED!"
