@@ -36,6 +36,8 @@ class SearchViewModelTest {
 
     private val dialerComponent = ComponentKey("com.android.dialer", "com.android.dialer.DialerActivity", 0L)
     private val cameraComponent = ComponentKey("com.android.camera", "com.android.camera.CameraActivity", 0L)
+    private val calculatorComponent =
+        ComponentKey("com.android.calculator", "com.android.calculator.CalculatorActivity", 0L)
     private val socialComponent = ComponentKey("com.example.social", "com.example.social.MainActivity", 0L)
     private val blockedComponent = ComponentKey("com.example.games", "com.example.games.MainActivity", 0L)
 
@@ -43,6 +45,7 @@ class SearchViewModelTest {
         initialApps = listOf(
             InstalledApp(dialerComponent, "Phone"),
             InstalledApp(cameraComponent, "Camera"),
+            InstalledApp(calculatorComponent, "Calculator"),
             InstalledApp(socialComponent, "Social Feed"),
             InstalledApp(blockedComponent, "Arcade Games"),
         ),
@@ -276,7 +279,7 @@ class SearchViewModelTest {
     }
 
     @Test
-    fun typingQuery_targetSnapHapticFiresOnlyWhenTopCandidateChanges() = runTest(testDispatcher) {
+    fun typingQuery_targetSnapHapticFiresOnlyOnDecisiveCandidateLockIn() = runTest(testDispatcher) {
         val haptic = TestHapticEngine()
         val viewModel = SearchViewModel(
             packageIndexSource = fakePackageIndexSource,
@@ -288,33 +291,48 @@ class SearchViewModelTest {
         viewModel.ensureIndexLoaded()
         advanceUntilIdle()
 
-        // 1. First letter 'C' snaps 'Camera' as top candidate -> targetSnap fires once
+        // 1. Initial ambiguous letter 'C' matches Calculator, Camera, etc. -> NO snap
         viewModel.onQueryChanged("C")
-        assertThat(viewModel.uiState.value.results.first().item.label).isEqualTo("Camera")
-        assertThat(haptic.targetSnapCount).isEqualTo(1)
+        assertThat(viewModel.uiState.value.results.size).isGreaterThan(1)
+        assertThat(viewModel.uiState.value.autoLaunchCandidate).isNull()
+        assertThat(haptic.targetSnapCount).isEqualTo(0)
 
-        // 2. Typing 'Ca' still has 'Camera' as top candidate -> does NOT fire again (no double click)
+        // 2. Typing 'Ca' still matches multiple apps -> NO snap
         viewModel.onQueryChanged("Ca")
-        assertThat(viewModel.uiState.value.results.first().item.label).isEqualTo("Camera")
+        assertThat(viewModel.uiState.value.results.size).isGreaterThan(1)
+        assertThat(viewModel.uiState.value.autoLaunchCandidate).isNull()
+        assertThat(haptic.targetSnapCount).isEqualTo(0)
+
+        // 3. Typing 'Calc' isolates Calculator as single decisive match -> fires targetSnap once
+        viewModel.onQueryChanged("Calc")
+        assertThat(viewModel.uiState.value.results).hasSize(1)
+        assertThat(viewModel.uiState.value.autoLaunchCandidate?.label).isEqualTo("Calculator")
         assertThat(haptic.targetSnapCount).isEqualTo(1)
 
-        // 3. Typing 'Cam' still has 'Camera' as top candidate -> still 1
-        viewModel.onQueryChanged("Cam")
-        assertThat(viewModel.uiState.value.results.first().item.label).isEqualTo("Camera")
+        // 4. Continuing to type 'Calcu' keeps Calculator as decisive candidate -> NO additional snap
+        viewModel.onQueryChanged("Calcu")
+        assertThat(viewModel.uiState.value.results).hasSize(1)
         assertThat(haptic.targetSnapCount).isEqualTo(1)
 
-        // 4. Changing query to 'P' snaps 'Phone' as new top candidate -> targetSnap fires
-        viewModel.onQueryChanged("P")
-        assertThat(viewModel.uiState.value.results.first().item.label).isEqualTo("Phone")
-        assertThat(haptic.targetSnapCount).isEqualTo(2)
+        // 5. Backspacing to ambiguous 'Ca' disengages decisive lock -> NO new snap
+        viewModel.onQueryChanged("Ca")
+        assertThat(viewModel.uiState.value.results.size).isGreaterThan(1)
+        assertThat(viewModel.uiState.value.autoLaunchCandidate).isNull()
+        assertThat(haptic.targetSnapCount).isEqualTo(1)
 
-        // 5. Clearing query resets top candidate
+        // 6. Clearing query resets state
         viewModel.dismissSearch()
-        assertThat(haptic.targetSnapCount).isEqualTo(2)
+        assertThat(haptic.targetSnapCount).isEqualTo(1)
 
-        // 6. Typing 'P' again snaps 'Phone' from null -> fires targetSnap
+        // 7. Single-character query 'P' (Phone) is unique but length 1 prefix -> NO premature snap
         viewModel.onQueryChanged("P")
-        assertThat(haptic.targetSnapCount).isEqualTo(3)
+        assertThat(viewModel.uiState.value.autoLaunchCandidate).isNull()
+        assertThat(haptic.targetSnapCount).isEqualTo(1)
+
+        // 8. Query 'Ph' reaches decisive threshold for Phone -> fires targetSnap
+        viewModel.onQueryChanged("Ph")
+        assertThat(viewModel.uiState.value.autoLaunchCandidate?.label).isEqualTo("Phone")
+        assertThat(haptic.targetSnapCount).isEqualTo(2)
     }
 
     private class TestHapticEngine : HapticEngine {

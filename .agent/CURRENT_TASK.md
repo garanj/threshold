@@ -1,32 +1,23 @@
-# Active Task: Micro-Haptics Engine & Target Snap Detents (`:core`, `:data`, `:app`)
+# Active Task: Tune Target Snap Detent to Decisive Auto-Launch Match (`:app`)
 
-- **Issue:** [#29 feat(haptics): implement micro-haptics engine and result-snap detents](https://github.com/garanj/threshold/issues/29)
+- **Issue:** [#31 fix(haptics): tune target snap to decisive auto-launch match](https://github.com/garanj/threshold/issues/31)
 - **Milestone:** Phase 2: Sensory Mechanics & Friction Engine
-- **Status:** Complete / Ready for Review
-- **Branch:** `feat/29-micro-haptics-engine`
+- **Status:** In Progress
+- **Branch:** `fix/31-tune-target-snap-decisive-match`
 
 ---
 
 ## Objectives
-1. [x] **Core Domain Port (`:core`)**:
-   - Defined `HapticEngine` interface and `NoOpHapticEngine` with strictly zero `android.*` imports.
-   - Defined tactile feedback primitives:
-     - `rotaryDetent()`
-     - `targetSnap()`
-     - `resistanceDetent()`
-     - `relaySnap()`
-2. [x] **Android Adapter (`:data`)**:
-   - Implemented `AndroidHapticEngine(context: Context)` implementing `HapticEngine`.
-   - Used `Vibrator` / `VibratorManager` with `VibrationEffect.startComposition()`.
-   - Hardware capability detection via `vibrator.areAllPrimitivesSupported(...)`.
-   - Micro-pulse fallbacks (`createOneShot` / `createWaveform`) for devices without hardware composition primitives.
-3. [x] **UI Integration (`:app`)**:
-   - Precision tactile lock-in: Triggered `targetSnap()` when top search result candidate changes during typing.
-   - Triggered `resistanceDetent()` on friction-guarded app evaluation and long-press App Info interaction.
-   - Triggered `rotaryDetent()` on search result list scrolling.
-4. [x] **Tests & Verification**:
-   - Unit tests in `:core` (`HapticEngineTest`, `ArchitectureBoundaryTest`).
-   - Robolectric tests in `:data` (`AndroidHapticEngineTest`).
-   - Compose & unit tests in `:app` (`SearchViewModelTest`, `ThresholdHomeScreenTest`).
-   - Spotless clean, all 98 host JVM tests pass.
-   - Minified release build deployed to connected Pixel 9a (`54241JEBF07233`).
+1. [ ] **Haptic Trigger Refinement in `SearchViewModel`**:
+   - Only trigger `targetSnap()` when a decisive match / auto-launch candidate engages (`autoLaunchCandidate != null`).
+   - Suppress premature snaps on initial or ambiguous keystrokes (e.g. typing "c" when multiple results exist).
+   - Prevent redundant snaps on consecutive keystrokes where the auto-launch target has already locked in.
+2. [ ] **Unit Tests (`SearchViewModelTest`)**:
+   - Verify typing an initial ambiguous letter ("c") does NOT fire `targetSnap()`.
+   - Verify typing subsequent letters that narrow down to a decisive auto-launch candidate ("chr") DOES fire `targetSnap()`.
+   - Verify typing further characters while the decisive candidate remains the same ("chro", "chrom") does NOT fire additional snaps.
+   - Verify clearing or backspacing resets the state cleanly.
+3. [ ] **Verification & Device Run**:
+   - Run `./gradlew test spotlessCheck`.
+   - Build and deploy release APK to connected Pixel 9a (`54241JEBF07233`).
+   - Create PR assigned to `garanj`.
