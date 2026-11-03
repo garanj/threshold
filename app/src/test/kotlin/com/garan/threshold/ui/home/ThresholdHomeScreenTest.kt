@@ -5,10 +5,12 @@ import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
+import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performImeAction
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.performTouchInput
 import com.garan.threshold.MainActivity
 import com.garan.threshold.core.model.AppAccessState
 import com.garan.threshold.core.model.ComponentKey
@@ -148,6 +150,37 @@ class ThresholdHomeScreenTest {
     }
 
     @Test
+    fun appLongPressed_opensAppInfoAndResetsSearch() {
+        val viewModel = SearchViewModel(packageIndexSource = fakePackageIndexSource)
+        val launcher = FakeAppLauncher()
+
+        composeTestRule.setContent {
+            ThresholdTheme {
+                ThresholdHomeScreen(
+                    viewModel = viewModel,
+                    appLauncher = launcher,
+                )
+            }
+        }
+
+        composeTestRule.onNodeWithText("Type to launch...").performClick()
+        composeTestRule.waitForIdle()
+
+        composeTestRule.onNode(hasSetTextAction()).performTextInput("cam")
+        composeTestRule.waitForIdle()
+
+        // Long-press on the app item
+        composeTestRule.onNodeWithText("Camera").performTouchInput {
+            longClick()
+        }
+        composeTestRule.waitForIdle()
+
+        assertThat(launcher.appInfoComponents).containsExactly(cameraComponent)
+        assertThat(viewModel.uiState.value.query).isEmpty()
+        composeTestRule.onNodeWithText("Type to launch...").assertIsDisplayed()
+    }
+
+    @Test
     fun guardedApp_imeGoOnPartialPrefix_doesNotBypassGatekeeper() {
         val socialComponent = ComponentKey("com.example.social", "com.example.social.MainActivity", 0L)
         val guardedSource = FakePackageIndexSource(
@@ -216,9 +249,15 @@ class ThresholdHomeScreenTest {
 
     private class FakeAppLauncher : AppLauncher {
         val launchedComponents = mutableListOf<ComponentKey>()
+        val appInfoComponents = mutableListOf<ComponentKey>()
 
         override fun launchApp(component: ComponentKey): Boolean {
             launchedComponents.add(component)
+            return true
+        }
+
+        override fun openAppInfo(component: ComponentKey): Boolean {
+            appInfoComponents.add(component)
             return true
         }
     }

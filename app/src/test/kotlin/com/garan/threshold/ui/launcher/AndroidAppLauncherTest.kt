@@ -43,4 +43,34 @@ class AndroidAppLauncherTest {
         val result = launcher.launchApp(workComponent)
         assertThat(result).isFalse()
     }
+
+    @Test
+    fun openAppInfo_dispatchesDetailsActivityGracefully() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val launcher = AndroidAppLauncher(context)
+
+        val component = ComponentKey(
+            packageName = "com.example.test",
+            activityName = "com.example.test.MainActivity",
+            userSerial = 0L,
+        )
+
+        val result = launcher.openAppInfo(component)
+        assertThat(result).isTrue()
+    }
+
+    @Test
+    fun openAppInfo_unresolvedWorkProfileSerial_returnsFalseWithoutLaunchingPersonalApp() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val launcher = AndroidAppLauncher(context)
+
+        val workComponent = ComponentKey(
+            packageName = "com.example.workapp",
+            activityName = "com.example.workapp.MainActivity",
+            userSerial = 99L,
+        )
+
+        val result = launcher.openAppInfo(workComponent)
+        assertThat(result).isFalse()
+    }
 }
