@@ -1,23 +1,27 @@
-# Active Task: Tune Target Snap Detent to Decisive Auto-Launch Match (`:app`)
+# Active Task: Motion System: "Optics, Not Cartoons" (`:app`)
 
-- **Issue:** [#31 fix(haptics): tune target snap to decisive auto-launch match](https://github.com/garanj/threshold/issues/31)
-- **Milestone:** Phase 2: Sensory Mechanics & Friction Engine
-- **Status:** In Progress
-- **Branch:** `fix/31-tune-target-snap-decisive-match`
+- **Issue:** [#33 feat(motion): implement 120Hz decelerating optical curves and hairline shutter wipe](https://github.com/garanj/threshold/issues/33)
+- **Milestone:** Phase 2: Sensory Mechanics & Friction Engine (Task 2.2)
+- **Status:** Complete / Ready for Review
+- **Branch:** `feat/33-motion-system`
 
 ---
 
 ## Objectives
-1. [ ] **Haptic Trigger Refinement in `SearchViewModel`**:
-   - Only trigger `targetSnap()` when a decisive match / auto-launch candidate engages (`autoLaunchCandidate != null`).
-   - Suppress premature snaps on initial or ambiguous keystrokes (e.g. typing "c" when multiple results exist).
-   - Prevent redundant snaps on consecutive keystrokes where the auto-launch target has already locked in.
-2. [ ] **Unit Tests (`SearchViewModelTest`)**:
-   - Verify typing an initial ambiguous letter ("c") does NOT fire `targetSnap()`.
-   - Verify typing subsequent letters that narrow down to a decisive auto-launch candidate ("chr") DOES fire `targetSnap()`.
-   - Verify typing further characters while the decisive candidate remains the same ("chro", "chrom") does NOT fire additional snaps.
-   - Verify clearing or backspacing resets the state cleanly.
-3. [ ] **Verification & Device Run**:
-   - Run `./gradlew test spotlessCheck`.
-   - Build and deploy release APK to connected Pixel 9a (`54241JEBF07233`).
-   - Create PR assigned to `garanj`.
+1. [x] **Motion Tokens & Specs (`ThresholdMotion.kt` in `:app`)**:
+   - `OpticalEasing = CubicBezierEasing(0.16f, 1.0f, 0.3f, 1.0f)`.
+   - Durations strictly bounded between `MIN_DURATION_MS = 80` and `MAX_DURATION_MS = 140`.
+   - `SHUTTER_OPEN_DURATION_MS = 100`, `SHUTTER_CLOSE_DURATION_MS = 80`, `RESULT_REVEAL_DURATION_MS = 100`.
+   - `opticalTween()` helper enforcing sensory contract bounds.
+2. [x] **Hairline Shutter Wipe (`ThresholdSearchSurface.kt`)**:
+   - 1dp Hairline divider expansion/reveal transition between ambient home state and active search state.
+   - Decelerating optical reveal for the search text field and results list with `ThresholdMotion.ShutterWipeEnter` / `ShutterWipeExit`.
+   - Rapid 80ms shutter close on back dismissal.
+3. [x] **Result List Ingress & Optical Settling**:
+   - Result list entries settle into view with optical easing using `Modifier.animateItem(...)`.
+4. [x] **Tests & Verification**:
+   - Unit tests in `ThresholdMotionTest` verifying easing parameters, duration boundaries, and guardrails.
+   - Roborazzi host JVM screenshot tests capturing shutter wipe states (`search_shutter_open.png`).
+   - `./gradlew test spotlessCheck` all passed.
+   - Minified release build deployed to connected Pixel 9a (`54241JEBF07233`).
+   - PR created and assigned to `garanj`.

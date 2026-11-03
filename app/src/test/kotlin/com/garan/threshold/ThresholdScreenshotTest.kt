@@ -180,4 +180,27 @@ class ThresholdScreenshotTest {
         }
         verifyAndArchiveSnapshot("search_empty.png")
     }
+
+    @Test
+    fun snapshotSearchSurfaceShutterOpen() {
+        composeTestRule.setContent {
+            ThresholdTheme {
+                ThresholdHomeCanvas(
+                    timeText = "10:09",
+                    dateText = "Monday, November 2",
+                    statusText = "Threshold",
+                ) {
+                    Spacer(modifier = Modifier.height(24.dp))
+                    ThresholdSearchSurface(
+                        query = "",
+                        isSearchActive = true,
+                        onQueryChange = {},
+                        results = persistentListOf(),
+                        onItemClick = {},
+                    )
+                }
+            }
+        }
+        verifyAndArchiveSnapshot("search_shutter_open.png")
+    }
 }

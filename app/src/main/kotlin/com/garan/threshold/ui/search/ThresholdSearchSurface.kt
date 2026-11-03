@@ -1,5 +1,10 @@
 package com.garan.threshold.ui.search
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -23,6 +28,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
@@ -40,6 +46,7 @@ import com.garan.threshold.core.port.NoOpHapticEngine
 import com.garan.threshold.core.search.MatchType
 import com.garan.threshold.core.search.SearchItem
 import com.garan.threshold.core.search.SearchResult
+import com.garan.threshold.ui.motion.ThresholdMotion
 import com.garan.threshold.ui.theme.AmoledBlack
 import com.garan.threshold.ui.theme.HairlineBorder
 import com.garan.threshold.ui.theme.PureWhite
@@ -84,114 +91,146 @@ fun ThresholdSearchSurface(
             .fillMaxWidth()
             .background(AmoledBlack),
     ) {
-        // Search Input Box
+        // Search Input Box with Optical Transition
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(vertical = 8.dp),
             contentAlignment = Alignment.CenterStart,
         ) {
-            if (!isSearchActive && query.isEmpty()) {
-                Text(
-                    text = placeholderText,
-                    style = baseBodyLarge,
-                    color = SubtleGray,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable(onClick = onActivateSearch),
-                )
-            } else {
-                if (query.isEmpty()) {
+            val active = isSearchActive || query.isNotEmpty()
+            AnimatedContent(
+                targetState = active,
+                transitionSpec = {
+                    fadeIn(
+                        animationSpec = ThresholdMotion.opticalTween(ThresholdMotion.SHUTTER_OPEN_DURATION_MS),
+                    ) togetherWith
+                        fadeOut(animationSpec = ThresholdMotion.opticalTween(ThresholdMotion.SHUTTER_CLOSE_DURATION_MS))
+                },
+                label = "SearchInputShutterWipe",
+            ) { isInputActive ->
+                if (!isInputActive) {
                     Text(
                         text = placeholderText,
                         style = baseBodyLarge,
                         color = SubtleGray,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable(onClick = onActivateSearch),
                     )
-                }
+                } else {
+                    Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.CenterStart) {
+                        if (query.isEmpty()) {
+                            Text(
+                                text = placeholderText,
+                                style = baseBodyLarge,
+                                color = SubtleGray,
+                            )
+                        }
 
-                val focusRequester = remember { FocusRequester() }
-                LaunchedEffect(Unit) {
-                    focusRequester.requestFocus()
-                }
+                        val focusRequester = remember { FocusRequester() }
+                        LaunchedEffect(Unit) {
+                            focusRequester.requestFocus()
+                        }
 
-                BasicTextField(
-                    value = query,
-                    onValueChange = onQueryChange,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .focusRequester(focusRequester),
-                    textStyle = inputTextStyle,
-                    cursorBrush = CursorSolidBrush,
-                    singleLine = true,
-                    keyboardOptions = SearchKeyboardOptions,
-                    keyboardActions = KeyboardActions(
-                        onGo = {
-                            val topResult = results.firstOrNull()
-                            if (topResult != null) {
-                                val item = topResult.item
-                                // Reverse Search Drag: Guarded apps require full exact match on IME Go
-                                val canQuickLaunch = item !is SearchItem.App ||
-                                    item.accessState !is AppAccessState.Guarded ||
-                                    topResult.matchType == MatchType.EXACT
-                                if (canQuickLaunch) {
-                                    onItemClick(item)
-                                }
-                            }
-                        },
-                    ),
-                )
+                        BasicTextField(
+                            value = query,
+                            onValueChange = onQueryChange,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .focusRequester(focusRequester),
+                            textStyle = inputTextStyle,
+                            cursorBrush = CursorSolidBrush,
+                            singleLine = true,
+                            keyboardOptions = SearchKeyboardOptions,
+                            keyboardActions = KeyboardActions(
+                                onGo = {
+                                    val topResult = results.firstOrNull()
+                                    if (topResult != null) {
+                                        val item = topResult.item
+                                        // Reverse Search Drag: Guarded apps require full exact match on IME Go
+                                        val canQuickLaunch = item !is SearchItem.App ||
+                                            item.accessState !is AppAccessState.Guarded ||
+                                            topResult.matchType == MatchType.EXACT
+                                        if (canQuickLaunch) {
+                                            onItemClick(item)
+                                        }
+                                    }
+                                },
+                            ),
+                        )
+                    }
+                }
             }
         }
 
         Spacer(modifier = Modifier.height(6.dp))
 
+        // Hairline Shutter Wipe (1dp rule anchors transitions)
         HorizontalDivider(
             modifier = Modifier.fillMaxWidth(),
             thickness = 1.dp,
             color = HairlineBorder,
         )
 
-        // Results or Empty Feedback
-        if (query.isNotBlank()) {
-            Spacer(modifier = Modifier.height(12.dp))
+        // Results or Empty Feedback with Decelerating Optical Revealing
+        AnimatedVisibility(
+            visible = query.isNotBlank(),
+            enter = ThresholdMotion.ResultRevealEnter,
+            exit = ThresholdMotion.ResultRevealExit,
+        ) {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                Spacer(modifier = Modifier.height(12.dp))
 
-            if (results.isEmpty()) {
-                Text(
-                    text = "NO MATCHING APPS",
-                    style = emptyStateTextStyle,
-                    color = SubtleGray,
-                    modifier = Modifier.padding(vertical = 12.dp),
-                )
-            } else {
-                val listState = rememberLazyListState()
-                LaunchedEffect(listState) {
-                    snapshotFlow { listState.firstVisibleItemIndex }
-                        .drop(1)
-                        .distinctUntilChanged()
-                        .collect {
-                            hapticEngine.rotaryDetent()
+                if (results.isEmpty()) {
+                    Text(
+                        text = "NO MATCHING APPS",
+                        style = emptyStateTextStyle,
+                        color = SubtleGray,
+                        modifier = Modifier.padding(vertical = 12.dp),
+                    )
+                } else {
+                    val listState = rememberLazyListState()
+                    LaunchedEffect(listState) {
+                        snapshotFlow { listState.firstVisibleItemIndex }
+                            .drop(1)
+                            .distinctUntilChanged()
+                            .collect {
+                                hapticEngine.rotaryDetent()
+                            }
+                    }
+
+                    LazyColumn(
+                        state = listState,
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        items(
+                            items = results,
+                            key = { result -> result.item.key },
+                        ) { result ->
+                            val item = result.item
+                            SearchResultRow(
+                                result = result,
+                                onClick = { onItemClick(item) },
+                                onLongClick = if (item is SearchItem.App && onItemLongClick != null) {
+                                    { onItemLongClick(item) }
+                                } else {
+                                    null
+                                },
+                                modifier = Modifier.animateItem(
+                                    fadeInSpec = ThresholdMotion.opticalTween(
+                                        ThresholdMotion.RESULT_REVEAL_DURATION_MS,
+                                    ),
+                                    fadeOutSpec = ThresholdMotion.opticalTween(
+                                        ThresholdMotion.SHUTTER_CLOSE_DURATION_MS,
+                                    ),
+                                    placementSpec = ThresholdMotion.opticalTween(
+                                        ThresholdMotion.RESULT_REVEAL_DURATION_MS,
+                                    ),
+                                ),
+                            )
                         }
-                }
-
-                LazyColumn(
-                    state = listState,
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(4.dp),
-                ) {
-                    items(
-                        items = results,
-                        key = { result -> result.item.key },
-                    ) { result ->
-                        val item = result.item
-                        SearchResultRow(
-                            result = result,
-                            onClick = { onItemClick(item) },
-                            onLongClick = if (item is SearchItem.App && onItemLongClick != null) {
-                                { onItemLongClick(item) }
-                            } else {
-                                null
-                            },
-                        )
                     }
                 }
             }
