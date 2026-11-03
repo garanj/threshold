@@ -7,6 +7,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
+import com.garan.threshold.data.haptics.AndroidHapticEngine
 import com.garan.threshold.data.packageindex.AndroidPackageIndexSource
 import com.garan.threshold.ui.home.ThresholdHomeScreen
 import com.garan.threshold.ui.launcher.AndroidAppLauncher
@@ -19,6 +20,7 @@ class MainActivity : ComponentActivity() {
 
     private val packageIndexSource by lazy { AndroidPackageIndexSource(this) }
     private val appLauncher by lazy { AndroidAppLauncher(this) }
+    private val hapticEngine by lazy { AndroidHapticEngine(this) }
     internal lateinit var searchViewModel: SearchViewModel
         private set
 
@@ -47,6 +49,7 @@ class MainActivity : ComponentActivity() {
                 @Suppress("UNCHECKED_CAST")
                 override fun <T : ViewModel> create(modelClass: Class<T>): T = SearchViewModel(
                     packageIndexSource = packageIndexSource,
+                    hapticEngine = hapticEngine,
                     dialerPackageResolver = {
                         DialerPackageResolver.resolveDefaultDialerPackage(this@MainActivity.applicationContext)
                     },
@@ -59,6 +62,7 @@ class MainActivity : ComponentActivity() {
                 ThresholdHomeScreen(
                     viewModel = searchViewModel,
                     appLauncher = appLauncher,
+                    hapticEngine = hapticEngine,
                     onDismissIme = { ImeUtils.dismissIme(this@MainActivity) },
                 )
             }

@@ -5,7 +5,9 @@ import androidx.lifecycle.viewModelScope
 import com.garan.threshold.core.gatekeeper.IntentGatekeeper
 import com.garan.threshold.core.model.AppAccessState
 import com.garan.threshold.core.model.Profile
+import com.garan.threshold.core.port.HapticEngine
 import com.garan.threshold.core.port.LaunchResult
+import com.garan.threshold.core.port.NoOpHapticEngine
 import com.garan.threshold.core.port.PackageChangeEvent
 import com.garan.threshold.core.port.PackageIndexSource
 import com.garan.threshold.core.search.ActionCandidate
@@ -36,6 +38,7 @@ data class SearchUiState(
 
 class SearchViewModel(
     private val packageIndexSource: PackageIndexSource,
+    private val hapticEngine: HapticEngine = NoOpHapticEngine,
     private val gatekeeper: IntentGatekeeper = IntentGatekeeper(),
     private val searchEngine: SearchEngine = SearchEngine(
         gatekeeper = gatekeeper,
@@ -67,6 +70,7 @@ class SearchViewModel(
     private var activeProfile: Profile = initialProfile
 
     private val isIndexInitialized = AtomicBoolean(false)
+    private var lastTopCandidateKey: String? = null
 
     fun ensureIndexLoaded() {
         if (!isIndexInitialized.compareAndSet(false, true)) return
@@ -109,6 +113,7 @@ class SearchViewModel(
     }
 
     fun dismissSearch() {
+        lastTopCandidateKey = null
         _uiState.update {
             SearchUiState(
                 query = "",
@@ -153,6 +158,7 @@ class SearchViewModel(
 
     private fun performSearch(query: String) {
         if (query.isBlank()) {
+            lastTopCandidateKey = null
             _uiState.update {
                 it.copy(
                     results = persistentListOf(),
@@ -170,6 +176,12 @@ class SearchViewModel(
             profile = activeProfile,
             defaultDialerPackage = resolvedDialerPackage,
         )
+
+        val newTopCandidateKey = response.results.firstOrNull()?.item?.key
+        if (newTopCandidateKey != null && newTopCandidateKey != lastTopCandidateKey) {
+            hapticEngine.targetSnap()
+        }
+        lastTopCandidateKey = newTopCandidateKey
 
         _uiState.update {
             it.copy(

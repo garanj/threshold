@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -23,6 +24,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -33,6 +35,8 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.garan.threshold.core.model.AppAccessState
+import com.garan.threshold.core.port.HapticEngine
+import com.garan.threshold.core.port.NoOpHapticEngine
 import com.garan.threshold.core.search.MatchType
 import com.garan.threshold.core.search.SearchItem
 import com.garan.threshold.core.search.SearchResult
@@ -41,6 +45,8 @@ import com.garan.threshold.ui.theme.HairlineBorder
 import com.garan.threshold.ui.theme.PureWhite
 import com.garan.threshold.ui.theme.SubtleGray
 import kotlinx.collections.immutable.ImmutableList
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.drop
 
 private val CursorSolidBrush = SolidColor(PureWhite)
 private val SearchKeyboardOptions = KeyboardOptions(imeAction = ImeAction.Go)
@@ -61,6 +67,7 @@ fun ThresholdSearchSurface(
     isSearchActive: Boolean = query.isNotEmpty(),
     onActivateSearch: () -> Unit = {},
     onItemLongClick: ((SearchItem) -> Unit)? = null,
+    hapticEngine: HapticEngine = NoOpHapticEngine,
 ) {
     val baseBodyLarge = MaterialTheme.typography.bodyLarge
     val inputTextStyle = remember(baseBodyLarge) { baseBodyLarge.copy(color = PureWhite) }
@@ -156,7 +163,18 @@ fun ThresholdSearchSurface(
                     modifier = Modifier.padding(vertical = 12.dp),
                 )
             } else {
+                val listState = rememberLazyListState()
+                LaunchedEffect(listState) {
+                    snapshotFlow { listState.firstVisibleItemIndex }
+                        .drop(1)
+                        .distinctUntilChanged()
+                        .collect {
+                            hapticEngine.rotaryDetent()
+                        }
+                }
+
                 LazyColumn(
+                    state = listState,
                     modifier = Modifier.fillMaxWidth(),
                     verticalArrangement = Arrangement.spacedBy(4.dp),
                 ) {

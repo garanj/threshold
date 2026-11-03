@@ -17,6 +17,7 @@ import com.garan.threshold.core.model.ComponentKey
 import com.garan.threshold.core.model.FrictionPolicy
 import com.garan.threshold.core.model.InstalledApp
 import com.garan.threshold.core.model.Profile
+import com.garan.threshold.core.port.HapticEngine
 import com.garan.threshold.core.port.PackageChangeEvent
 import com.garan.threshold.core.port.PackageIndexSource
 import com.garan.threshold.ui.launcher.AppLauncher
@@ -224,6 +225,81 @@ class ThresholdHomeScreenTest {
     }
 
     @Test
+    fun guardedAppClicked_triggersResistanceDetentHaptic() {
+        val socialComponent = ComponentKey("com.example.social", "com.example.social.MainActivity", 0L)
+        val guardedSource = FakePackageIndexSource(
+            initialApps = listOf(InstalledApp(socialComponent, "Social Feed")),
+        )
+        val focusProfile = Profile(
+            id = "focus",
+            name = "Focus",
+            defaultAccess = AppAccessState.Direct,
+            appRules = mapOf(
+                socialComponent to AppAccessState.Guarded(FrictionPolicy.TimedDelay(10)),
+            ),
+        )
+        val viewModel = SearchViewModel(
+            packageIndexSource = guardedSource,
+            initialProfile = focusProfile,
+        )
+        val launcher = FakeAppLauncher()
+        val haptic = TestHapticEngine()
+
+        composeTestRule.setContent {
+            ThresholdTheme {
+                ThresholdHomeScreen(
+                    viewModel = viewModel,
+                    appLauncher = launcher,
+                    hapticEngine = haptic,
+                )
+            }
+        }
+
+        composeTestRule.onNodeWithText("Type to launch...").performClick()
+        composeTestRule.waitForIdle()
+
+        composeTestRule.onNode(hasSetTextAction()).performTextInput("soc")
+        composeTestRule.waitForIdle()
+
+        composeTestRule.onNodeWithText("Social Feed").performClick()
+        composeTestRule.waitForIdle()
+
+        assertThat(haptic.resistanceDetentCount).isEqualTo(1)
+        assertThat(launcher.launchedComponents).isEmpty()
+    }
+
+    @Test
+    fun appLongPressed_triggersResistanceDetentHaptic() {
+        val viewModel = SearchViewModel(packageIndexSource = fakePackageIndexSource)
+        val launcher = FakeAppLauncher()
+        val haptic = TestHapticEngine()
+
+        composeTestRule.setContent {
+            ThresholdTheme {
+                ThresholdHomeScreen(
+                    viewModel = viewModel,
+                    appLauncher = launcher,
+                    hapticEngine = haptic,
+                )
+            }
+        }
+
+        composeTestRule.onNodeWithText("Type to launch...").performClick()
+        composeTestRule.waitForIdle()
+
+        composeTestRule.onNode(hasSetTextAction()).performTextInput("cam")
+        composeTestRule.waitForIdle()
+
+        composeTestRule.onNodeWithText("Camera").performTouchInput {
+            longClick()
+        }
+        composeTestRule.waitForIdle()
+
+        assertThat(haptic.resistanceDetentCount).isEqualTo(1)
+        assertThat(launcher.appInfoComponents).containsExactly(cameraComponent)
+    }
+
+    @Test
     fun mainActivity_onNewIntentHome_collapsesActiveSearchAndClearsQuery() {
         Robolectric.buildActivity(MainActivity::class.java).use { controller ->
             controller.setup()
@@ -244,6 +320,33 @@ class ThresholdHomeScreenTest {
             // Search must be collapsed and query cleared
             assertThat(activity.searchViewModel.uiState.value.query).isEmpty()
             assertThat(activity.searchViewModel.uiState.value.isSearching).isFalse()
+        }
+    }
+
+    private class TestHapticEngine : HapticEngine {
+        var rotaryDetentCount = 0
+            private set
+        var targetSnapCount = 0
+            private set
+        var resistanceDetentCount = 0
+            private set
+        var relaySnapCount = 0
+            private set
+
+        override fun rotaryDetent() {
+            rotaryDetentCount++
+        }
+
+        override fun targetSnap() {
+            targetSnapCount++
+        }
+
+        override fun resistanceDetent() {
+            resistanceDetentCount++
+        }
+
+        override fun relaySnap() {
+            relaySnapCount++
         }
     }
 

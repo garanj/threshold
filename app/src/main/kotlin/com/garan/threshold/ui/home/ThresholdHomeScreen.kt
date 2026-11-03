@@ -10,7 +10,9 @@ import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.garan.threshold.core.port.HapticEngine
 import com.garan.threshold.core.port.LaunchResult
+import com.garan.threshold.core.port.NoOpHapticEngine
 import com.garan.threshold.core.search.SearchItem
 import com.garan.threshold.ui.launcher.AppLauncher
 import com.garan.threshold.ui.search.SearchViewModel
@@ -31,6 +33,7 @@ fun ThresholdHomeScreen(
     viewModel: SearchViewModel,
     appLauncher: AppLauncher,
     modifier: Modifier = Modifier,
+    hapticEngine: HapticEngine = NoOpHapticEngine,
     onDismissIme: () -> Unit = {},
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -73,6 +76,7 @@ fun ThresholdHomeScreen(
                         is LaunchResult.FrictionRequired,
                         is LaunchResult.Blocked,
                         -> {
+                            hapticEngine.resistanceDetent()
                             // Guarded apps require passing a friction checkpoint (Phase 2 Task 2.3)
                             // and Blocked apps are never launched.
                         }
@@ -81,6 +85,7 @@ fun ThresholdHomeScreen(
             },
             onItemLongClick = { item ->
                 if (item is SearchItem.App) {
+                    hapticEngine.resistanceDetent()
                     val opened = appLauncher.openAppInfo(item.component)
                     if (opened) {
                         viewModel.dismissSearch()
@@ -92,6 +97,7 @@ fun ThresholdHomeScreen(
             },
             isSearchActive = inSearch,
             onActivateSearch = viewModel::activateSearch,
+            hapticEngine = hapticEngine,
         )
     }
 }
