@@ -57,6 +57,8 @@ class ThresholdAppInfoInstrumentedTest {
             ?: error("No launchable activities found on device for testing")
 
         val targetLabel = candidate.label.toString()
+        // Use a prefix query so the search input box text differs from the result item label
+        val searchQuery = if (targetLabel.length > 3) targetLabel.substring(0, targetLabel.length - 1) else targetLabel
 
         val intent = Intent(targetContext, MainActivity::class.java).apply {
             action = Intent.ACTION_MAIN
@@ -69,14 +71,17 @@ class ThresholdAppInfoInstrumentedTest {
             activity.setTurnScreenOn(true)
         }
 
-        // 1. Activate search mode and set query to target app label
+        // 1. Activate search mode and set query to target app prefix
         scenario?.onActivity { activity ->
             activity.searchViewModel.activateSearch()
-            activity.searchViewModel.onQueryChanged(targetLabel)
+            activity.searchViewModel.onQueryChanged(searchQuery)
         }
 
         // 2. Find target app in search results and perform long click
-        val resultRow = device.wait(Until.findObject(By.text(targetLabel)), 5000L)
+        val resultRow = device.wait(
+            Until.findObject(By.text(targetLabel).clazz("android.widget.TextView")),
+            10000L,
+        ) ?: device.wait(Until.findObject(By.text(targetLabel)), 5000L)
         assertThat(resultRow).isNotNull()
         resultRow.longClick()
 
