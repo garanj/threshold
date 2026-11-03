@@ -70,7 +70,7 @@ class SearchViewModel(
     private var activeProfile: Profile = initialProfile
 
     private val isIndexInitialized = AtomicBoolean(false)
-    private var lastTopCandidateKey: String? = null
+    private var lastDecisiveCandidateKey: String? = null
 
     fun ensureIndexLoaded() {
         if (!isIndexInitialized.compareAndSet(false, true)) return
@@ -113,7 +113,7 @@ class SearchViewModel(
     }
 
     fun dismissSearch() {
-        lastTopCandidateKey = null
+        lastDecisiveCandidateKey = null
         _uiState.update {
             SearchUiState(
                 query = "",
@@ -158,7 +158,7 @@ class SearchViewModel(
 
     private fun performSearch(query: String) {
         if (query.isBlank()) {
-            lastTopCandidateKey = null
+            lastDecisiveCandidateKey = null
             _uiState.update {
                 it.copy(
                     results = persistentListOf(),
@@ -177,11 +177,15 @@ class SearchViewModel(
             defaultDialerPackage = resolvedDialerPackage,
         )
 
-        val newTopCandidateKey = response.results.firstOrNull()?.item?.key
-        if (newTopCandidateKey != null && newTopCandidateKey != lastTopCandidateKey) {
+        val trimmed = query.trim()
+        val decisiveCandidate = response.autoLaunchCandidate
+            ?: if (response.results.size == 1 && trimmed.length >= 2) response.results.first().item else null
+        val newDecisiveCandidateKey = decisiveCandidate?.key
+
+        if (newDecisiveCandidateKey != null && newDecisiveCandidateKey != lastDecisiveCandidateKey) {
             hapticEngine.targetSnap()
         }
-        lastTopCandidateKey = newTopCandidateKey
+        lastDecisiveCandidateKey = newDecisiveCandidateKey
 
         _uiState.update {
             it.copy(
