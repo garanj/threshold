@@ -19,6 +19,9 @@
 3. [x] **Tests (`:app`)**:
    - Added `openAppInfo` tests in `AndroidAppLauncherTest`.
    - Added long-press Compose test in `ThresholdHomeScreenTest`.
+   - Added connected instrumented UI test in `ThresholdAppInfoInstrumentedTest.kt` verifying search activation, long-press touch dispatch via UiAutomator, system App Info launch, and search state dismissal.
+   - Updated `scripts/test-emulator-functional.sh` to run both `:data:connectedDebugAndroidTest` and `:app:connectedDebugAndroidTest`.
 4. [x] **Verification**:
-   - Verified `./gradlew test spotlessCheck`.
+   - Verified `./gradlew test spotlessCheck` (all 94 host JVM unit tests passing).
    - Built minified release APK and deployed to connected Pixel 9a (`54241JEBF07233`).
+   - Pushed commits `11bf8c9` and `cf87c75` to PR #28.
