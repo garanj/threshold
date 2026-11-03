@@ -6,6 +6,7 @@ import com.garan.threshold.core.model.ComponentKey
 import com.garan.threshold.core.model.FrictionPolicy
 import com.garan.threshold.core.model.InstalledApp
 import com.garan.threshold.core.model.Profile
+import com.garan.threshold.core.port.HapticEngine
 import com.garan.threshold.core.port.LaunchResult
 import com.garan.threshold.core.port.PackageChangeEvent
 import com.garan.threshold.core.port.PackageIndexSource
@@ -272,6 +273,75 @@ class SearchViewModelTest {
         assertThat(
             pixelViewModel.evaluateLaunch(SearchItem.App(blockedComponent, "Arcade Games", AppAccessState.Blocked)),
         ).isEqualTo(LaunchResult.Blocked)
+    }
+
+    @Test
+    fun typingQuery_targetSnapHapticFiresOnlyWhenTopCandidateChanges() = runTest(testDispatcher) {
+        val haptic = TestHapticEngine()
+        val viewModel = SearchViewModel(
+            packageIndexSource = fakePackageIndexSource,
+            hapticEngine = haptic,
+            searchEngine = searchEngine,
+            ioDispatcher = testDispatcher,
+        )
+
+        viewModel.ensureIndexLoaded()
+        advanceUntilIdle()
+
+        // 1. First letter 'C' snaps 'Camera' as top candidate -> targetSnap fires once
+        viewModel.onQueryChanged("C")
+        assertThat(viewModel.uiState.value.results.first().item.label).isEqualTo("Camera")
+        assertThat(haptic.targetSnapCount).isEqualTo(1)
+
+        // 2. Typing 'Ca' still has 'Camera' as top candidate -> does NOT fire again (no double click)
+        viewModel.onQueryChanged("Ca")
+        assertThat(viewModel.uiState.value.results.first().item.label).isEqualTo("Camera")
+        assertThat(haptic.targetSnapCount).isEqualTo(1)
+
+        // 3. Typing 'Cam' still has 'Camera' as top candidate -> still 1
+        viewModel.onQueryChanged("Cam")
+        assertThat(viewModel.uiState.value.results.first().item.label).isEqualTo("Camera")
+        assertThat(haptic.targetSnapCount).isEqualTo(1)
+
+        // 4. Changing query to 'P' snaps 'Phone' as new top candidate -> targetSnap fires
+        viewModel.onQueryChanged("P")
+        assertThat(viewModel.uiState.value.results.first().item.label).isEqualTo("Phone")
+        assertThat(haptic.targetSnapCount).isEqualTo(2)
+
+        // 5. Clearing query resets top candidate
+        viewModel.dismissSearch()
+        assertThat(haptic.targetSnapCount).isEqualTo(2)
+
+        // 6. Typing 'P' again snaps 'Phone' from null -> fires targetSnap
+        viewModel.onQueryChanged("P")
+        assertThat(haptic.targetSnapCount).isEqualTo(3)
+    }
+
+    private class TestHapticEngine : HapticEngine {
+        var rotaryDetentCount = 0
+            private set
+        var targetSnapCount = 0
+            private set
+        var resistanceDetentCount = 0
+            private set
+        var relaySnapCount = 0
+            private set
+
+        override fun rotaryDetent() {
+            rotaryDetentCount++
+        }
+
+        override fun targetSnap() {
+            targetSnapCount++
+        }
+
+        override fun resistanceDetent() {
+            resistanceDetentCount++
+        }
+
+        override fun relaySnap() {
+            relaySnapCount++
+        }
     }
 
     private class FakePackageIndexSource(initialApps: List<InstalledApp> = emptyList()) : PackageIndexSource {
