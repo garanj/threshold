@@ -44,4 +44,20 @@ class FrictionPolicyTest {
             FrictionPolicy.SessionBudget(availableMinutes = listOf(-1, 10))
         }
     }
+
+    @Test
+    fun `drag sort creates with valid pair count`() {
+        val policy = FrictionPolicy.DragSort(pairCount = 6)
+        assertThat(policy.pairCount).isEqualTo(6)
+    }
+
+    @Test
+    fun `drag sort with invalid pair count throws IllegalArgumentException`() {
+        assertThrows(IllegalArgumentException::class.java) {
+            FrictionPolicy.DragSort(pairCount = 1)
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            FrictionPolicy.DragSort(pairCount = 11)
+        }
+    }
 }
