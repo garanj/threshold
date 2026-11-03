@@ -59,17 +59,32 @@ class ProfileTest {
             ),
         )
 
-        // Explicit Guarded rule
         val slackAccess = workProfile.resolveAccess(slackComponent, isDefaultDialer = false)
         assertThat(slackAccess).isEqualTo(AppAccessState.Guarded(FrictionPolicy.TypedIntention))
 
-        // Explicit Blocked rule
         val socialAccess = workProfile.resolveAccess(socialComponent, isDefaultDialer = false)
         assertThat(socialAccess).isEqualTo(AppAccessState.Blocked)
 
-        // Unlisted app falls back to defaultAccess (Direct)
-        val clockAccess = workProfile.resolveAccess(clockComponent, isDefaultDialer = false)
-        assertThat(clockAccess).isEqualTo(AppAccessState.Direct)
+        val unlistedClockAccess = workProfile.resolveAccess(clockComponent, isDefaultDialer = false)
+        assertThat(unlistedClockAccess).isEqualTo(AppAccessState.Direct)
+    }
+
+    @Test
+    fun `package level rule matches when activity differs`() {
+        val packageRuleKey = ComponentKey("com.google.android.youtube", "*")
+        val profile = Profile(
+            id = "test",
+            name = "Test",
+            defaultAccess = AppAccessState.Direct,
+            appRules = mapOf(
+                packageRuleKey to AppAccessState.Guarded(FrictionPolicy.TypedIntention),
+            ),
+        )
+
+        val actualYouTubeComponent =
+            ComponentKey("com.google.android.youtube", "com.google.android.apps.youtube.app.HomeActivity")
+        assertThat(profile.resolveAccess(actualYouTubeComponent, isDefaultDialer = false))
+            .isEqualTo(AppAccessState.Guarded(FrictionPolicy.TypedIntention))
     }
 
     @Test

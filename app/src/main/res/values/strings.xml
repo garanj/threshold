@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Threshold</string>
+
+    <string-array name="typed_intention_phrases">
+        <!-- Category A: App-Conscious -->
+        <item>I need to use %s right now</item>
+        <item>I am opening %s intentionally</item>
+        <item>I have a purpose in %s</item>
+        <item>I will be mindful in %s</item>
+        <item>I am choosing to open %s</item>
+        <item>Using %s with clear intent</item>
+        <item>Opening %s for a reason</item>
+        <item>Only essential tasks in %s</item>
+
+        <!-- Category B: Task & Purpose Focused -->
+        <item>I need to complete a task</item>
+        <item>There is something I must do</item>
+        <item>I have a specific goal here</item>
+        <item>Opening this to do work</item>
+        <item>I am here for one thing</item>
+        <item>Focusing on a single outcome</item>
+        <item>Completing a planned action</item>
+        <item>I know exactly what to do</item>
+        <item>A brief and purposeful visit</item>
+        <item>Doing one task then leaving</item>
+
+        <!-- Category C: Time & Boundary Awareness -->
+        <item>I will leave when finished</item>
+        <item>This will only take a moment</item>
+        <item>My time is valuable today</item>
+        <item>I am not here to scroll</item>
+        <item>Checking only what is needed</item>
+        <item>Leaving as soon as done</item>
+        <item>Conscious of my attention</item>
+        <item>I will not linger here</item>
+
+        <!-- Category D: Mental Friction & Presence -->
+        <item>This is a deliberate action</item>
+        <item>Acting with full awareness</item>
+        <item>Pausing before I begin</item>
+        <item>Stepping across the threshold</item>
+    </string-array>
+</resources>
