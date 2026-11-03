@@ -5,6 +5,9 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
@@ -14,6 +17,7 @@ import com.garan.threshold.core.port.HapticEngine
 import com.garan.threshold.core.port.LaunchResult
 import com.garan.threshold.core.port.NoOpHapticEngine
 import com.garan.threshold.core.search.SearchItem
+import com.garan.threshold.ui.friction.TypedIntentionSurface
 import com.garan.threshold.ui.launcher.AppLauncher
 import com.garan.threshold.ui.search.SearchViewModel
 import com.garan.threshold.ui.search.ThresholdSearchSurface
@@ -40,10 +44,13 @@ fun ThresholdHomeScreen(
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
 
+    var activeFrictionTarget by remember { mutableStateOf<SearchItem.App?>(null) }
     val inSearch = uiState.isSearching || uiState.query.isNotEmpty()
 
     BackHandler(enabled = true) {
-        if (inSearch) {
+        if (activeFrictionTarget != null) {
+            activeFrictionTarget = null
+        } else if (inSearch) {
             viewModel.dismissSearch()
             keyboardController?.hide()
             focusManager.clearFocus()
@@ -54,50 +61,71 @@ fun ThresholdHomeScreen(
         }
     }
 
-    ThresholdHomeCanvas(modifier = modifier) {
-        Spacer(modifier = Modifier.height(24.dp))
-
-        ThresholdSearchSurface(
-            query = uiState.query,
-            onQueryChange = viewModel::onQueryChanged,
-            results = uiState.results,
-            onItemClick = { item ->
-                if (item is SearchItem.App) {
-                    when (viewModel.evaluateLaunch(item)) {
-                        is LaunchResult.Launched -> {
-                            val launched = appLauncher.launchApp(item.component)
-                            if (launched) {
-                                viewModel.dismissSearch()
-                                keyboardController?.hide()
-                                focusManager.clearFocus()
-                                onDismissIme()
-                            }
-                        }
-                        is LaunchResult.FrictionRequired,
-                        is LaunchResult.Blocked,
-                        -> {
-                            hapticEngine.resistanceDetent()
-                            // Guarded apps require passing a friction checkpoint (Phase 2 Task 2.3)
-                            // and Blocked apps are never launched.
-                        }
-                    }
+    val frictionTarget = activeFrictionTarget
+    if (frictionTarget != null) {
+        TypedIntentionSurface(
+            appLabel = frictionTarget.label,
+            onConfirmOpen = {
+                val launched = appLauncher.launchApp(frictionTarget.component)
+                if (launched) {
+                    activeFrictionTarget = null
+                    viewModel.dismissSearch()
+                    keyboardController?.hide()
+                    focusManager.clearFocus()
+                    onDismissIme()
                 }
             },
-            onItemLongClick = { item ->
-                if (item is SearchItem.App) {
-                    hapticEngine.resistanceDetent()
-                    val opened = appLauncher.openAppInfo(item.component)
-                    if (opened) {
-                        viewModel.dismissSearch()
-                        keyboardController?.hide()
-                        focusManager.clearFocus()
-                        onDismissIme()
-                    }
-                }
+            onDismiss = {
+                activeFrictionTarget = null
             },
-            isSearchActive = inSearch,
-            onActivateSearch = viewModel::activateSearch,
             hapticEngine = hapticEngine,
         )
+    } else {
+        ThresholdHomeCanvas(modifier = modifier) {
+            Spacer(modifier = Modifier.height(24.dp))
+
+            ThresholdSearchSurface(
+                query = uiState.query,
+                onQueryChange = viewModel::onQueryChanged,
+                results = uiState.results,
+                onItemClick = { item ->
+                    if (item is SearchItem.App) {
+                        when (viewModel.evaluateLaunch(item)) {
+                            is LaunchResult.Launched -> {
+                                val launched = appLauncher.launchApp(item.component)
+                                if (launched) {
+                                    viewModel.dismissSearch()
+                                    keyboardController?.hide()
+                                    focusManager.clearFocus()
+                                    onDismissIme()
+                                }
+                            }
+                            is LaunchResult.FrictionRequired -> {
+                                hapticEngine.resistanceDetent()
+                                activeFrictionTarget = item
+                            }
+                            is LaunchResult.Blocked -> {
+                                hapticEngine.resistanceDetent()
+                            }
+                        }
+                    }
+                },
+                onItemLongClick = { item ->
+                    if (item is SearchItem.App) {
+                        hapticEngine.resistanceDetent()
+                        val opened = appLauncher.openAppInfo(item.component)
+                        if (opened) {
+                            viewModel.dismissSearch()
+                            keyboardController?.hide()
+                            focusManager.clearFocus()
+                            onDismissIme()
+                        }
+                    }
+                },
+                isSearchActive = inSearch,
+                onActivateSearch = viewModel::activateSearch,
+                hapticEngine = hapticEngine,
+            )
+        }
     }
 }

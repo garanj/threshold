@@ -43,6 +43,20 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
+        // Temporary test rule: YouTube is Guarded under TypedIntention friction for Phase 2 Task 2.3 verification
+        // TODO(Phase-3): Remove temporary hardcoded YouTube rule when Room profile persistence is introduced
+        val youtubeRule = com.garan.threshold.core.model.ComponentKey("com.google.android.youtube", "*")
+        val defaultProfile = com.garan.threshold.core.model.Profile(
+            id = "ambient",
+            name = "Ambient",
+            defaultAccess = com.garan.threshold.core.model.AppAccessState.Direct,
+            appRules = mapOf(
+                youtubeRule to com.garan.threshold.core.model.AppAccessState.Guarded(
+                    com.garan.threshold.core.model.FrictionPolicy.TypedIntention,
+                ),
+            ),
+        )
+
         searchViewModel = ViewModelProvider(
             this,
             object : ViewModelProvider.Factory {
@@ -53,6 +67,7 @@ class MainActivity : ComponentActivity() {
                     dialerPackageResolver = {
                         DialerPackageResolver.resolveDefaultDialerPackage(this@MainActivity.applicationContext)
                     },
+                    initialProfile = defaultProfile,
                 ) as T
             },
         )[SearchViewModel::class.java]

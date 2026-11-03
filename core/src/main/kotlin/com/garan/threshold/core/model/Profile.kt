@@ -31,6 +31,8 @@ data class Profile(
         if (isDefaultDialer) {
             return AppAccessState.Direct
         }
-        return appRules[component] ?: defaultAccess
+        return appRules[component]
+            ?: appRules.entries.firstOrNull { it.key.packageName == component.packageName }?.value
+            ?: defaultAccess
     }
 }

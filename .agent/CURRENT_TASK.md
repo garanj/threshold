@@ -1,27 +1,35 @@
-# Active Task: Motion System: "Optics, Not Cartoons" (`:app`)
+# Active Task: Typed Intention Checkpoint for Guarded Apps (`:core`, `:app`)
 
-- **Issue:** [#33 feat(motion): implement 120Hz decelerating optical curves and hairline shutter wipe](https://github.com/garanj/threshold/issues/33)
-- **Milestone:** Phase 2: Sensory Mechanics & Friction Engine (Task 2.2)
-- **Status:** Complete / Ready for Review
-- **Branch:** `feat/33-motion-system`
+- **Issue:** [#35 feat(friction): implement typed intention checkpoint for guarded apps](https://github.com/garanj/threshold/issues/35)
+- **Milestone:** Phase 2: Sensory Mechanics & Friction Engine (Task 2.3)
+- **Status:** Complete (Ready for Review)
+- **Branch:** `feat/35-typed-intention-checkpoint`
 
 ---
 
 ## Objectives
-1. [x] **Motion Tokens & Specs (`ThresholdMotion.kt` in `:app`)**:
-   - `OpticalEasing = CubicBezierEasing(0.16f, 1.0f, 0.3f, 1.0f)`.
-   - Durations strictly bounded between `MIN_DURATION_MS = 80` and `MAX_DURATION_MS = 140`.
-   - `SHUTTER_OPEN_DURATION_MS = 100`, `SHUTTER_CLOSE_DURATION_MS = 80`, `RESULT_REVEAL_DURATION_MS = 100`.
-   - `opticalTween()` helper enforcing sensory contract bounds.
-2. [x] **Hairline Shutter Wipe (`ThresholdSearchSurface.kt`)**:
-   - 1dp Hairline divider expansion/reveal transition between ambient home state and active search state.
-   - Decelerating optical reveal for the search text field and results list with `ThresholdMotion.ShutterWipeEnter` / `ShutterWipeExit`.
-   - Rapid 80ms shutter close on back dismissal.
-3. [x] **Result List Ingress & Optical Settling**:
-   - Result list entries settle into view with optical easing using `Modifier.animateItem(...)`.
-4. [x] **Tests & Verification**:
-   - Unit tests in `ThresholdMotionTest` verifying easing parameters, duration boundaries, and guardrails.
-   - Roborazzi host JVM screenshot tests capturing shutter wipe states (`search_shutter_open.png`).
-   - `./gradlew test spotlessCheck` all passed.
-   - Minified release build deployed to connected Pixel 9a (`54241JEBF07233`).
+1. [x] **Phrase Bank Resources (`app/src/main/res/values/strings.xml`)**:
+   - Define `<string-array name="typed_intention_phrases">` with 30 curated phrases.
+   - Support `%s` formatting for dynamic target app name insertion.
+2. [x] **Core Phrase Matching Engine (`:core`)**:
+   - `TypedIntentionSession`:
+     - Case-insensitive letter-by-letter matching.
+     - Lock-tumbler mistyping: returns whether next char was matched, triggers resistance on mismatch.
+     - Sanitizes double-tap space periods (`. `).
+     - Tracks illuminated character count and completion state.
+3. [x] **UI Component (`TypedIntentionSurface.kt` in `:app`)**:
+   - Full-screen `AmoledBlack` with `safeDrawing` and `ime` insets padding.
+   - Dual-tone text: Target phrase in `SubtleGray`, typed prefix in `PureWhite`.
+   - Hidden/seamless `BasicTextField` with autofocus, predictive suggestions/autocorrect disabled (`autoCorrectEnabled = false`).
+   - "Go back" button below phrase, morphs into "Open" with `hapticEngine.targetSnap()` when complete.
+   - Back navigation handling (swiping back dismisses the checkpoint).
+4. [x] **Home Screen Integration (`ThresholdHomeScreen.kt`)**:
+   - When launching an app returns `LaunchResult.FrictionRequired(FrictionPolicy.TypedIntention)`, show the checkpoint.
+   - Tapping "Open" dispatches `appLauncher.launchApp(component)` and dismisses checkpoint.
+   - Temporary test rule for YouTube (`com.google.android.youtube`) in default profile marked as `Guarded(FrictionPolicy.TypedIntention)` with Phase-3 cleanup TODO.
+5. [x] **Tests & Verification**:
+   - Unit tests in `:core` (`TypedIntentionSessionTest`).
+   - UI & Screenshot tests in `:app` (`TypedIntentionSurfaceTest`, Roborazzi snapshot).
+   - `./gradlew test spotlessCheck`.
+   - Release build and install to connected Pixel 9a (`54241JEBF07233`).
    - PR created and assigned to `garanj`.

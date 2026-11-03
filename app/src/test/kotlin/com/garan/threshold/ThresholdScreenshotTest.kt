@@ -12,6 +12,7 @@ import com.garan.threshold.core.model.FrictionPolicy
 import com.garan.threshold.core.search.MatchType
 import com.garan.threshold.core.search.SearchItem
 import com.garan.threshold.core.search.SearchResult
+import com.garan.threshold.ui.friction.TypedIntentionSurface
 import com.garan.threshold.ui.home.ThresholdHomeCanvas
 import com.garan.threshold.ui.search.ThresholdSearchSurface
 import com.garan.threshold.ui.theme.ThresholdTheme
@@ -202,5 +203,20 @@ class ThresholdScreenshotTest {
             }
         }
         verifyAndArchiveSnapshot("search_shutter_open.png")
+    }
+
+    @Test
+    fun snapshotTypedIntentionCheckpoint() {
+        composeTestRule.setContent {
+            ThresholdTheme {
+                TypedIntentionSurface(
+                    appLabel = "YouTube",
+                    overridePhrase = "I need to use YouTube right now",
+                    onConfirmOpen = {},
+                    onDismiss = {},
+                )
+            }
+        }
+        verifyAndArchiveSnapshot("typed_intention_checkpoint.png")
     }
 }
