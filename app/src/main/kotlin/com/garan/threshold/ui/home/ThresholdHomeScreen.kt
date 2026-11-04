@@ -18,6 +18,7 @@ import com.garan.threshold.core.port.HapticEngine
 import com.garan.threshold.core.port.LaunchResult
 import com.garan.threshold.core.port.NoOpHapticEngine
 import com.garan.threshold.core.search.SearchItem
+import com.garan.threshold.ui.friction.CaretTracingSurface
 import com.garan.threshold.ui.friction.DragSortSurface
 import com.garan.threshold.ui.friction.TypedIntentionSurface
 import com.garan.threshold.ui.launcher.AppLauncher
@@ -87,7 +88,26 @@ fun ThresholdHomeScreen(
                     hapticEngine = hapticEngine,
                 )
             }
-            is FrictionPolicy.TypedIntention, is FrictionPolicy.TimedDelay, is FrictionPolicy.SessionBudget -> {
+            is FrictionPolicy.TimedDelay -> {
+                CaretTracingSurface(
+                    totalDurationMs = friction.policy.seconds * 1000L,
+                    onConfirmOpen = {
+                        val launched = appLauncher.launchApp(friction.app.component)
+                        if (launched) {
+                            activeFriction = null
+                            viewModel.dismissSearch()
+                            keyboardController?.hide()
+                            focusManager.clearFocus()
+                            onDismissIme()
+                        }
+                    },
+                    onDismiss = {
+                        activeFriction = null
+                    },
+                    hapticEngine = hapticEngine,
+                )
+            }
+            is FrictionPolicy.TypedIntention, is FrictionPolicy.SessionBudget -> {
                 TypedIntentionSurface(
                     appLabel = friction.app.label,
                     onConfirmOpen = {
@@ -129,6 +149,11 @@ fun ThresholdHomeScreen(
                             }
                             is LaunchResult.FrictionRequired -> {
                                 hapticEngine.resistanceDetent()
+                                if (result.policy !is FrictionPolicy.TypedIntention) {
+                                    keyboardController?.hide()
+                                    focusManager.clearFocus()
+                                    onDismissIme()
+                                }
                                 activeFriction = ActiveFriction(item, result.policy)
                             }
                             is LaunchResult.Blocked -> {

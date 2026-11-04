@@ -29,7 +29,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -37,8 +39,10 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.garan.threshold.R
@@ -135,9 +139,33 @@ fun ThresholdSearchSurface(
                             focusRequester.requestFocus()
                         }
 
+                        var textFieldValueState by remember {
+                            mutableStateOf(
+                                TextFieldValue(
+                                    text = query,
+                                    selection = TextRange(query.length),
+                                ),
+                            )
+                        }
+                        var lastTextValue by remember { mutableStateOf(query) }
+                        if (query != lastTextValue) {
+                            lastTextValue = query
+                            textFieldValueState = TextFieldValue(
+                                text = query,
+                                selection = TextRange(query.length),
+                            )
+                        }
+                        val textFieldValue = textFieldValueState.copy(text = query)
+
                         BasicTextField(
-                            value = query,
-                            onValueChange = onQueryChange,
+                            value = textFieldValue,
+                            onValueChange = { newValue ->
+                                textFieldValueState = newValue
+                                if (newValue.text != lastTextValue) {
+                                    lastTextValue = newValue.text
+                                    onQueryChange(newValue.text)
+                                }
+                            },
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .focusRequester(focusRequester),

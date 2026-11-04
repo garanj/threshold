@@ -15,10 +15,14 @@ import androidx.compose.foundation.gestures.drag
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.foundation.layout.systemBars
+import androidx.compose.foundation.layout.union
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -102,11 +106,13 @@ fun DragSortSurface(
     val activePainters = GLYPH_DRAWABLES.map { painterResource(id = it) }
     var isComplete by remember { mutableStateOf(false) }
 
+    val effectiveSeed = remember(seed) { seed ?: Random.Default.nextLong() }
+
     Column(
         modifier = modifier
             .fillMaxSize()
             .background(AmoledBlack)
-            .safeDrawingPadding()
+            .windowInsetsPadding(WindowInsets.systemBars.union(WindowInsets.displayCutout))
             .testTag("drag_sort_surface"),
     ) {
         BoxWithConstraints(
@@ -127,8 +133,8 @@ fun DragSortSurface(
             val normalDrawSize = remember(iconSizePx) { Size(iconSizePx, iconSizePx) }
             val activeDrawSize = remember(activeIconSizePx) { Size(activeIconSizePx, activeIconSizePx) }
 
-            val session = remember(widthPx, heightPx, pairCount, seed) {
-                val random = if (seed != null) Random(seed) else Random.Default
+            val session = remember(widthPx, heightPx, pairCount, effectiveSeed) {
+                val random = Random(effectiveSeed)
                 val pairs = DragSortSession.generateLayout(
                     pairCount = pairCount,
                     containerWidth = widthPx,
