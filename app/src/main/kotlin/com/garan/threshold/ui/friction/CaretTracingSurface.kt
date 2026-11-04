@@ -96,7 +96,7 @@ fun CaretTracingSurface(
     var isComplete by remember { mutableStateOf(false) }
 
     val density = LocalDensity.current
-    val strokeWidthPx = remember(density) { with(density) { 3.5.dp.toPx() } }
+    val strokeWidthPx = remember(density) { with(density) { 14.dp.toPx() } }
     val stroke = remember(strokeWidthPx) {
         Stroke(width = strokeWidthPx, cap = StrokeCap.Round, join = StrokeJoin.Round)
     }
@@ -164,7 +164,7 @@ fun CaretTracingSurface(
         ) {
             Canvas(
                 modifier = Modifier
-                    .size(160.dp)
+                    .size(180.dp)
                     .testTag("caret_tracing_canvas"),
             ) {
                 val progress = totalProgress.value
