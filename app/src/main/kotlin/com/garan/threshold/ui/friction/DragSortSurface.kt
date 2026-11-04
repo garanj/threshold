@@ -97,7 +97,9 @@ fun DragSortSurface(
 
     val currentHapticEngine by rememberUpdatedState(hapticEngine)
     val coroutineScope = rememberCoroutineScope()
-    val glyphPainters = GLYPH_DRAWABLES.map { painterResource(id = it) }
+    val targetPainters = GLYPH_DRAWABLES.map { painterResource(id = it) }
+    val draggablePainters = GLYPH_DRAWABLES.map { painterResource(id = it) }
+    val activePainters = GLYPH_DRAWABLES.map { painterResource(id = it) }
     var isComplete by remember { mutableStateOf(false) }
 
     Column(
@@ -253,10 +255,10 @@ fun DragSortSurface(
                 val halfIconPx = iconSizePx * 0.5f
                 val halfActiveIconPx = activeIconSizePx * 0.5f
 
-                // 1. Fixed Target Silhouettes (Grey)
+                // 1. Fixed Target Silhouettes (Grey, isolated painter to prevent draw-size cross-talk)
                 for (pair in session.pairs) {
                     if (pair.id in unmatchedIds) {
-                        val painter = glyphPainters[pair.id % glyphPainters.size]
+                        val painter = targetPainters[pair.id % targetPainters.size]
                         translate(
                             left = pair.targetPosition.x - halfIconPx,
                             top = pair.targetPosition.y - halfIconPx,
@@ -273,7 +275,7 @@ fun DragSortSurface(
                     val id = pair.id
                     if (id in unmatchedIds && id != activeDragId) {
                         val pos = currentPositions[id]
-                        val painter = glyphPainters[id % glyphPainters.size]
+                        val painter = draggablePainters[id % draggablePainters.size]
                         translate(
                             left = pos.x - halfIconPx,
                             top = pos.y - halfIconPx,
@@ -285,11 +287,11 @@ fun DragSortSurface(
                     }
                 }
 
-                // 3. Actively Dragged Foreground Glyph (White, drawn on top in Z-order)
+                // 3. Actively Dragged Foreground Glyph (White, drawn on top in Z-order with dedicated active painter)
                 val activeId = activeDragId
                 if (activeId != null && activeId in unmatchedIds) {
                     val pos = currentPositions[activeId]
-                    val painter = glyphPainters[activeId % glyphPainters.size]
+                    val painter = activePainters[activeId % activePainters.size]
                     translate(
                         left = pos.x - halfActiveIconPx,
                         top = pos.y - halfActiveIconPx,
