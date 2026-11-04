@@ -28,6 +28,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.MotionDurationScale
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
@@ -45,9 +46,19 @@ import com.garan.threshold.ui.motion.ThresholdMotion
 import com.garan.threshold.ui.theme.AmoledBlack
 import com.garan.threshold.ui.theme.PureWhite
 import com.garan.threshold.ui.theme.SubtleGray
+import kotlinx.coroutines.withContext
 
 private val CARET_DARK_GREY = Color(0xFF404040)
 private const val CARET_ASPECT_RATIO = 1.515f
+
+/**
+ * Enforces a 1.0x time scale for intentional friction delays so that system-level
+ * `animator_duration_scale = 0.0` (e.g. Battery Saver or Accessibility "Remove animations")
+ * cannot bypass or fast-forward the 10-second checkpoint gate.
+ */
+private object UnscaledMotionDurationScale : MotionDurationScale {
+    override val scaleFactor: Float get() = 1f
+}
 
 /**
  * Full-screen meditative Caret Tracing friction checkpoint.
@@ -79,9 +90,8 @@ fun CaretTracingSurface(
 
     val currentHapticEngine by rememberUpdatedState(hapticEngine)
 
-    val pass1Progress = remember { Animatable(0f) }
-    val pass2Progress = remember { Animatable(0f) }
-    val pass3Progress = remember { Animatable(0f) }
+    // Continuous progress from 0f to 3f across the 3 passes (0..1 = Pass 1, 1..2 = Pass 2, 2..3 = Pass 3)
+    val totalProgress = remember { Animatable(0f) }
 
     var isComplete by remember { mutableStateOf(false) }
 
@@ -92,48 +102,51 @@ fun CaretTracingSurface(
     }
     val caretWidthPx = remember(density) { with(density) { 140.dp.toPx() } }
     val caretHeightPx = remember(caretWidthPx) { caretWidthPx / CARET_ASPECT_RATIO }
-    val reusablePath = remember { Path() }
+    val pass1Path = remember { Path() }
+    val pass2Path = remember { Path() }
+    val pass3Path = remember { Path() }
 
     LaunchedEffect(totalDurationMs) {
-        val halfPassDurationMs = (totalDurationMs / 6).toInt()
+        withContext(UnscaledMotionDurationScale) {
+            isComplete = false
+            totalProgress.snapTo(0f)
 
-        // Pass 1: Forward left-to-right (Dark Grey)
-        pass1Progress.animateTo(
-            targetValue = 0.5f,
-            animationSpec = tween(durationMillis = halfPassDurationMs, easing = LinearEasing),
-        )
-        currentHapticEngine.rotaryDetent()
-        pass1Progress.animateTo(
-            targetValue = 1.0f,
-            animationSpec = tween(durationMillis = halfPassDurationMs, easing = LinearEasing),
-        )
-        currentHapticEngine.targetSnap()
+            var firedPass1Apex = false
+            var firedPass1End = false
+            var firedPass2Apex = false
+            var firedPass2End = false
+            var firedPass3Apex = false
 
-        // Pass 2: Reverse right-to-left (Mid Grey)
-        pass2Progress.animateTo(
-            targetValue = 0.5f,
-            animationSpec = tween(durationMillis = halfPassDurationMs, easing = LinearEasing),
-        )
-        currentHapticEngine.rotaryDetent()
-        pass2Progress.animateTo(
-            targetValue = 1.0f,
-            animationSpec = tween(durationMillis = halfPassDurationMs, easing = LinearEasing),
-        )
-        currentHapticEngine.targetSnap()
+            totalProgress.animateTo(
+                targetValue = 3f,
+                animationSpec = tween(durationMillis = totalDurationMs.toInt(), easing = LinearEasing),
+            ) {
+                val v = value
+                if (!firedPass1Apex && v >= 0.5f) {
+                    firedPass1Apex = true
+                    currentHapticEngine.rotaryDetent()
+                }
+                if (!firedPass1End && v >= 1.0f) {
+                    firedPass1End = true
+                    currentHapticEngine.targetSnap()
+                }
+                if (!firedPass2Apex && v >= 1.5f) {
+                    firedPass2Apex = true
+                    currentHapticEngine.rotaryDetent()
+                }
+                if (!firedPass2End && v >= 2.0f) {
+                    firedPass2End = true
+                    currentHapticEngine.targetSnap()
+                }
+                if (!firedPass3Apex && v >= 2.5f) {
+                    firedPass3Apex = true
+                    currentHapticEngine.rotaryDetent()
+                }
+            }
 
-        // Pass 3: Forward left-to-right (Pure White)
-        pass3Progress.animateTo(
-            targetValue = 0.5f,
-            animationSpec = tween(durationMillis = halfPassDurationMs, easing = LinearEasing),
-        )
-        currentHapticEngine.rotaryDetent()
-        pass3Progress.animateTo(
-            targetValue = 1.0f,
-            animationSpec = tween(durationMillis = halfPassDurationMs, easing = LinearEasing),
-        )
-        currentHapticEngine.relaySnap()
-
-        isComplete = true
+            currentHapticEngine.relaySnap()
+            isComplete = true
+        }
     }
 
     Column(
@@ -154,9 +167,10 @@ fun CaretTracingSurface(
                     .size(160.dp)
                     .testTag("caret_tracing_canvas"),
             ) {
-                val p1 = pass1Progress.value
-                val p2 = pass2Progress.value
-                val p3 = pass3Progress.value
+                val progress = totalProgress.value
+                val p1 = progress.coerceIn(0f, 1f)
+                val p2 = (progress - 1f).coerceIn(0f, 1f)
+                val p3 = (progress - 2f).coerceIn(0f, 1f)
 
                 val centerX = size.width / 2f
                 val centerY = size.height / 2f
@@ -182,32 +196,32 @@ fun CaretTracingSurface(
                     }
                 }
 
-                fun drawSegment(startFrac: Float, endFrac: Float, color: Color) {
+                fun drawSegment(targetPath: Path, startFrac: Float, endFrac: Float, color: Color) {
                     if (endFrac <= startFrac) return
-                    reusablePath.reset()
+                    targetPath.reset()
                     val pStart = getPoint(startFrac)
-                    reusablePath.moveTo(pStart.x, pStart.y)
+                    targetPath.moveTo(pStart.x, pStart.y)
                     if (startFrac < 0.5f && endFrac > 0.5f) {
-                        reusablePath.lineTo(centerX, top)
+                        targetPath.lineTo(centerX, top)
                     }
                     val pEnd = getPoint(endFrac)
-                    reusablePath.lineTo(pEnd.x, pEnd.y)
-                    drawPath(reusablePath, color = color, style = stroke)
+                    targetPath.lineTo(pEnd.x, pEnd.y)
+                    drawPath(targetPath, color = color, style = stroke)
                 }
 
                 // Pass 1: Dark Grey
                 if (p1 > 0f) {
-                    drawSegment(0f, p1, CARET_DARK_GREY)
+                    drawSegment(pass1Path, 0f, p1, CARET_DARK_GREY)
                 }
 
                 // Pass 2: Mid Grey (Additive reverse: right-to-left covering (1 - p2) to 1)
                 if (p2 > 0f) {
-                    drawSegment(1f - p2, 1f, SubtleGray)
+                    drawSegment(pass2Path, 1f - p2, 1f, SubtleGray)
                 }
 
                 // Pass 3: Pure White (Additive forward: 0 to p3)
                 if (p3 > 0f) {
-                    drawSegment(0f, p3, PureWhite)
+                    drawSegment(pass3Path, 0f, p3, PureWhite)
                 }
             }
         }

@@ -1,5 +1,6 @@
 package com.garan.threshold.ui.friction
 
+import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
@@ -71,32 +72,34 @@ class CaretTracingSurfaceTest {
         }
 
         composeTestRule.waitForIdle()
+        // Latch the animation start time on the first frame
+        composeTestRule.mainClock.advanceTimeByFrame()
 
-        // Pass 1: Apex at ~100ms
-        composeTestRule.mainClock.advanceTimeBy(120L)
+        // Pass 1: Apex at 100ms (playTime = 112ms)
+        composeTestRule.mainClock.advanceTimeBy(112L)
         assertThat(haptic.rotaryDetentCount).isEqualTo(1)
         assertThat(haptic.targetSnapCount).isEqualTo(0)
         assertThat(haptic.relaySnapCount).isEqualTo(0)
 
-        // Pass 1: Complete at ~200ms
-        composeTestRule.mainClock.advanceTimeBy(120L)
+        // Pass 1: Complete at 200ms (playTime = 208ms)
+        composeTestRule.mainClock.advanceTimeBy(96L)
         assertThat(haptic.rotaryDetentCount).isEqualTo(1)
         assertThat(haptic.targetSnapCount).isEqualTo(1)
 
-        // Pass 2: Apex at ~300ms
-        composeTestRule.mainClock.advanceTimeBy(120L)
+        // Pass 2: Apex at 300ms (playTime = 304ms)
+        composeTestRule.mainClock.advanceTimeBy(96L)
         assertThat(haptic.rotaryDetentCount).isEqualTo(2)
 
-        // Pass 2: Complete at ~400ms
-        composeTestRule.mainClock.advanceTimeBy(120L)
+        // Pass 2: Complete at 400ms (playTime = 400ms)
+        composeTestRule.mainClock.advanceTimeBy(96L)
         assertThat(haptic.targetSnapCount).isEqualTo(2)
 
-        // Pass 3: Apex at ~500ms
-        composeTestRule.mainClock.advanceTimeBy(120L)
+        // Pass 3: Apex at 500ms (playTime = 512ms)
+        composeTestRule.mainClock.advanceTimeBy(112L)
         assertThat(haptic.rotaryDetentCount).isEqualTo(3)
 
-        // Pass 3: Complete at ~600ms
-        composeTestRule.mainClock.advanceTimeBy(120L)
+        // Pass 3: Complete at 600ms (playTime = 608ms)
+        composeTestRule.mainClock.advanceTimeBy(96L)
         assertThat(haptic.relaySnapCount).isEqualTo(1)
 
         // "Open" action button is revealed and active
@@ -126,6 +129,40 @@ class CaretTracingSurfaceTest {
         }
 
         assertThat(dismissed).isTrue()
+    }
+
+    @Test
+    fun systemAnimatorDurationScaleZero_doesNotBypassFrictionDelay() {
+        val haptic = TestHapticEngine()
+        composeTestRule.mainClock.autoAdvance = false
+
+        val contentResolver = composeTestRule.activity.contentResolver
+        try {
+            Settings.Global.putFloat(contentResolver, Settings.Global.ANIMATOR_DURATION_SCALE, 0f)
+
+            composeTestRule.setContent {
+                ThresholdTheme {
+                    CaretTracingSurface(
+                        onConfirmOpen = {},
+                        onDismiss = {},
+                        hapticEngine = haptic,
+                        totalDurationMs = 600L,
+                    )
+                }
+            }
+
+            // Advance a single frame: with UnscaledMotionDurationScale, it must NOT jump to Open
+            composeTestRule.mainClock.advanceTimeBy(32L)
+            composeTestRule.onNodeWithText("Go back").assertIsDisplayed()
+            assertThat(haptic.relaySnapCount).isEqualTo(0)
+
+            // Only after advancing the full duration does it complete
+            composeTestRule.mainClock.advanceTimeBy(700L)
+            assertThat(haptic.relaySnapCount).isEqualTo(1)
+            composeTestRule.onNodeWithText("Open").assertIsDisplayed()
+        } finally {
+            Settings.Global.putFloat(contentResolver, Settings.Global.ANIMATOR_DURATION_SCALE, 1f)
+        }
     }
 
     private class TestHapticEngine : HapticEngine {
