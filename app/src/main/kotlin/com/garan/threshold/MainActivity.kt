@@ -43,14 +43,19 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
-        // Temporary test rule: YouTube is Guarded under DragSort friction for Phase 2 Task 2.3 verification
-        // TODO(Phase-3): Remove temporary hardcoded YouTube rule when Room profile persistence is introduced
+        // Temporary test rules for Phase 2 Task 2.3 verification
+        // Chrome -> TimedDelay (Caret Tracing 10s), YouTube -> DragSort (6 pairs)
+        // TODO(Phase-3): Remove temporary hardcoded rules when Room profile persistence is introduced
         val youtubeRule = com.garan.threshold.core.model.ComponentKey("com.google.android.youtube", "*")
+        val chromeRule = com.garan.threshold.core.model.ComponentKey("com.android.chrome", "*")
         val defaultProfile = com.garan.threshold.core.model.Profile(
             id = "ambient",
             name = "Ambient",
             defaultAccess = com.garan.threshold.core.model.AppAccessState.Direct,
             appRules = mapOf(
+                chromeRule to com.garan.threshold.core.model.AppAccessState.Guarded(
+                    com.garan.threshold.core.model.FrictionPolicy.TimedDelay(10),
+                ),
                 youtubeRule to com.garan.threshold.core.model.AppAccessState.Guarded(
                     com.garan.threshold.core.model.FrictionPolicy.DragSort(6),
                 ),
