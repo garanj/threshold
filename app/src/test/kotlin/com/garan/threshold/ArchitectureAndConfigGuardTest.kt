@@ -60,4 +60,30 @@ class ArchitectureAndConfigGuardTest {
         assertThat(content).contains("roborazzi.test.verify")
         assertThat(content).contains("compose_stability.conf")
     }
+
+    @Test
+    fun manifest_configuresAdaptiveLauncherIconsAndStringLabel() {
+        val manifestFile = File(rootDir, "app/src/main/AndroidManifest.xml")
+        assertThat(manifestFile.exists()).isTrue()
+        val manifest = manifestFile.readText()
+        assertThat(manifest).contains("""android:icon="@mipmap/ic_launcher"""")
+        assertThat(manifest).contains("""android:roundIcon="@mipmap/ic_launcher_round"""")
+        assertThat(manifest).contains("""android:label="@string/app_name"""")
+
+        val mipmapAnyDpi = File(rootDir, "app/src/main/res/mipmap-anydpi-v26")
+        assertThat(File(mipmapAnyDpi, "ic_launcher.xml").exists()).isTrue()
+        assertThat(File(mipmapAnyDpi, "ic_launcher_round.xml").exists()).isTrue()
+
+        val drawableDir = File(rootDir, "app/src/main/res/drawable")
+        assertThat(File(drawableDir, "ic_launcher_background.xml").exists()).isTrue()
+        assertThat(File(drawableDir, "ic_launcher_foreground.xml").exists()).isTrue()
+        assertThat(File(drawableDir, "ic_launcher_monochrome.xml").exists()).isTrue()
+        assertThat(File(drawableDir, "ic_threshold_caret.xml").exists()).isTrue()
+
+        listOf("mdpi", "hdpi", "xhdpi", "xxhdpi", "xxxhdpi").forEach { density ->
+            val dir = File(rootDir, "app/src/main/res/mipmap-$density")
+            assertThat(File(dir, "ic_launcher.png").exists()).isTrue()
+            assertThat(File(dir, "ic_launcher_round.png").exists()).isTrue()
+        }
+    }
 }
