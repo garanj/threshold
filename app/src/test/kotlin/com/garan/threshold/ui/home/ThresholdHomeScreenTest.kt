@@ -2,15 +2,18 @@ package com.garan.threshold.ui.home
 
 import android.content.Intent
 import androidx.activity.ComponentActivity
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.longClick
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performImeAction
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.text.TextRange
 import com.garan.threshold.MainActivity
 import com.garan.threshold.core.model.AppAccessState
 import com.garan.threshold.core.model.ComponentKey
@@ -321,6 +324,63 @@ class ThresholdHomeScreenTest {
             assertThat(activity.searchViewModel.uiState.value.query).isEmpty()
             assertThat(activity.searchViewModel.uiState.value.isSearching).isFalse()
         }
+    }
+
+    @Test
+    fun guardedApp_dismissingFrictionScreen_placesSearchCursorAtEndOfQuery() {
+        val youtubeComponent = ComponentKey("com.google.android.youtube", "com.google.android.youtube.HomeActivity", 0L)
+        val guardedSource = FakePackageIndexSource(
+            initialApps = listOf(InstalledApp(youtubeComponent, "YouTube")),
+        )
+        val profile = Profile(
+            id = "ambient",
+            name = "Ambient",
+            defaultAccess = AppAccessState.Direct,
+            appRules = mapOf(
+                youtubeComponent to AppAccessState.Guarded(FrictionPolicy.DragSort(6)),
+            ),
+        )
+        val viewModel = SearchViewModel(
+            packageIndexSource = guardedSource,
+            initialProfile = profile,
+        )
+        val launcher = FakeAppLauncher()
+
+        composeTestRule.setContent {
+            ThresholdTheme {
+                ThresholdHomeScreen(
+                    viewModel = viewModel,
+                    appLauncher = launcher,
+                )
+            }
+        }
+
+        // 1. Activate search and type "You"
+        composeTestRule.onNodeWithText("Type to launch...").performClick()
+        composeTestRule.waitForIdle()
+        composeTestRule.onNode(hasSetTextAction()).performTextInput("You")
+        composeTestRule.waitForIdle()
+
+        // 2. Tap YouTube -> navigates to DragSortSurface
+        composeTestRule.onNodeWithText("YouTube").performClick()
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithTag("drag_sort_surface").assertIsDisplayed()
+
+        // 3. Swipe back (system back) to return to search
+        composeTestRule.activityRule.scenario.onActivity { activity ->
+            activity.onBackPressedDispatcher.onBackPressed()
+        }
+        composeTestRule.waitForIdle()
+
+        // 4. Verify search field is restored with cursor at the END of "You" (index 3), not index 0
+        val textFieldNode = composeTestRule.onNode(hasSetTextAction()).fetchSemanticsNode()
+        val selection = textFieldNode.config[SemanticsProperties.TextSelectionRange]
+        assertThat(selection).isEqualTo(TextRange(3, 3))
+
+        // Typing "Tube" appends to "You" -> "YouTube" (instead of prepending "TubeYou")
+        composeTestRule.onNode(hasSetTextAction()).performTextInput("Tube")
+        composeTestRule.waitForIdle()
+        assertThat(viewModel.uiState.value.query).isEqualTo("YouTube")
     }
 
     private class TestHapticEngine : HapticEngine {

@@ -149,6 +149,11 @@ fun ThresholdHomeScreen(
                             }
                             is LaunchResult.FrictionRequired -> {
                                 hapticEngine.resistanceDetent()
+                                if (result.policy !is FrictionPolicy.TypedIntention) {
+                                    keyboardController?.hide()
+                                    focusManager.clearFocus()
+                                    onDismissIme()
+                                }
                                 activeFriction = ActiveFriction(item, result.policy)
                             }
                             is LaunchResult.Blocked -> {
