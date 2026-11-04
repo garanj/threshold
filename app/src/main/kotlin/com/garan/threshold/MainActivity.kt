@@ -43,7 +43,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
-        // Temporary test rule: YouTube is Guarded under TypedIntention friction for Phase 2 Task 2.3 verification
+        // Temporary test rule: YouTube is Guarded under DragSort friction for Phase 2 Task 2.3 verification
         // TODO(Phase-3): Remove temporary hardcoded YouTube rule when Room profile persistence is introduced
         val youtubeRule = com.garan.threshold.core.model.ComponentKey("com.google.android.youtube", "*")
         val defaultProfile = com.garan.threshold.core.model.Profile(
@@ -52,7 +52,7 @@ class MainActivity : ComponentActivity() {
             defaultAccess = com.garan.threshold.core.model.AppAccessState.Direct,
             appRules = mapOf(
                 youtubeRule to com.garan.threshold.core.model.AppAccessState.Guarded(
-                    com.garan.threshold.core.model.FrictionPolicy.TypedIntention,
+                    com.garan.threshold.core.model.FrictionPolicy.DragSort(6),
                 ),
             ),
         )

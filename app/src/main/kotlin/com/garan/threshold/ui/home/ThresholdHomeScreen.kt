@@ -13,14 +13,18 @@ import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.garan.threshold.core.model.FrictionPolicy
 import com.garan.threshold.core.port.HapticEngine
 import com.garan.threshold.core.port.LaunchResult
 import com.garan.threshold.core.port.NoOpHapticEngine
 import com.garan.threshold.core.search.SearchItem
+import com.garan.threshold.ui.friction.DragSortSurface
 import com.garan.threshold.ui.friction.TypedIntentionSurface
 import com.garan.threshold.ui.launcher.AppLauncher
 import com.garan.threshold.ui.search.SearchViewModel
 import com.garan.threshold.ui.search.ThresholdSearchSurface
+
+private data class ActiveFriction(val app: SearchItem.App, val policy: FrictionPolicy)
 
 /**
  * Top-level home screen for Threshold.
@@ -44,12 +48,12 @@ fun ThresholdHomeScreen(
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
 
-    var activeFrictionTarget by remember { mutableStateOf<SearchItem.App?>(null) }
+    var activeFriction by remember { mutableStateOf<ActiveFriction?>(null) }
     val inSearch = uiState.isSearching || uiState.query.isNotEmpty()
 
     BackHandler(enabled = true) {
-        if (activeFrictionTarget != null) {
-            activeFrictionTarget = null
+        if (activeFriction != null) {
+            activeFriction = null
         } else if (inSearch) {
             viewModel.dismissSearch()
             keyboardController?.hide()
@@ -61,25 +65,48 @@ fun ThresholdHomeScreen(
         }
     }
 
-    val frictionTarget = activeFrictionTarget
-    if (frictionTarget != null) {
-        TypedIntentionSurface(
-            appLabel = frictionTarget.label,
-            onConfirmOpen = {
-                val launched = appLauncher.launchApp(frictionTarget.component)
-                if (launched) {
-                    activeFrictionTarget = null
-                    viewModel.dismissSearch()
-                    keyboardController?.hide()
-                    focusManager.clearFocus()
-                    onDismissIme()
-                }
-            },
-            onDismiss = {
-                activeFrictionTarget = null
-            },
-            hapticEngine = hapticEngine,
-        )
+    val friction = activeFriction
+    if (friction != null) {
+        when (friction.policy) {
+            is FrictionPolicy.DragSort -> {
+                DragSortSurface(
+                    pairCount = friction.policy.pairCount,
+                    onConfirmOpen = {
+                        val launched = appLauncher.launchApp(friction.app.component)
+                        if (launched) {
+                            activeFriction = null
+                            viewModel.dismissSearch()
+                            keyboardController?.hide()
+                            focusManager.clearFocus()
+                            onDismissIme()
+                        }
+                    },
+                    onDismiss = {
+                        activeFriction = null
+                    },
+                    hapticEngine = hapticEngine,
+                )
+            }
+            is FrictionPolicy.TypedIntention, is FrictionPolicy.TimedDelay, is FrictionPolicy.SessionBudget -> {
+                TypedIntentionSurface(
+                    appLabel = friction.app.label,
+                    onConfirmOpen = {
+                        val launched = appLauncher.launchApp(friction.app.component)
+                        if (launched) {
+                            activeFriction = null
+                            viewModel.dismissSearch()
+                            keyboardController?.hide()
+                            focusManager.clearFocus()
+                            onDismissIme()
+                        }
+                    },
+                    onDismiss = {
+                        activeFriction = null
+                    },
+                    hapticEngine = hapticEngine,
+                )
+            }
+        }
     } else {
         ThresholdHomeCanvas(modifier = modifier) {
             Spacer(modifier = Modifier.height(24.dp))
@@ -90,7 +117,7 @@ fun ThresholdHomeScreen(
                 results = uiState.results,
                 onItemClick = { item ->
                     if (item is SearchItem.App) {
-                        when (viewModel.evaluateLaunch(item)) {
+                        when (val result = viewModel.evaluateLaunch(item)) {
                             is LaunchResult.Launched -> {
                                 val launched = appLauncher.launchApp(item.component)
                                 if (launched) {
@@ -102,7 +129,7 @@ fun ThresholdHomeScreen(
                             }
                             is LaunchResult.FrictionRequired -> {
                                 hapticEngine.resistanceDetent()
-                                activeFrictionTarget = item
+                                activeFriction = ActiveFriction(item, result.policy)
                             }
                             is LaunchResult.Blocked -> {
                                 hapticEngine.resistanceDetent()

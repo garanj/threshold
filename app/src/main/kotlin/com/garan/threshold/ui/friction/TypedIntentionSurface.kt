@@ -37,6 +37,7 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.buildAnnotatedString
@@ -137,7 +138,7 @@ fun TypedIntentionSurface(
             verticalArrangement = Arrangement.Center,
         ) {
             Text(
-                text = "TYPED INTENTION",
+                text = stringResource(R.string.friction_typed_intention_header),
                 style = headerStyle,
                 color = SubtleGray,
             )
@@ -176,7 +177,7 @@ fun TypedIntentionSurface(
                 label = "ActionButtonTransition",
             ) { complete ->
                 Text(
-                    text = if (complete) "Open" else "Go back",
+                    text = stringResource(if (complete) R.string.action_open else R.string.action_go_back),
                     style = MaterialTheme.typography.titleMedium,
                     color = if (complete) PureWhite else SubtleGray,
                     modifier = Modifier

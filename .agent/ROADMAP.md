@@ -47,9 +47,10 @@
   - 120Hz decelerating optical curves (`cubic-bezier(0.16, 1, 0.3, 1)`), 80ms–140ms durations.
   - Hairline Shutter Wipe transition (1dp rule).
 - [ ] **Task 2.3: Intentional Friction Checkpoints**
-  - Typed intention check (4-word sentence confirmation).
-  - Pre-session budgeting (5m | 15m | Unlimited).
-  - Visual app decay (contrast fading after 7 days idle).
+  - [x] Typed intention check (30 curated phrases, case-insensitive illumination, lock-tumbler resistance) (#35).
+  - [x] Drag-to-match icon sorting check (6 monochrome glyph pairs, unified Canvas, 120Hz zero-allocation translation, optical snap-back) (#37).
+  - [ ] Third friction checkpoint (user to describe spec next session).
+  - *(Note: Pre-session budgeting deferred to DeviceOwner mode; Visual app decay discarded by design decision).*
 - [ ] **Task 2.4: Dual-Flank Fast Capture**
   - Left Swipe: Minimal Action Ledger (zero-latency checklist, haptic toggle, strikethrough at 30% luminance, horizontal swipe dismissal).
   - Right Swipe: Borderless Ephemeral Scratchpad (autofocus plain text writing surface, auto-persisted, haptic clear).

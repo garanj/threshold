@@ -219,4 +219,19 @@ class ThresholdScreenshotTest {
         }
         verifyAndArchiveSnapshot("typed_intention_checkpoint.png")
     }
+
+    @Test
+    fun snapshotDragSortCheckpoint() {
+        composeTestRule.setContent {
+            ThresholdTheme {
+                com.garan.threshold.ui.friction.DragSortSurface(
+                    pairCount = 6,
+                    seed = 42L,
+                    onConfirmOpen = {},
+                    onDismiss = {},
+                )
+            }
+        }
+        verifyAndArchiveSnapshot("drag_sort_checkpoint.png")
+    }
 }
