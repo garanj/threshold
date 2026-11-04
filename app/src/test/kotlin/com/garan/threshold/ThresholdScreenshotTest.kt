@@ -234,4 +234,18 @@ class ThresholdScreenshotTest {
         }
         verifyAndArchiveSnapshot("drag_sort_checkpoint.png")
     }
+
+    @Test
+    fun snapshotCaretTracingCheckpoint() {
+        composeTestRule.mainClock.autoAdvance = false
+        composeTestRule.setContent {
+            ThresholdTheme {
+                com.garan.threshold.ui.friction.CaretTracingSurface(
+                    onConfirmOpen = {},
+                    onDismiss = {},
+                )
+            }
+        }
+        verifyAndArchiveSnapshot("caret_tracing_checkpoint.png")
+    }
 }
