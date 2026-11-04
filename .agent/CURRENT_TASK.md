@@ -1,56 +1,21 @@
-# Active Task: Drag-to-Match Icon Sorting Checkpoint (`:core`, `:app`)
+# Active Task: Fix VectorPainter DrawCache Clipping in Drag-to-Match Checkpoint
 
-- **Issue:** [#37 feat(friction): implement drag-to-match icon sorting checkpoint](https://github.com/garanj/threshold/issues/37)
+- **Issue:** [#39 fix(friction): isolate VectorPainter instances to prevent DrawCache scaling corruption in drag-sort](https://github.com/garanj/threshold/issues/39)
 - **Milestone:** Phase 2: Sensory Mechanics & Friction Engine (Task 2.3)
-- **Status:** Complete (Ready for Review)
-- **Branch:** `feat/37-drag-sort-checkpoint`
+- **Status:** In Progress
+- **Branch:** `fix/39-vector-painter-clipping`
 
 ---
 
 ## Objectives
-1. [x] **Core Friction Domain (`:core`)**:
-   - Add `FrictionPolicy.DragSort` to `com.garan.threshold.core.model.FrictionPolicy`.
-   - `DragSortSession`:
-     - Models 6 glyph pairs with spatial coordinates.
-     - Generator / Layout algorithm ensuring:
-       - Bounds within available container (width, height, icon size, padding).
-       - No overlap between any of the 12 positions (pairwise distance >= min item spacing).
-       - Pair separation: distance between a draggable icon and its corresponding target >= separation threshold (e.g. 0.45 * height).
-     - Drag handling: pickup, drag offset tracking, drop validation with 24 dp tolerance.
-     - Pair resolution: matched items removed; failed drops signal snap-back.
-     - Pure Kotlin, zero `android.*` imports.
-     - Unit tests in `DragSortSessionTest`.
-2. [x] **Minimalist Vector Glyphs (`:app`)**:
-   - 6 clean vector drawables in `app/src/main/res/drawable/`:
-     - `ic_glyph_hexagon.xml`
-     - `ic_glyph_diamond.xml`
-     - `ic_glyph_triangle.xml`
-     - `ic_glyph_cross.xml`
-     - `ic_glyph_circle.xml`
-     - `ic_glyph_star.xml`
-3. [x] **UI Component (`DragSortSurface.kt` in `:app`)**:
-   - Full-screen `AmoledBlack` with `safeDrawingPadding`.
-   - Fixed grey targets in background.
-   - Draggable white icons in foreground with elevated z-index on drag.
-   - Zero-allocation 120Hz drag translation using `Modifier.offset { IntOffset(...) }`.
-   - On drop match: `relaySnap()`, pair dissolves.
-   - On drop mismatch: 120ms decelerating snap-back to start position + `resistanceDetent()`.
-   - Bottom button: "Go back" morphs to "Open" with `targetSnap()` when all 6 pairs matched.
-   - Swiping or pressing back dismisses the checkpoint.
-4. [x] **Integration & Testing**:
-   - Route `LaunchResult.FrictionRequired(FrictionPolicy.DragSort)` in `ThresholdHomeScreen.kt`.
-   - Set YouTube (`com.google.android.youtube`) to `Guarded(FrictionPolicy.DragSort)` in `MainActivity.kt` for testing.
-   - Compose unit tests and Roborazzi golden screenshot.
-   - `./gradlew test spotlessCheck`.
-   - Release build and install to connected Pixel 9a (`54241JEBF07233`).
-   - Open PR and assign to `garanj`.
-
----
-
-## Handoff & Next Steps
-- **PR #38**: [feat(friction): implement drag-to-match icon sorting checkpoint (#37)](https://github.com/garanj/threshold/pull/38) is awaiting review and merge by `garanj`.
-- **Next Session**: User has one more checkpoint to share specifications for tomorrow to complete Task 2.3.
-- **Decisions Log**:
-  - Pre-session budgeting: Deferred to Phase 4 / DeviceOwner mode.
-  - App decay mode: Discarded per user decision.
-
+1. [x] **Investigate Root Cause**:
+   - `DragSortSurface` shared a single list of `VectorPainter` instances (`glyphPainters`) across target silhouettes (`normalDrawSize = 40.dp`) and active dragged glyphs (`activeDrawSize = 46.dp`).
+   - Compose's `VectorPainter` wraps a mutable `VectorComponent` and `DrawCache` that caches root scaling and rasterized bitmap layers.
+   - When a glyph is actively dragged, the painter scales to 46.dp. When drawing the target silhouette at `normalDrawSize` (40.dp), the painter draws the 46.dp-scaled circle into a 40.dp `DrawScope` boundary, cutting off the bottom 2.17dp horizontally.
+2. [ ] **Isolate Painter Instances**:
+   - Provide distinct `targetPainters`, `draggablePainters`, and `activeDragPainters` in `DragSortSurface.kt`.
+   - Ensure target silhouettes are strictly isolated and never contaminated by active drag dimensions.
+3. [ ] **Verification**:
+   - Verify all unit and screenshot tests pass (`./gradlew test`).
+   - Verify memory allocations remain within budget (< 35 MB).
+   - Create PR assigned to `garanj`.
