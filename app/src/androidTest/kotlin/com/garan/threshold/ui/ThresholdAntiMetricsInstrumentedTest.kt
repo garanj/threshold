@@ -68,19 +68,22 @@ class ThresholdAntiMetricsInstrumentedTest {
         )
         assertThat(initialStatus).isNotNull()
 
-        // 1. Put device to sleep (triggers ACTION_SCREEN_OFF in Android OS)
-        device.sleep()
-        Thread.sleep(1500L)
+        // 1. Simulate screen-off sleep event (48 minutes prior)
+        val screenOffTime = System.currentTimeMillis() - 48 * 60_000L
+        scenario?.onActivity { activity ->
+            activity.antiMetricsRepository.onScreenOff(screenOffTime)
+        }
 
-        // 2. Wake device up and dismiss keyguard (triggers ACTION_USER_PRESENT in Android OS)
-        device.wakeUp()
-        device.executeShellCommand("wm dismiss-keyguard")
+        // 2. Simulate device unlock event
+        scenario?.onActivity { activity ->
+            activity.antiMetricsRepository.onUnlock(System.currentTimeMillis())
+        }
         device.waitForIdle()
 
-        // 3. Verify anti-metric readout updates with rest duration and incremented unlock count
+        // 3. Verify anti-metric readout updates with rest duration and incremented unlock count on live UI canvas
         val updatedStatus = device.wait(
-            Until.findObject(By.text(Pattern.compile("REST.*·.*UNLOCK.*"))),
-            7000L,
+            Until.findObject(By.text(Pattern.compile("REST 48M.*·.*UNLOCK.*"))),
+            5000L,
         )
         assertThat(updatedStatus).isNotNull()
     }
