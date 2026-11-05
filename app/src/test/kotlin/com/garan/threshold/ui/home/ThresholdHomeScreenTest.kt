@@ -331,6 +331,18 @@ class ThresholdHomeScreenTest {
     }
 
     @Test
+    fun mainActivity_onCreate_doesNotEagerlyLoadPackageIndexInAmbientMode() {
+        Robolectric.buildActivity(MainActivity::class.java).use { controller ->
+            controller.setup()
+            val activity = controller.get()
+
+            // Memory ceiling invariant: package index must remain unloaded in ambient home mode
+            // to prevent ResourcesManager from mmapping foreign APK resource tables (+25 MB PSS)
+            assertThat(activity.searchViewModel.isIndexLoaded).isFalse()
+        }
+    }
+
+    @Test
     fun mainActivity_onNewIntentHome_whileInFrictionCheckpoint_collapsesFrictionAndReturnsHome() {
         Robolectric.buildActivity(MainActivity::class.java).use { controller ->
             controller.setup()

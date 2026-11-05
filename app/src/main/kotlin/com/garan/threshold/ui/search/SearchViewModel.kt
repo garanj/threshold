@@ -76,6 +76,14 @@ class SearchViewModel(
     private val isIndexInitialized = AtomicBoolean(false)
     private var lastDecisiveCandidateKey: String? = null
 
+    internal val isIndexLoaded: Boolean
+        get() = isIndexInitialized.get()
+
+    /**
+     * Lazily loads the installed package index on first search interaction.
+     * Must NOT be invoked eagerly during ambient home startup because [LauncherApps] label resolution
+     * mmaps foreign APK resource tables into the process via Android's `ResourcesManager`.
+     */
     fun ensureIndexLoaded() {
         if (!isIndexInitialized.compareAndSet(false, true)) return
 

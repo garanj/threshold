@@ -15,7 +15,7 @@
   - [x] `AndroidPackageIndexSource`: Use `context.applicationContext ?: context` to prevent Activity context retention.
 - [x] **`:app` Hardening & Tests**:
   - [x] Move `activeFriction` (`ActiveFrictionGate`) into `SearchViewModel` / `SearchUiState` so `dismissSearch()` (and `MainActivity.onNewIntent`) clears active friction; clear active friction on `Lifecycle.Event.ON_STOP` in `ThresholdHomeScreen` (`SearchViewModelTest`, `ThresholdHomeScreenTest`).
-  - [x] Pre-warm package index on `MainActivity.onCreate` (`searchViewModel.ensureIndexLoaded()`).
+  - [x] Enforce lazy package index loading invariant on `MainActivity.onCreate` to prevent foreign `.apk mmap` PSS bloat (+25 MB) in ambient home mode (`ThresholdHomeScreenTest`).
   - [x] Add `windowInsetsPadding(WindowInsets.systemBars.union(WindowInsets.displayCutout))` to `CaretTracingSurface` (`CaretTracingSurfaceTest`).
   - [x] Harden `TypedIntentionSurface`: `KeyboardType.Ascii`, multi-character backspace, 2-char IME commit handling (rejecting >2 char bulk paste with `resistanceDetent()`), vertical scroll support (`TypedIntentionSurfaceTest`).
   - [x] `DragSortSurface`: Remember painter lists across recompositions.

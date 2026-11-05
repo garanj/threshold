@@ -79,8 +79,11 @@ class MainActivity : ComponentActivity() {
             },
         )[SearchViewModel::class.java]
 
-        // Pre-warm package index asynchronously so search is ready with 0ms latency on first tap
-        searchViewModel.ensureIndexLoaded()
+        // IMPORTANT MEMORY INVARIANT (< 25 MB Typographic Mode / < 35 MB CI PSS Ceiling):
+        // Never call searchViewModel.ensureIndexLoaded() eagerly in onCreate().
+        // Resolving LauncherActivityInfo.getLabel() across all installed apps causes Android's
+        // ResourcesManager to mmap foreign APK resources.arsc tables (+25 MB .apk mmap PSS).
+        // Index loading must remain strictly lazy upon user search activation (activateSearch / onQueryChanged).
 
         setContent {
             ThresholdTheme {
