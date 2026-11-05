@@ -13,7 +13,6 @@
   - Verified on physical Pixel 9a hardware and 100% green on CI quality gates.
 
 ## Next Available Tasks on Roadmap
-1. **Third Friction Checkpoint** (Friction policy #3 - waiting on user spec).
-2. **Phase 3: Configuration & Conflict Resolution Engine** (Task 3.1: 4-Tier Conflict Resolution Engine in `:core`).
-3. **Phase 4: Spatial Context & Geofencing** (Task 4.1: Low-Power Geofencing in `:data`).
-4. **Phase 8: Miscellaneous & Enhancements** (Task 8.1: Launcher Action Registry & Dispatcher).
+1. **Phase 3: Configuration & Conflict Resolution Engine** (Task 3.1: 4-Tier Conflict Resolution Engine in `:core`).
+2. **Phase 4: Spatial Context & Geofencing** (Task 4.1: Low-Power Geofencing in `:data`).
+3. **Phase 8: Miscellaneous & Enhancements** (Task 8.1: Launcher Action Registry & Dispatcher).

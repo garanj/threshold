@@ -46,14 +46,14 @@
 - [x] **Task 2.2: Motion System (Optics, Not Cartoons)**
   - 120Hz decelerating optical curves (`cubic-bezier(0.16, 1, 0.3, 1)`), 80ms–140ms durations.
   - Hairline Shutter Wipe transition (1dp rule).
-- [ ] **Task 2.3: Intentional Friction Checkpoints**
+- [x] **Task 2.3: Intentional Friction Checkpoints**
   - [x] Typed intention check (30 curated phrases, case-insensitive illumination, lock-tumbler resistance) (#35).
   - [x] Drag-to-match icon sorting check (6 monochrome glyph pairs, unified Canvas, 120Hz zero-allocation translation, optical snap-back) (#37).
-  - [ ] Third friction checkpoint (user to describe spec next session).
+  - [x] Caret tracing meditative delay checkpoint (3-second continuous trace, optical ease-in/ease-out, hairline track, 14dp indicator) (#43).
   - *(Note: Pre-session budgeting deferred to DeviceOwner mode; Visual app decay discarded by design decision).*
-- [ ] **Task 2.4: Flip-to-Silence & Anti-Metric Display**
-  - Accelerometer/orientation flip-to-DND.
+- [x] **Task 2.4: Anti-Metric Display**
   - [x] Anti-metric readout below clock / hairline divider ("REST X · Y UNLOCKS") (#48, #50).
+  - *(Note: Flip-to-Silence / Flip-to-DND discarded by design decision; Dual-flank fast capture moved/discarded; Launcher Action Registry moved to Task 8.1).*
 
 ---
 

@@ -108,7 +108,7 @@ Threshold utilizes `VibrationEffect.Composition` for precise physical feel:
 * **Dual-Flank Fast Capture (Lists & Scratchpad):**  
   * **Swipe Left (Action Ledger / Checklist):** Opens a minimal, zero-latency checklist. Tap to toggle completion with a `PRIMITIVE_CLICK` haptic detent; completed tasks automatically strike through, dim to 30% luminance, and sink to the bottom. Swiping items horizontally dismisses/deletes them. Zero tags, folders, or due dates.  
   * **Swipe Right (Ephemeral Scratchpad / Free Text):** Opens a borderless plain-text writing surface with autofocus keyboard input for quick thoughts, measurements, and draft snippets. Persists automatically across keystrokes without explicit file saving. Includes clean 'Copy all' and haptic-guarded 'Clear' actions.  
-* **Flip-to-Silence:** Placing phone face down on a flat surface triggers a haptic click and engages DND.
+* **Flip-to-Silence:** *(Discarded by design decision to eliminate unnecessary sensor polling and avoid launcher scope creep).*
 
 # **6\. Physical NFC Ecosystem & Profile Modes**
 
