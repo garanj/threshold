@@ -3,6 +3,8 @@ package com.garan.threshold.ui.home
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -44,6 +46,7 @@ fun ThresholdHomeScreen(
     modifier: Modifier = Modifier,
     hapticEngine: HapticEngine = NoOpHapticEngine,
     onDismissIme: () -> Unit = {},
+    searchListState: LazyListState = rememberLazyListState(),
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val focusManager = LocalFocusManager.current
@@ -135,6 +138,7 @@ fun ThresholdHomeScreen(
                 query = uiState.query,
                 onQueryChange = viewModel::onQueryChanged,
                 results = uiState.results,
+                listState = searchListState,
                 onItemClick = { item ->
                     if (item is SearchItem.App) {
                         when (val result = viewModel.evaluateLaunch(item)) {
