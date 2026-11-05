@@ -38,7 +38,8 @@ class AndroidAntiMetricsRepository(
     private var receiver: BroadcastReceiver? = null
 
     init {
-        if (registerSystemReceiver) {
+        activeInstance = this
+        if (registerSystemReceiver && !isReceiverRegistered) {
             val filter = IntentFilter().apply {
                 addAction(Intent.ACTION_SCREEN_OFF)
                 addAction(Intent.ACTION_USER_PRESENT)
@@ -46,12 +47,13 @@ class AndroidAntiMetricsRepository(
             val newReceiver = object : BroadcastReceiver() {
                 override fun onReceive(c: Context?, intent: Intent?) {
                     when (intent?.action) {
-                        Intent.ACTION_SCREEN_OFF -> onScreenOff()
-                        Intent.ACTION_USER_PRESENT -> onUnlock()
+                        Intent.ACTION_SCREEN_OFF -> activeInstance?.onScreenOff()
+                        Intent.ACTION_USER_PRESENT -> activeInstance?.onUnlock()
                     }
                 }
             }
             appContext.registerReceiver(newReceiver, filter)
+            isReceiverRegistered = true
             receiver = newReceiver
         }
     }
@@ -67,6 +69,7 @@ class AndroidAntiMetricsRepository(
                 // Already unregistered
             }
             receiver = null
+            isReceiverRegistered = false
         }
     }
 
@@ -142,6 +145,12 @@ class AndroidAntiMetricsRepository(
     }
 
     companion object {
+        @Volatile
+        private var isReceiverRegistered = false
+
+        @Volatile
+        private var activeInstance: AndroidAntiMetricsRepository? = null
+
         private const val PREFS_NAME = "threshold_anti_metrics"
         private const val KEY_SCREEN_OFF_TIMESTAMP = "key_screen_off_timestamp"
         private const val KEY_LAST_UNLOCK_DATE = "key_last_unlock_date"
