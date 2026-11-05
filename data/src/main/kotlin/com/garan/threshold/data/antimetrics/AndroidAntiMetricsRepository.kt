@@ -96,12 +96,18 @@ class AndroidAntiMetricsRepository(
     }
 
     override fun onUnlock(timestampMs: Long) {
+        val lastScreenOff = prefs.getLong(KEY_SCREEN_OFF_TIMESTAMP, -1L)
         val lastUnlockTimestamp = prefs.getLong(KEY_LAST_UNLOCK_TIMESTAMP, 0L)
-        if (lastUnlockTimestamp > 0L && abs(timestampMs - lastUnlockTimestamp) < DEBOUNCE_WINDOW_MS) {
+
+        // If no intervening screen-off occurred and this broadcast arrived within the debounce window,
+        // it is a duplicate broadcast (e.g. Pixel two-stage biometric dismiss pipeline).
+        if (lastScreenOff == -1L &&
+            lastUnlockTimestamp > 0L &&
+            abs(timestampMs - lastUnlockTimestamp) < DEBOUNCE_WINDOW_MS
+        ) {
             return
         }
 
-        val lastScreenOff = prefs.getLong(KEY_SCREEN_OFF_TIMESTAMP, -1L)
         val restDurationMs = if (lastScreenOff > 0L && timestampMs >= lastScreenOff) {
             timestampMs - lastScreenOff
         } else {

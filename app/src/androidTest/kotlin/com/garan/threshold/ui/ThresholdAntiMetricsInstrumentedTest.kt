@@ -1,5 +1,6 @@
 package com.garan.threshold.ui
 
+import android.content.Context
 import android.content.Intent
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -26,6 +27,12 @@ class ThresholdAntiMetricsInstrumentedTest {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         device = UiDevice.getInstance(instrumentation)
         instrumentation.uiAutomation.adoptShellPermissionIdentity("android.permission.QUERY_ALL_PACKAGES")
+
+        // Reset anti-metrics storage for test isolation
+        instrumentation.targetContext.getSharedPreferences("threshold_anti_metrics", Context.MODE_PRIVATE)
+            .edit()
+            .clear()
+            .commit()
 
         device.wakeUp()
         device.executeShellCommand("wm dismiss-keyguard")
