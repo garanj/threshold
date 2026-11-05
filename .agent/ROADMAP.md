@@ -51,9 +51,11 @@
   - [x] Drag-to-match icon sorting check (6 monochrome glyph pairs, unified Canvas, 120Hz zero-allocation translation, optical snap-back) (#37).
   - [ ] Third friction checkpoint (user to describe spec next session).
   - *(Note: Pre-session budgeting deferred to DeviceOwner mode; Visual app decay discarded by design decision).*
-- [ ] **Task 2.4: Dual-Flank Fast Capture**
-  - Left Swipe: Minimal Action Ledger (zero-latency checklist, haptic toggle, strikethrough at 30% luminance, horizontal swipe dismissal).
-  - Right Swipe: Borderless Ephemeral Scratchpad (autofocus plain text writing surface, auto-persisted, haptic clear).
+- [ ] **Task 2.4: Launcher Action Registry & Dispatcher (`:`, `,` prefix)**
+  - *(Note: Dual-flank side panels—Action Ledger & Scratchpad—discarded by design decision to avoid launcher bloat and OS back gesture collisions).*
+  - Action Registry in `:app`/`:data`: Register core utility actions (`:settings`, `:wallpaper`, `:dnd`, `:note`).
+  - Wire `ThresholdHomeScreen` action execution: Handle `SearchItem.Action` in `onItemClick` with appropriate Android system intents.
+  - Action quick-launch on IME Go action.
 - [ ] **Task 2.5: Flip-to-Silence & Anti-Metric Display**
   - Accelerometer/orientation flip-to-DND.
   - Anti-metric readout below clock ("Unlocked X times · Last rest: Y mins ago").
