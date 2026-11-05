@@ -22,7 +22,7 @@ class MainActivity : ComponentActivity() {
     private val packageIndexSource by lazy { AndroidPackageIndexSource(this) }
     private val appLauncher by lazy { AndroidAppLauncher(this) }
     private val hapticEngine by lazy { AndroidHapticEngine(this) }
-    private val antiMetricsRepository by lazy { AndroidAntiMetricsRepository(this) }
+    internal val antiMetricsRepository by lazy { AndroidAntiMetricsRepository(this) }
     internal lateinit var searchViewModel: SearchViewModel
         private set
 

@@ -112,4 +112,46 @@ class AndroidAntiMetricsRepositoryTest {
         assertThat(repo2.metrics.value.unlockCount).isEqualTo(2)
         assertThat(repo2.metrics.value.restDurationMs).isEqualTo(20 * 60_000L)
     }
+
+    @Test
+    fun rapidDuplicateUnlocks_debouncedToOneIncrement() {
+        val repo = AndroidAntiMetricsRepository(context, zoneIdProvider = { fixedZone })
+        val screenOffTime = LocalDate.of(2026, 11, 5).atTime(10, 0, 0).toInstant(ZoneOffset.UTC).toEpochMilli()
+        repo.onScreenOff(screenOffTime)
+
+        // First broadcast at 10:48:00
+        val unlockTime = screenOffTime + 48 * 60_000L
+        repo.onUnlock(unlockTime)
+
+        // Rapid duplicate broadcast 608ms later (e.g. Pixel two-stage biometric dismiss pipeline)
+        repo.onUnlock(unlockTime + 608L)
+
+        assertThat(repo.metrics.value.unlockCount).isEqualTo(1)
+        assertThat(repo.metrics.value.restDurationMs).isEqualTo(48 * 60_000L)
+    }
+
+    @Test
+    fun multipleRapidUnlocksWithinDebounceWindow_onlyCountsFirst() {
+        val repo = AndroidAntiMetricsRepository(context, zoneIdProvider = { fixedZone })
+        val time = LocalDate.of(2026, 11, 5).atTime(10, 0, 0).toInstant(ZoneOffset.UTC).toEpochMilli()
+
+        repo.onUnlock(time)
+        repo.onUnlock(time + 100L)
+        repo.onUnlock(time + 500L)
+        repo.onUnlock(time + 1999L)
+
+        assertThat(repo.metrics.value.unlockCount).isEqualTo(1)
+
+        // Unlock after debounce window passes (2001ms)
+        repo.onUnlock(time + 2001L)
+        assertThat(repo.metrics.value.unlockCount).isEqualTo(2)
+    }
+
+    @Test
+    fun unregister_cleansUpReceiverGracefully() {
+        val repo = AndroidAntiMetricsRepository(context, zoneIdProvider = { fixedZone })
+        repo.unregister()
+        // Idempotent second call should not throw
+        repo.unregister()
+    }
 }
