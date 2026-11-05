@@ -51,12 +51,7 @@
   - [x] Drag-to-match icon sorting check (6 monochrome glyph pairs, unified Canvas, 120Hz zero-allocation translation, optical snap-back) (#37).
   - [ ] Third friction checkpoint (user to describe spec next session).
   - *(Note: Pre-session budgeting deferred to DeviceOwner mode; Visual app decay discarded by design decision).*
-- [ ] **Task 2.4: Launcher Action Registry & Dispatcher (`:`, `,` prefix)**
-  - *(Note: Dual-flank side panels—Action Ledger & Scratchpad—discarded by design decision to avoid launcher bloat and OS back gesture collisions).*
-  - Action Registry in `:app`/`:data`: Register core utility actions (`:settings`, `:wallpaper`, `:dnd`, `:note`).
-  - Wire `ThresholdHomeScreen` action execution: Handle `SearchItem.Action` in `onItemClick` with appropriate Android system intents.
-  - Action quick-launch on IME Go action.
-- [ ] **Task 2.5: Flip-to-Silence & Anti-Metric Display**
+- [ ] **Task 2.4: Flip-to-Silence & Anti-Metric Display**
   - Accelerometer/orientation flip-to-DND.
   - [x] Anti-metric readout below clock / hairline divider ("REST X · Y UNLOCKS") (#48, #50).
 
@@ -126,3 +121,12 @@
   - Comprehensive Paparazzi visual regression pass across all 4 typographic archetypes in LTR & RTL.
 - [ ] **Task 7.4: CI Hardening & Release Artifact Signing**
   - ProGuard/R8 rules optimization, reproducible release builds.
+
+---
+
+## Phase 8: Miscellaneous & Enhancements (Milestone 8)
+- [ ] **Task 8.1: Launcher Action Registry & Dispatcher (`:`, `,` prefix)**
+  - *(Moved from Phase 2 Task 2.4; dual-flank panels discarded).*
+  - Action Registry in `:app`/`:data`: Register core utility actions (`:settings`, `:wallpaper`, `:dnd`, `:note`).
+  - Wire `ThresholdHomeScreen` action execution: Handle `SearchItem.Action` in `onItemClick` with appropriate Android system intents.
+  - Action quick-launch on IME Go action.
