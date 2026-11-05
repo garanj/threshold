@@ -58,7 +58,7 @@
   - Action quick-launch on IME Go action.
 - [ ] **Task 2.5: Flip-to-Silence & Anti-Metric Display**
   - Accelerometer/orientation flip-to-DND.
-  - Anti-metric readout below clock ("Unlocked X times · Last rest: Y mins ago").
+  - [x] Anti-metric readout below clock / hairline divider ("REST X · Y UNLOCKS") (#48, #50).
 
 ---
 
