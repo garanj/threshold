@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.text.BasicTextField
@@ -81,6 +82,7 @@ fun ThresholdSearchSurface(
     onActivateSearch: () -> Unit = {},
     onItemLongClick: ((SearchItem) -> Unit)? = null,
     hapticEngine: HapticEngine = NoOpHapticEngine,
+    listState: LazyListState = rememberLazyListState(),
 ) {
     val baseBodyLarge = MaterialTheme.typography.bodyLarge
     val inputTextStyle = remember(baseBodyLarge) { baseBodyLarge.copy(color = PureWhite) }
@@ -220,13 +222,18 @@ fun ThresholdSearchSurface(
                         modifier = Modifier.padding(vertical = 12.dp),
                     )
                 } else {
-                    val listState = rememberLazyListState()
+                    LaunchedEffect(query) {
+                        listState.scrollToItem(0)
+                    }
+
                     LaunchedEffect(listState) {
                         snapshotFlow { listState.firstVisibleItemIndex }
                             .drop(1)
                             .distinctUntilChanged()
                             .collect {
-                                hapticEngine.rotaryDetent()
+                                if (listState.isScrollInProgress) {
+                                    hapticEngine.rotaryDetent()
+                                }
                             }
                     }
 

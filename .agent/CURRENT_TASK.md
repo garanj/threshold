@@ -1,21 +1,24 @@
-# Active Task: Caret Tracing & Friction UX Polish (`:app`)
+# Active Task: Reset Search Result Scroll Position on Query Change (`:app`)
 
 - **Issues:**
-  - [#43 feat(friction): implement caret tracing meditative delay checkpoint](https://github.com/garanj/threshold/issues/43)
-  - [#45 fix(ui): prevent DragSortSurface IME resize flashing and preserve search cursor position on back navigation](https://github.com/garanj/threshold/issues/45)
-- **Milestone:** Phase 2: Sensory Mechanics & Friction Engine (Task 2.3 Checkpoint 3)
+  - [#46 fix(search): reset search result list scroll position to top on query change](https://github.com/garanj/threshold/issues/46)
+- **Milestone:** Phase 2: Sensory Mechanics & Friction Engine (Search Surface Polish)
 - **Status:** Complete (Awaiting PR Review)
-- **Branch:** `feat/43-caret-tracing-checkpoint`
+- **Branch:** `fix/46-search-scroll-reset`
 
 ---
 
 ## Objectives
-1. [x] **Caret Tracing Surface (`CaretTracingSurface.kt`)**:
-   - Centered 140dp caret path with 14dp stroke width on 180dp canvas.
-   - Single continuous `Animatable` ($0.0 \to 3.0$) inside `UnscaledMotionDurationScale`.
-   - Micro-haptics at apexes (`rotaryDetent`), pass completions (`targetSnap`), and final completion (`relaySnap`).
-2. [x] **Fix Bug 1 (`DragSortSurface` IME resize flashing)**:
-   - Exclude `WindowInsets.ime` from `DragSortSurface` insets (use `WindowInsets.systemBars.union(WindowInsets.displayCutout)`).
-   - Stabilize random seed per session (`val effectiveSeed = remember(seed) { seed ?: Random.Default.nextLong() }`).
-3. [x] **Fix Bug 2 (`ThresholdSearchSurface` cursor position on back navigation)**:
-   - Maintain `TextFieldValue` in `ThresholdSearchSurface` initialized with `selection = TextRange(query.length)`.
+1. [x] **Failing Tests (TDD Red)**:
+   - Compose host test verifying `firstVisibleItemIndex` resets to 0 when query changes (specifically reproducing `chr` -> `c` -> `coo` -> `chr`).
+   - Manual scroll test: user scrolls to index 2, types a character, list snaps back to index 0.
+   - Guarded rotary haptics: programmatic scroll reset does not fire false rotary clicks.
+   - Instrumented device test (`androidTest`) in `app` testing UI Automator live scrolling and query refinement on device (`ThresholdSearchScrollInstrumentedTest.kt`).
+2. [x] **Implementation (TDD Green)**:
+   - In `ThresholdSearchSurface.kt`, hoist `listState: LazyListState = rememberLazyListState()`.
+   - Add `LaunchedEffect(query) { listState.scrollToItem(0) }` so every query change snaps the results list to the top.
+   - Guard `hapticEngine.rotaryDetent()` in `LaunchedEffect(listState)` with `if (listState.isScrollInProgress)` so programmatic resets remain silent.
+3. [x] **Verification & PR**:
+   - Run `./gradlew test` (all 81 unit tests pass).
+   - Run `./gradlew spotlessCheck` (clean).
+   - Create PR assigned to `garanj` and provide review URL.
