@@ -41,6 +41,11 @@ class MainActivity : ComponentActivity() {
         ImeUtils.dismissIme(this)
     }
 
+    override fun onDestroy() {
+        super.onDestroy()
+        antiMetricsRepository.unregister()
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
