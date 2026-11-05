@@ -383,6 +383,36 @@ class ThresholdHomeScreenTest {
         assertThat(viewModel.uiState.value.query).isEqualTo("YouTube")
     }
 
+    @Test
+    fun antiMetrics_whenRepositoryProvided_displaysFormattedStatus() {
+        val viewModel = SearchViewModel(packageIndexSource = fakePackageIndexSource)
+        val launcher = FakeAppLauncher()
+        val metricsFlow = kotlinx.coroutines.flow.MutableStateFlow(
+            com.garan.threshold.core.model.AntiMetrics(
+                restDurationMs = 48 * 60_000L,
+                unlockCount = 6,
+            ),
+        )
+        val fakeRepo = object : com.garan.threshold.core.port.AntiMetricsRepository {
+            override val metrics: kotlinx.coroutines.flow.StateFlow<com.garan.threshold.core.model.AntiMetrics> =
+                metricsFlow
+            override fun onScreenOff(timestampMs: Long) {}
+            override fun onUnlock(timestampMs: Long) {}
+        }
+
+        composeTestRule.setContent {
+            ThresholdTheme {
+                ThresholdHomeScreen(
+                    viewModel = viewModel,
+                    appLauncher = launcher,
+                    antiMetricsRepository = fakeRepo,
+                )
+            }
+        }
+
+        composeTestRule.onNodeWithText("REST 48M  ·  6 UNLOCKS").assertIsDisplayed()
+    }
+
     private class TestHapticEngine : HapticEngine {
         var rotaryDetentCount = 0
             private set
