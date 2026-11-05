@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
+import kotlin.math.abs
 
 /**
  * Android implementation of [AntiMetricsRepository].
@@ -34,23 +35,38 @@ class AndroidAntiMetricsRepository(
     private val _metrics = MutableStateFlow(loadInitialMetrics())
     override val metrics: StateFlow<AntiMetrics> = _metrics.asStateFlow()
 
+    private var receiver: BroadcastReceiver? = null
+
     init {
         if (registerSystemReceiver) {
             val filter = IntentFilter().apply {
                 addAction(Intent.ACTION_SCREEN_OFF)
                 addAction(Intent.ACTION_USER_PRESENT)
             }
-            appContext.registerReceiver(
-                object : BroadcastReceiver() {
-                    override fun onReceive(c: Context?, intent: Intent?) {
-                        when (intent?.action) {
-                            Intent.ACTION_SCREEN_OFF -> onScreenOff()
-                            Intent.ACTION_USER_PRESENT -> onUnlock()
-                        }
+            val newReceiver = object : BroadcastReceiver() {
+                override fun onReceive(c: Context?, intent: Intent?) {
+                    when (intent?.action) {
+                        Intent.ACTION_SCREEN_OFF -> onScreenOff()
+                        Intent.ACTION_USER_PRESENT -> onUnlock()
                     }
-                },
-                filter,
-            )
+                }
+            }
+            appContext.registerReceiver(newReceiver, filter)
+            receiver = newReceiver
+        }
+    }
+
+    /**
+     * Unregisters the internal [BroadcastReceiver] to prevent context leaks upon activity teardown.
+     */
+    fun unregister() {
+        receiver?.let {
+            try {
+                appContext.unregisterReceiver(it)
+            } catch (e: IllegalArgumentException) {
+                // Already unregistered
+            }
+            receiver = null
         }
     }
 
@@ -80,6 +96,11 @@ class AndroidAntiMetricsRepository(
     }
 
     override fun onUnlock(timestampMs: Long) {
+        val lastUnlockTimestamp = prefs.getLong(KEY_LAST_UNLOCK_TIMESTAMP, 0L)
+        if (lastUnlockTimestamp > 0L && abs(timestampMs - lastUnlockTimestamp) < DEBOUNCE_WINDOW_MS) {
+            return
+        }
+
         val lastScreenOff = prefs.getLong(KEY_SCREEN_OFF_TIMESTAMP, -1L)
         val restDurationMs = if (lastScreenOff > 0L && timestampMs >= lastScreenOff) {
             timestampMs - lastScreenOff
@@ -99,6 +120,7 @@ class AndroidAntiMetricsRepository(
 
         val editor = prefs.edit()
             .putString(KEY_LAST_UNLOCK_DATE, todayDate)
+            .putLong(KEY_LAST_UNLOCK_TIMESTAMP, timestampMs)
             .putInt(KEY_UNLOCK_COUNT, newCount)
             .remove(KEY_SCREEN_OFF_TIMESTAMP)
 
@@ -117,7 +139,14 @@ class AndroidAntiMetricsRepository(
         private const val PREFS_NAME = "threshold_anti_metrics"
         private const val KEY_SCREEN_OFF_TIMESTAMP = "key_screen_off_timestamp"
         private const val KEY_LAST_UNLOCK_DATE = "key_last_unlock_date"
+        private const val KEY_LAST_UNLOCK_TIMESTAMP = "key_last_unlock_timestamp"
         private const val KEY_UNLOCK_COUNT = "key_unlock_count"
         private const val KEY_LAST_REST_DURATION = "key_last_rest_duration"
+
+        /**
+         * Window in milliseconds within which duplicate [Intent.ACTION_USER_PRESENT] broadcasts
+         * (such as Pixel's two-stage biometric dismiss pipeline) are ignored.
+         */
+        const val DEBOUNCE_WINDOW_MS = 2000L
     }
 }
