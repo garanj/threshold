@@ -114,4 +114,29 @@ class DragSortSessionTest {
             }
         }
     }
+
+    @Test
+    fun `generateLayout fallback grid shuffles positions using provided random instance`() {
+        // Impossible minPairSeparation forces fallback grid
+        val layout1 = DragSortSession.generateLayout(
+            pairCount = 6,
+            containerWidth = 200f,
+            containerHeight = 200f,
+            itemRadius = 24f,
+            minPairSeparation = 9_999f,
+            random = Random(1L),
+        )
+        val layout2 = DragSortSession.generateLayout(
+            pairCount = 6,
+            containerWidth = 200f,
+            containerHeight = 200f,
+            itemRadius = 24f,
+            minPairSeparation = 9_999f,
+            random = Random(2L),
+        )
+
+        assertThat(layout1).hasSize(6)
+        assertThat(layout2).hasSize(6)
+        assertThat(layout1).isNotEqualTo(layout2)
+    }
 }

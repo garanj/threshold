@@ -148,10 +148,55 @@ class AndroidAntiMetricsRepositoryTest {
     }
 
     @Test
-    fun unregister_cleansUpReceiverGracefully() {
+    fun unregister_cleansUpReceiverGracefully_acrossMultipleInstances() {
+        val repo1 = AndroidAntiMetricsRepository(context, zoneIdProvider = { fixedZone })
+        val repo2 = AndroidAntiMetricsRepository(context, zoneIdProvider = { fixedZone })
+        // Unregistering from the second instance should cleanly unregister the shared static receiver
+        repo2.unregister()
+        repo1.unregister()
+    }
+
+    @Test
+    fun refreshForCurrentDate_resetsUnlockCountAtMidnightWhileAwake_preservingLastRest() {
         val repo = AndroidAntiMetricsRepository(context, zoneIdProvider = { fixedZone })
-        repo.unregister()
-        // Idempotent second call should not throw
-        repo.unregister()
+        val day1Off = LocalDate.of(2026, 11, 5).atTime(22, 0, 0).toInstant(ZoneOffset.UTC).toEpochMilli()
+        val day1Unlock = day1Off + 30 * 60_000L
+
+        repo.onScreenOff(day1Off)
+        repo.onUnlock(day1Unlock)
+        assertThat(repo.metrics.value.unlockCount).isEqualTo(1)
+        assertThat(repo.metrics.value.restDurationMs).isEqualTo(30 * 60_000L)
+
+        // Same day refresh does not reset count
+        repo.refreshForCurrentDate(day1Unlock + 30 * 60_000L)
+        assertThat(repo.metrics.value.unlockCount).isEqualTo(1)
+
+        // Midnight rolls over to 2026-11-06 00:01:00 UTC while screen is still on
+        val day2Awake = LocalDate.of(2026, 11, 6).atTime(0, 1, 0).toInstant(ZoneOffset.UTC).toEpochMilli()
+        repo.refreshForCurrentDate(day2Awake)
+
+        assertThat(repo.metrics.value.unlockCount).isEqualTo(0)
+        assertThat(repo.metrics.value.restDurationMs).isEqualTo(30 * 60_000L)
+    }
+
+    @Test
+    fun backwardWallClockShiftDuringSleep_usesMonotonicElapsedFallback() {
+        var monotonicMs = 1_000_000L
+        val repo = AndroidAntiMetricsRepository(
+            context = context,
+            zoneIdProvider = { fixedZone },
+            elapsedRealtimeProvider = { monotonicMs },
+        )
+
+        val wallOffTime = LocalDate.of(2026, 11, 5).atTime(10, 0, 0).toInstant(ZoneOffset.UTC).toEpochMilli()
+        repo.onScreenOff(wallOffTime)
+
+        // 20 minutes of real monotonic sleep pass, but NTP/timezone shifted wall clock backward by 5 minutes
+        monotonicMs += 20 * 60_000L
+        val shiftedWallUnlockTime = wallOffTime - 5 * 60_000L
+        repo.onUnlock(shiftedWallUnlockTime)
+
+        assertThat(repo.metrics.value.restDurationMs).isEqualTo(20 * 60_000L)
+        assertThat(repo.metrics.value.unlockCount).isEqualTo(1)
     }
 }

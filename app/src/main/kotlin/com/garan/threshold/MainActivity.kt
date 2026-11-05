@@ -19,10 +19,10 @@ import com.garan.threshold.ui.util.ImeUtils
 
 class MainActivity : ComponentActivity() {
 
-    private val packageIndexSource by lazy { AndroidPackageIndexSource(this) }
+    private val packageIndexSource by lazy { AndroidPackageIndexSource(applicationContext ?: this) }
     private val appLauncher by lazy { AndroidAppLauncher(this) }
-    private val hapticEngine by lazy { AndroidHapticEngine(this) }
-    internal val antiMetricsRepository by lazy { AndroidAntiMetricsRepository(this) }
+    private val hapticEngine by lazy { AndroidHapticEngine(applicationContext ?: this) }
+    internal val antiMetricsRepository by lazy { AndroidAntiMetricsRepository(applicationContext ?: this) }
     internal lateinit var searchViewModel: SearchViewModel
         private set
 
@@ -34,7 +34,7 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        // Pressing Home while already on Threshold collapses transient search state and hides IME
+        // Pressing Home while already on Threshold collapses transient search/friction state and hides IME
         if (::searchViewModel.isInitialized) {
             searchViewModel.dismissSearch()
         }
@@ -78,6 +78,9 @@ class MainActivity : ComponentActivity() {
                 ) as T
             },
         )[SearchViewModel::class.java]
+
+        // Pre-warm package index asynchronously so search is ready with 0ms latency on first tap
+        searchViewModel.ensureIndexLoaded()
 
         setContent {
             ThresholdTheme {

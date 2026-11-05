@@ -57,6 +57,9 @@ class FrictionPolicyTest {
             FrictionPolicy.DragSort(pairCount = 1)
         }
         assertThrows(IllegalArgumentException::class.java) {
+            FrictionPolicy.DragSort(pairCount = 7)
+        }
+        assertThrows(IllegalArgumentException::class.java) {
             FrictionPolicy.DragSort(pairCount = 11)
         }
     }

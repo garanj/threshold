@@ -109,6 +109,56 @@ class TypedIntentionSurfaceTest {
         assertThat(confirmed).isTrue()
     }
 
+    @Test
+    fun bulkClipboardPaste_isRejectedWithResistanceDetent() {
+        val haptic = TestHapticEngine()
+
+        composeTestRule.setContent {
+            ThresholdTheme {
+                TypedIntentionSurface(
+                    appLabel = "YouTube",
+                    overridePhrase = "Focus now",
+                    onConfirmOpen = {},
+                    onDismiss = {},
+                    hapticEngine = haptic,
+                )
+            }
+        }
+
+        // Pasting > 2 characters at once is rejected as a bulk paste bypass attempt
+        composeTestRule.onNode(hasSetTextAction()).performTextInput("Focus")
+        composeTestRule.waitForIdle()
+
+        assertThat(haptic.resistanceDetentCount).isEqualTo(1)
+        assertThat(haptic.targetSnapCount).isEqualTo(0)
+        composeTestRule.onNodeWithText("Go back").assertIsDisplayed()
+    }
+
+    @Test
+    fun twoCharImeCommit_advancesBothCharactersCleanly() {
+        val haptic = TestHapticEngine()
+
+        composeTestRule.setContent {
+            ThresholdTheme {
+                TypedIntentionSurface(
+                    appLabel = "YouTube",
+                    overridePhrase = "Go",
+                    onConfirmOpen = {},
+                    onDismiss = {},
+                    hapticEngine = haptic,
+                )
+            }
+        }
+
+        // 2-character IME commit (e.g. fast double-tap or auto-space + letter)
+        composeTestRule.onNode(hasSetTextAction()).performTextInput("Go")
+        composeTestRule.waitForIdle()
+
+        assertThat(haptic.resistanceDetentCount).isEqualTo(0)
+        assertThat(haptic.targetSnapCount).isEqualTo(1)
+        composeTestRule.onNodeWithText("Open").assertIsDisplayed()
+    }
+
     private class TestHapticEngine : HapticEngine {
         var rotaryDetentCount = 0
             private set

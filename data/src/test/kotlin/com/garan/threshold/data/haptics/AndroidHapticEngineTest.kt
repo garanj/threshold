@@ -88,4 +88,24 @@ class AndroidHapticEngineTest {
         defaultEngine.resistanceDetent()
         defaultEngine.relaySnap()
     }
+
+    @Test
+    fun whenThudUnsupported_resistanceDetentIsDistinctFromTargetSnap_andEffectsAreCached() {
+        shadowVibrator.setHasVibrator(true)
+        shadowVibrator.setSupportedPrimitives(
+            listOf(
+                VibrationEffect.Composition.PRIMITIVE_TICK,
+                VibrationEffect.Composition.PRIMITIVE_CLICK,
+            ),
+        )
+
+        val targetEffect1 = engine.targetSnapEffect
+        val targetEffect2 = engine.targetSnapEffect
+        val resistanceEffect = engine.resistanceDetentEffect
+
+        assertThat(targetEffect1).isNotNull()
+        assertThat(targetEffect1).isSameInstanceAs(targetEffect2)
+        assertThat(resistanceEffect).isNotNull()
+        assertThat(resistanceEffect).isNotEqualTo(targetEffect1)
+    }
 }
