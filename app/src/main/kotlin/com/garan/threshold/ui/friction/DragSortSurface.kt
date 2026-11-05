@@ -40,6 +40,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.geometry.lerp
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.drawscope.translate
+import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.platform.LocalDensity
@@ -101,9 +102,9 @@ fun DragSortSurface(
 
     val currentHapticEngine by rememberUpdatedState(hapticEngine)
     val coroutineScope = rememberCoroutineScope()
-    val targetPainters = GLYPH_DRAWABLES.map { painterResource(id = it) }
-    val draggablePainters = GLYPH_DRAWABLES.map { painterResource(id = it) }
-    val activePainters = GLYPH_DRAWABLES.map { painterResource(id = it) }
+    val targetPainters = rememberGlyphPainters()
+    val draggablePainters = rememberGlyphPainters()
+    val activePainters = rememberGlyphPainters()
     var isComplete by remember { mutableStateOf(false) }
 
     val effectiveSeed = remember(seed) { seed ?: Random.Default.nextLong() }
@@ -342,5 +343,18 @@ fun DragSortSurface(
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun rememberGlyphPainters(): List<Painter> {
+    val p0 = painterResource(id = GLYPH_DRAWABLES[0])
+    val p1 = painterResource(id = GLYPH_DRAWABLES[1])
+    val p2 = painterResource(id = GLYPH_DRAWABLES[2])
+    val p3 = painterResource(id = GLYPH_DRAWABLES[3])
+    val p4 = painterResource(id = GLYPH_DRAWABLES[4])
+    val p5 = painterResource(id = GLYPH_DRAWABLES[5])
+    return remember(p0, p1, p2, p3, p4, p5) {
+        listOf(p0, p1, p2, p3, p4, p5)
     }
 }

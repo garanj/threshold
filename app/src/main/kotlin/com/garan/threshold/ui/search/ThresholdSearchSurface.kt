@@ -186,6 +186,8 @@ fun ThresholdSearchSurface(
                                             topResult.matchType == MatchType.EXACT
                                         if (canQuickLaunch) {
                                             onItemClick(item)
+                                        } else {
+                                            hapticEngine.resistanceDetent()
                                         }
                                     }
                                 },

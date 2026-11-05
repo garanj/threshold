@@ -57,6 +57,7 @@ fun ThresholdHomeCanvas(
     dateText: String? = null,
     statusText: String = stringResource(R.string.app_name),
     clockProvider: () -> ZonedDateTime = { ZonedDateTime.now() },
+    onTimeTick: () -> Unit = {},
     content: @Composable () -> Unit = {},
 ) {
     // Initialize synchronously on Frame 0 so the canvas never flashes "00:00" or "Threshold"
@@ -78,6 +79,7 @@ fun ThresholdHomeCanvas(
                     val now = clockProvider()
                     liveTime = now.format(TIME_FORMATTER)
                     liveDate = now.format(DATE_FORMATTER)
+                    onTimeTick()
                 }
 
                 val receiver = object : BroadcastReceiver() {

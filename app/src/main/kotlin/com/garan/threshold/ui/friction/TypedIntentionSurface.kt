@@ -19,9 +19,11 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -134,7 +136,8 @@ fun TypedIntentionSurface(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .align(Alignment.CenterStart),
+                .align(Alignment.CenterStart)
+                .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.Center,
         ) {
             Text(
@@ -202,21 +205,38 @@ fun TypedIntentionSurface(
                     val oldText = session.matchedText
 
                     if (newText.length > oldText.length) {
-                        val addedChar = newText.last()
-                        when (session.typeChar(addedChar)) {
-                            TypedIntentionSession.MatchResult.Matched -> {
-                                matchedCount = session.matchedCount
+                        val deltaCount = newText.length - oldText.length
+                        if (deltaCount > 2) {
+                            // Reject bulk clipboard paste or whole-word autocommit
+                            hapticEngine.resistanceDetent()
+                        } else {
+                            val charsToProcess = if (newText.startsWith(oldText)) {
+                                newText.substring(oldText.length)
+                            } else {
+                                newText.takeLast(1)
                             }
-                            TypedIntentionSession.MatchResult.Completed -> {
-                                matchedCount = session.matchedCount
-                                hapticEngine.targetSnap()
-                            }
-                            TypedIntentionSession.MatchResult.Mismatch -> {
-                                hapticEngine.resistanceDetent()
+                            for (c in charsToProcess) {
+                                when (session.typeChar(c)) {
+                                    TypedIntentionSession.MatchResult.Matched -> {
+                                        matchedCount = session.matchedCount
+                                    }
+                                    TypedIntentionSession.MatchResult.Completed -> {
+                                        matchedCount = session.matchedCount
+                                        hapticEngine.targetSnap()
+                                        break
+                                    }
+                                    TypedIntentionSession.MatchResult.Mismatch -> {
+                                        hapticEngine.resistanceDetent()
+                                        break
+                                    }
+                                }
                             }
                         }
                     } else if (newText.length < oldText.length) {
-                        session.backspace()
+                        val deleteCount = oldText.length - newText.length
+                        repeat(deleteCount) {
+                            session.backspace()
+                        }
                         matchedCount = session.matchedCount
                     }
                 }
@@ -234,7 +254,7 @@ fun TypedIntentionSurface(
             keyboardOptions = KeyboardOptions(
                 capitalization = KeyboardCapitalization.None,
                 autoCorrectEnabled = false,
-                keyboardType = KeyboardType.Text,
+                keyboardType = KeyboardType.Ascii,
                 imeAction = if (isComplete) ImeAction.Go else ImeAction.None,
             ),
             keyboardActions = KeyboardActions(

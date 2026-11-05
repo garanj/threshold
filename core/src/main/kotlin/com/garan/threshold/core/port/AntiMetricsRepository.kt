@@ -29,4 +29,12 @@ interface AntiMetricsRepository {
      * @param timestampMs Epoch millisecond when user unlocked.
      */
     fun onUnlock(timestampMs: Long = System.currentTimeMillis())
+
+    /**
+     * Re-evaluates whether the calendar day has rolled over (e.g. across midnight while the
+     * screen remained awake) and resets the daily unlock count to 0 if a new day has started.
+     *
+     * @param timestampMs Current epoch millisecond.
+     */
+    fun refreshForCurrentDate(timestampMs: Long = System.currentTimeMillis()) {}
 }

@@ -23,6 +23,7 @@ import com.garan.threshold.core.model.Profile
 import com.garan.threshold.core.port.HapticEngine
 import com.garan.threshold.core.port.PackageChangeEvent
 import com.garan.threshold.core.port.PackageIndexSource
+import com.garan.threshold.core.search.SearchItem
 import com.garan.threshold.ui.launcher.AppLauncher
 import com.garan.threshold.ui.search.SearchViewModel
 import com.garan.threshold.ui.theme.ThresholdTheme
@@ -185,7 +186,7 @@ class ThresholdHomeScreenTest {
     }
 
     @Test
-    fun guardedApp_imeGoOnPartialPrefix_doesNotBypassGatekeeper() {
+    fun guardedApp_imeGoOnPartialPrefix_doesNotBypassGatekeeper_andTriggersResistanceDetent() {
         val socialComponent = ComponentKey("com.example.social", "com.example.social.MainActivity", 0L)
         val guardedSource = FakePackageIndexSource(
             initialApps = listOf(InstalledApp(socialComponent, "Social Feed")),
@@ -203,12 +204,14 @@ class ThresholdHomeScreenTest {
             initialProfile = focusProfile,
         )
         val launcher = FakeAppLauncher()
+        val haptic = TestHapticEngine()
 
         composeTestRule.setContent {
             ThresholdTheme {
                 ThresholdHomeScreen(
                     viewModel = viewModel,
                     appLauncher = launcher,
+                    hapticEngine = haptic,
                 )
             }
         }
@@ -222,9 +225,10 @@ class ThresholdHomeScreenTest {
         composeTestRule.onNode(hasSetTextAction()).performImeAction()
         composeTestRule.waitForIdle()
 
-        // Guarded app must NOT launch without passing friction gatekeeper
+        // Guarded app must NOT launch without passing friction gatekeeper, and resistance detent fires
         assertThat(launcher.launchedComponents).isEmpty()
         assertThat(viewModel.uiState.value.query).isEqualTo("soc")
+        assertThat(haptic.resistanceDetentCount).isEqualTo(1)
     }
 
     @Test
@@ -324,6 +328,90 @@ class ThresholdHomeScreenTest {
             assertThat(activity.searchViewModel.uiState.value.query).isEmpty()
             assertThat(activity.searchViewModel.uiState.value.isSearching).isFalse()
         }
+    }
+
+    @Test
+    fun mainActivity_onCreate_doesNotEagerlyLoadPackageIndexInAmbientMode() {
+        Robolectric.buildActivity(MainActivity::class.java).use { controller ->
+            controller.setup()
+            val activity = controller.get()
+
+            // Memory ceiling invariant: package index must remain unloaded in ambient home mode
+            // to prevent ResourcesManager from mmapping foreign APK resource tables (+25 MB PSS)
+            assertThat(activity.searchViewModel.isIndexLoaded).isFalse()
+        }
+    }
+
+    @Test
+    fun mainActivity_onNewIntentHome_whileInFrictionCheckpoint_collapsesFrictionAndReturnsHome() {
+        Robolectric.buildActivity(MainActivity::class.java).use { controller ->
+            controller.setup()
+            val activity = controller.get()
+            val youtubeApp = SearchItem.App(
+                component = ComponentKey("com.google.android.youtube", "HomeActivity", 0L),
+                label = "YouTube",
+                accessState = AppAccessState.Guarded(FrictionPolicy.DragSort(6)),
+            )
+
+            activity.searchViewModel.openFriction(youtubeApp, FrictionPolicy.DragSort(6))
+            assertThat(activity.searchViewModel.uiState.value.activeFriction).isNotNull()
+
+            // Press Home button while on friction checkpoint
+            val homeIntent = Intent(Intent.ACTION_MAIN).apply {
+                addCategory(Intent.CATEGORY_HOME)
+            }
+            controller.newIntent(homeIntent)
+
+            // Active friction checkpoint must be cleared
+            assertThat(activity.searchViewModel.uiState.value.activeFriction).isNull()
+        }
+    }
+
+    @Test
+    fun frictionCheckpoint_onActivityStop_dismissesActiveFrictionGate() {
+        val youtubeComponent = ComponentKey("com.google.android.youtube", "com.google.android.youtube.HomeActivity", 0L)
+        val guardedSource = FakePackageIndexSource(
+            initialApps = listOf(InstalledApp(youtubeComponent, "YouTube")),
+        )
+        val profile = Profile(
+            id = "ambient",
+            name = "Ambient",
+            defaultAccess = AppAccessState.Direct,
+            appRules = mapOf(
+                youtubeComponent to AppAccessState.Guarded(FrictionPolicy.DragSort(6)),
+            ),
+        )
+        val viewModel = SearchViewModel(
+            packageIndexSource = guardedSource,
+            initialProfile = profile,
+        )
+        val launcher = FakeAppLauncher()
+
+        composeTestRule.setContent {
+            ThresholdTheme {
+                ThresholdHomeScreen(
+                    viewModel = viewModel,
+                    appLauncher = launcher,
+                )
+            }
+        }
+
+        // Open friction screen
+        composeTestRule.onNodeWithText("Type to launch...").performClick()
+        composeTestRule.waitForIdle()
+        composeTestRule.onNode(hasSetTextAction()).performTextInput("You")
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithText("YouTube").performClick()
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithTag("drag_sort_surface").assertIsDisplayed()
+
+        // Simulate locking screen / backgrounding activity (CREATED state triggers ON_STOP)
+        composeTestRule.activityRule.scenario.moveToState(androidx.lifecycle.Lifecycle.State.CREATED)
+        composeTestRule.activityRule.scenario.moveToState(androidx.lifecycle.Lifecycle.State.RESUMED)
+        composeTestRule.waitForIdle()
+
+        // Friction gate must have been dismissed so it cannot linger across lock sessions
+        assertThat(viewModel.uiState.value.activeFriction).isNull()
     }
 
     @Test

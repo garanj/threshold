@@ -19,10 +19,10 @@ import com.garan.threshold.ui.util.ImeUtils
 
 class MainActivity : ComponentActivity() {
 
-    private val packageIndexSource by lazy { AndroidPackageIndexSource(this) }
+    private val packageIndexSource by lazy { AndroidPackageIndexSource(applicationContext ?: this) }
     private val appLauncher by lazy { AndroidAppLauncher(this) }
-    private val hapticEngine by lazy { AndroidHapticEngine(this) }
-    internal val antiMetricsRepository by lazy { AndroidAntiMetricsRepository(this) }
+    private val hapticEngine by lazy { AndroidHapticEngine(applicationContext ?: this) }
+    internal val antiMetricsRepository by lazy { AndroidAntiMetricsRepository(applicationContext ?: this) }
     internal lateinit var searchViewModel: SearchViewModel
         private set
 
@@ -34,7 +34,7 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        // Pressing Home while already on Threshold collapses transient search state and hides IME
+        // Pressing Home while already on Threshold collapses transient search/friction state and hides IME
         if (::searchViewModel.isInitialized) {
             searchViewModel.dismissSearch()
         }
@@ -78,6 +78,12 @@ class MainActivity : ComponentActivity() {
                 ) as T
             },
         )[SearchViewModel::class.java]
+
+        // IMPORTANT MEMORY INVARIANT (< 25 MB Typographic Mode / < 35 MB CI PSS Ceiling):
+        // Never call searchViewModel.ensureIndexLoaded() eagerly in onCreate().
+        // Resolving LauncherActivityInfo.getLabel() across all installed apps causes Android's
+        // ResourcesManager to mmap foreign APK resources.arsc tables (+25 MB .apk mmap PSS).
+        // Index loading must remain strictly lazy upon user search activation (activateSearch / onQueryChanged).
 
         setContent {
             ThresholdTheme {

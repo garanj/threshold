@@ -37,11 +37,11 @@ sealed interface FrictionPolicy {
     /**
      * Requires the user to drag and match monochrome glyph pairs on a tactile canvas before launch.
      *
-     * @property pairCount Number of glyph pairs to match.
+     * @property pairCount Number of distinct glyph pairs to match (2 to 6).
      */
     data class DragSort(val pairCount: Int = 6) : FrictionPolicy {
         init {
-            require(pairCount in 2..10) { "pairCount must be between 2 and 10, was $pairCount" }
+            require(pairCount in 2..6) { "pairCount must be between 2 and 6, was $pairCount" }
         }
     }
 }

@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.garan.threshold.core.gatekeeper.IntentGatekeeper
 import com.garan.threshold.core.model.AppAccessState
+import com.garan.threshold.core.model.FrictionPolicy
 import com.garan.threshold.core.model.Profile
 import com.garan.threshold.core.port.HapticEngine
 import com.garan.threshold.core.port.LaunchResult
@@ -29,11 +30,14 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.util.concurrent.atomic.AtomicBoolean
 
+data class ActiveFrictionGate(val app: SearchItem.App, val policy: FrictionPolicy)
+
 data class SearchUiState(
     val query: String = "",
     val results: ImmutableList<SearchResult> = persistentListOf(),
     val isSearching: Boolean = false,
     val autoLaunchCandidate: SearchItem? = null,
+    val activeFriction: ActiveFrictionGate? = null,
 )
 
 class SearchViewModel(
@@ -72,6 +76,14 @@ class SearchViewModel(
     private val isIndexInitialized = AtomicBoolean(false)
     private var lastDecisiveCandidateKey: String? = null
 
+    internal val isIndexLoaded: Boolean
+        get() = isIndexInitialized.get()
+
+    /**
+     * Lazily loads the installed package index on first search interaction.
+     * Must NOT be invoked eagerly during ambient home startup because [LauncherApps] label resolution
+     * mmaps foreign APK resource tables into the process via Android's `ResourcesManager`.
+     */
     fun ensureIndexLoaded() {
         if (!isIndexInitialized.compareAndSet(false, true)) return
 
@@ -120,8 +132,17 @@ class SearchViewModel(
                 results = persistentListOf(),
                 isSearching = false,
                 autoLaunchCandidate = null,
+                activeFriction = null,
             )
         }
+    }
+
+    fun openFriction(app: SearchItem.App, policy: FrictionPolicy) {
+        _uiState.update { it.copy(activeFriction = ActiveFrictionGate(app, policy)) }
+    }
+
+    fun dismissFriction() {
+        _uiState.update { it.copy(activeFriction = null) }
     }
 
     fun onQueryChanged(newQuery: String) {

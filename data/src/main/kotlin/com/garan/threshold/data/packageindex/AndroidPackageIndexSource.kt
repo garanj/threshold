@@ -36,11 +36,13 @@ class AndroidPackageIndexSource(
 ) : PackageIndexSource {
 
     constructor(context: Context, ioDispatcher: CoroutineDispatcher = Dispatchers.IO) : this(
-        launcherApps = context.getSystemService(Context.LAUNCHER_APPS_SERVICE) as LauncherApps,
-        userManager = context.getSystemService(Context.USER_SERVICE) as UserManager,
+        launcherApps = (context.applicationContext ?: context)
+            .getSystemService(Context.LAUNCHER_APPS_SERVICE) as LauncherApps,
+        userManager = (context.applicationContext ?: context)
+            .getSystemService(Context.USER_SERVICE) as UserManager,
         mainHandler = Handler(Looper.getMainLooper()),
         ioDispatcher = ioDispatcher,
-        selfPackageName = context.packageName,
+        selfPackageName = (context.applicationContext ?: context).packageName,
     )
 
     // Tracks known installed components to resolve activities upon onPackageRemoved events

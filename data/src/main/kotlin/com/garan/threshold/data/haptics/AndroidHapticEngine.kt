@@ -14,15 +14,22 @@ import com.garan.threshold.core.port.HapticEngine
  * Implements Threshold's Sensory Contract using hardware-tuned [VibrationEffect.Composition] primitives:
  * - Rotary Detents: [VibrationEffect.Composition.PRIMITIVE_TICK]
  * - Target Snap: [VibrationEffect.Composition.PRIMITIVE_CLICK]
- * - Resistance Detent: [VibrationEffect.Composition.PRIMITIVE_HEAVY_CLICK]
- * - Relay Snap: [VibrationEffect.Composition.PRIMITIVE_HEAVY_CLICK] + delayed [VibrationEffect.Composition.PRIMITIVE_TICK] (30ms)
+ * - Resistance Detent: [VibrationEffect.Composition.PRIMITIVE_THUD] (or double-notch [VibrationEffect.Composition.PRIMITIVE_CLICK] stutter)
+ * - Relay Snap: [VibrationEffect.Composition.PRIMITIVE_THUD] (or [VibrationEffect.Composition.PRIMITIVE_CLICK]) + delayed [VibrationEffect.Composition.PRIMITIVE_TICK] (30ms)
  *
- * Provides graceful micro-pulse fallback for older devices (API 29) or hardware lacking primitive support.
+ * Pre-computes and caches immutable [VibrationEffect] instances on first access so 120Hz scroll detents
+ * incur zero heap allocations and only a single Binder call.
  */
-class AndroidHapticEngine(context: Context, private val vibrator: Vibrator? = resolveVibrator(context)) :
-    HapticEngine {
+class AndroidHapticEngine(
+    context: Context,
+    private val vibrator: Vibrator? = resolveVibrator(context.applicationContext ?: context),
+) : HapticEngine {
 
-    private val touchAttributes: VibrationAttributes? by lazy {
+    private val hasVibratorHardware: Boolean by lazy(LazyThreadSafetyMode.PUBLICATION) {
+        vibrator?.hasVibrator() == true
+    }
+
+    private val touchAttributes: VibrationAttributes? by lazy(LazyThreadSafetyMode.PUBLICATION) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             VibrationAttributes.createForUsage(VibrationAttributes.USAGE_TOUCH)
         } else {
@@ -30,89 +37,101 @@ class AndroidHapticEngine(context: Context, private val vibrator: Vibrator? = re
         }
     }
 
-    override fun rotaryDetent() {
-        if (vibrator == null || !vibrator.hasVibrator()) return
-
+    internal val rotaryDetentEffect: VibrationEffect? by lazy(LazyThreadSafetyMode.PUBLICATION) {
+        val v = vibrator ?: return@lazy null
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R &&
-            vibrator.areAllPrimitivesSupported(VibrationEffect.Composition.PRIMITIVE_TICK)
+            v.areAllPrimitivesSupported(VibrationEffect.Composition.PRIMITIVE_TICK)
         ) {
-            val effect = VibrationEffect.startComposition()
+            VibrationEffect.startComposition()
                 .addPrimitive(VibrationEffect.Composition.PRIMITIVE_TICK, 0.7f)
                 .compose()
-            vibrate(effect)
         } else {
-            vibrate(VibrationEffect.createOneShot(10L, 50))
+            VibrationEffect.createOneShot(10L, 50)
         }
     }
 
-    override fun targetSnap() {
-        if (vibrator == null || !vibrator.hasVibrator()) return
-
+    internal val targetSnapEffect: VibrationEffect? by lazy(LazyThreadSafetyMode.PUBLICATION) {
+        val v = vibrator ?: return@lazy null
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R &&
-            vibrator.areAllPrimitivesSupported(VibrationEffect.Composition.PRIMITIVE_CLICK)
+            v.areAllPrimitivesSupported(VibrationEffect.Composition.PRIMITIVE_CLICK)
         ) {
-            val effect = VibrationEffect.startComposition()
+            VibrationEffect.startComposition()
                 .addPrimitive(VibrationEffect.Composition.PRIMITIVE_CLICK, 1.0f)
                 .compose()
-            vibrate(effect)
         } else {
-            vibrate(VibrationEffect.createOneShot(15L, 120))
+            VibrationEffect.createOneShot(15L, 120)
         }
     }
 
-    override fun resistanceDetent() {
-        if (vibrator == null || !vibrator.hasVibrator()) return
-
+    internal val resistanceDetentEffect: VibrationEffect? by lazy(LazyThreadSafetyMode.PUBLICATION) {
+        val v = vibrator ?: return@lazy null
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R &&
-            vibrator.areAllPrimitivesSupported(VibrationEffect.Composition.PRIMITIVE_THUD)
+            v.areAllPrimitivesSupported(VibrationEffect.Composition.PRIMITIVE_THUD)
         ) {
-            val effect = VibrationEffect.startComposition()
+            VibrationEffect.startComposition()
                 .addPrimitive(VibrationEffect.Composition.PRIMITIVE_THUD, 1.0f)
                 .compose()
-            vibrate(effect)
         } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R &&
-            vibrator.areAllPrimitivesSupported(VibrationEffect.Composition.PRIMITIVE_CLICK)
+            v.areAllPrimitivesSupported(VibrationEffect.Composition.PRIMITIVE_CLICK)
         ) {
-            val effect = VibrationEffect.startComposition()
+            // Double-notch lock-tumbler resistance so it feels tactilely distinct from single-click targetSnap
+            VibrationEffect.startComposition()
                 .addPrimitive(VibrationEffect.Composition.PRIMITIVE_CLICK, 1.0f)
+                .addPrimitive(VibrationEffect.Composition.PRIMITIVE_CLICK, 0.8f, 25)
                 .compose()
-            vibrate(effect)
         } else {
-            vibrate(VibrationEffect.createOneShot(30L, VibrationEffect.DEFAULT_AMPLITUDE))
+            VibrationEffect.createOneShot(30L, VibrationEffect.DEFAULT_AMPLITUDE)
         }
     }
 
-    override fun relaySnap() {
-        if (vibrator == null || !vibrator.hasVibrator()) return
-
+    internal val relaySnapEffect: VibrationEffect? by lazy(LazyThreadSafetyMode.PUBLICATION) {
+        val v = vibrator ?: return@lazy null
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R &&
-            vibrator.areAllPrimitivesSupported(
+            v.areAllPrimitivesSupported(
                 VibrationEffect.Composition.PRIMITIVE_THUD,
                 VibrationEffect.Composition.PRIMITIVE_TICK,
             )
         ) {
-            val effect = VibrationEffect.startComposition()
+            VibrationEffect.startComposition()
                 .addPrimitive(VibrationEffect.Composition.PRIMITIVE_THUD, 1.0f)
                 .addPrimitive(VibrationEffect.Composition.PRIMITIVE_TICK, 0.6f, 30)
                 .compose()
-            vibrate(effect)
         } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R &&
-            vibrator.areAllPrimitivesSupported(
+            v.areAllPrimitivesSupported(
                 VibrationEffect.Composition.PRIMITIVE_CLICK,
                 VibrationEffect.Composition.PRIMITIVE_TICK,
             )
         ) {
-            val effect = VibrationEffect.startComposition()
+            VibrationEffect.startComposition()
                 .addPrimitive(VibrationEffect.Composition.PRIMITIVE_CLICK, 1.0f)
                 .addPrimitive(VibrationEffect.Composition.PRIMITIVE_TICK, 0.6f, 30)
                 .compose()
-            vibrate(effect)
         } else {
             // Dual-impulse fallback waveform: 20ms click, 30ms silence, 10ms tick
             val timings = longArrayOf(0L, 20L, 30L, 10L)
             val amplitudes = intArrayOf(0, 255, 0, 100)
-            vibrate(VibrationEffect.createWaveform(timings, amplitudes, -1))
+            VibrationEffect.createWaveform(timings, amplitudes, -1)
         }
+    }
+
+    override fun rotaryDetent() {
+        if (!hasVibratorHardware) return
+        rotaryDetentEffect?.let(::vibrate)
+    }
+
+    override fun targetSnap() {
+        if (!hasVibratorHardware) return
+        targetSnapEffect?.let(::vibrate)
+    }
+
+    override fun resistanceDetent() {
+        if (!hasVibratorHardware) return
+        resistanceDetentEffect?.let(::vibrate)
+    }
+
+    override fun relaySnap() {
+        if (!hasVibratorHardware) return
+        relaySnapEffect?.let(::vibrate)
     }
 
     private fun vibrate(effect: VibrationEffect) {
@@ -130,11 +149,14 @@ class AndroidHapticEngine(context: Context, private val vibrator: Vibrator? = re
 
     companion object {
         @Suppress("DEPRECATION")
-        fun resolveVibrator(context: Context): Vibrator? = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            val vibratorManager = context.getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as? VibratorManager
-            vibratorManager?.defaultVibrator ?: (context.getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator)
-        } else {
-            context.getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
+        fun resolveVibrator(context: Context): Vibrator? {
+            val appCtx = context.applicationContext ?: context
+            return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                val vibratorManager = appCtx.getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as? VibratorManager
+                vibratorManager?.defaultVibrator ?: (appCtx.getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator)
+            } else {
+                appCtx.getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
+            }
         }
     }
 }

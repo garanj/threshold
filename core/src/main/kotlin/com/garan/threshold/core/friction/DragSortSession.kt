@@ -159,6 +159,7 @@ class DragSortSession(val pairs: List<GlyphPair>) {
                     )
                 }
             }
+            gridPoints.shuffle(random)
 
             for (id in 0 until pairCount) {
                 val targetIndex = id
