@@ -13,9 +13,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.garan.threshold.R
+import com.garan.threshold.core.model.AntiMetricsFormatter
 import com.garan.threshold.core.model.FrictionPolicy
+import com.garan.threshold.core.port.AntiMetricsRepository
 import com.garan.threshold.core.port.HapticEngine
 import com.garan.threshold.core.port.LaunchResult
 import com.garan.threshold.core.port.NoOpHapticEngine
@@ -47,10 +51,18 @@ fun ThresholdHomeScreen(
     hapticEngine: HapticEngine = NoOpHapticEngine,
     onDismissIme: () -> Unit = {},
     searchListState: LazyListState = rememberLazyListState(),
+    antiMetricsRepository: AntiMetricsRepository? = null,
+    statusText: String? = null,
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
+
+    val metrics by antiMetricsRepository?.metrics?.collectAsStateWithLifecycle()
+        ?: remember { mutableStateOf(null) }
+    val effectiveStatusText = statusText
+        ?: metrics?.let { AntiMetricsFormatter.formatStatus(it) }
+        ?: stringResource(R.string.app_name)
 
     var activeFriction by remember { mutableStateOf<ActiveFriction?>(null) }
     val inSearch = uiState.isSearching || uiState.query.isNotEmpty()
@@ -131,7 +143,10 @@ fun ThresholdHomeScreen(
             }
         }
     } else {
-        ThresholdHomeCanvas(modifier = modifier) {
+        ThresholdHomeCanvas(
+            modifier = modifier,
+            statusText = effectiveStatusText,
+        ) {
             Spacer(modifier = Modifier.height(24.dp))
 
             ThresholdSearchSurface(

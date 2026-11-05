@@ -7,6 +7,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
+import com.garan.threshold.data.antimetrics.AndroidAntiMetricsRepository
 import com.garan.threshold.data.haptics.AndroidHapticEngine
 import com.garan.threshold.data.packageindex.AndroidPackageIndexSource
 import com.garan.threshold.ui.home.ThresholdHomeScreen
@@ -21,6 +22,7 @@ class MainActivity : ComponentActivity() {
     private val packageIndexSource by lazy { AndroidPackageIndexSource(this) }
     private val appLauncher by lazy { AndroidAppLauncher(this) }
     private val hapticEngine by lazy { AndroidHapticEngine(this) }
+    private val antiMetricsRepository by lazy { AndroidAntiMetricsRepository(this) }
     internal lateinit var searchViewModel: SearchViewModel
         private set
 
@@ -84,6 +86,7 @@ class MainActivity : ComponentActivity() {
                     appLauncher = appLauncher,
                     hapticEngine = hapticEngine,
                     onDismissIme = { ImeUtils.dismissIme(this@MainActivity) },
+                    antiMetricsRepository = antiMetricsRepository,
                 )
             }
         }
