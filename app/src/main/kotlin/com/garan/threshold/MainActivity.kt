@@ -125,6 +125,9 @@ class MainActivity : ComponentActivity() {
                         )
                     }
                     ThresholdScreen.SETTINGS -> {
+                        androidx.compose.runtime.LaunchedEffect(Unit) {
+                            settingsViewModel.ensureLoaded()
+                        }
                         ThresholdSettingsScreen(
                             uiState = settingsUiState,
                             onBack = { currentScreen = ThresholdScreen.HOME },
@@ -138,6 +141,9 @@ class MainActivity : ComponentActivity() {
                         )
                     }
                     ThresholdScreen.CONFIGURE_APPS -> {
+                        androidx.compose.runtime.LaunchedEffect(Unit) {
+                            settingsViewModel.ensureLoaded()
+                        }
                         ConfigureAppsScreen(
                             availableApps = settingsUiState.availableApps,
                             initialAssignments = settingsUiState.baseProfile.appAssignments,

@@ -54,6 +54,7 @@ class SettingsViewModelTest {
             dialerPackageResolver = { "com.android.dialer" },
             ioDispatcher = testDispatcher,
         )
+        viewModel.ensureLoaded()
     }
 
     @After

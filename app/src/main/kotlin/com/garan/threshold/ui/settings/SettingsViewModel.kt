@@ -40,11 +40,27 @@ class SettingsViewModel(
     private val _uiState = MutableStateFlow(SettingsUiState())
     val uiState: StateFlow<SettingsUiState> = _uiState.asStateFlow()
 
+    private val isIndexLoaded = java.util.concurrent.atomic.AtomicBoolean(false)
+
     init {
-        loadData()
+        viewModelScope.launch(ioDispatcher) {
+            settingsRepository.observeSettings().collect { settings ->
+                _uiState.update { current ->
+                    current.copy(
+                        general = settings.general,
+                        baseProfile = settings.baseProfile,
+                    )
+                }
+            }
+        }
     }
 
-    private fun loadData() {
+    /**
+     * Lazily resolves installed applications when entering Settings or Configuration screens.
+     * Preserves low ambient memory footprint (< 25 MB PSS) on the home canvas.
+     */
+    fun ensureLoaded() {
+        if (!isIndexLoaded.compareAndSet(false, true)) return
         viewModelScope.launch(ioDispatcher) {
             val dialerPkg = dialerPackageResolver()
             val apps = packageIndexSource.getInstalledApps()
@@ -56,15 +72,6 @@ class SettingsViewModel(
                     availableApps = apps.toImmutableList(),
                     isLoading = false,
                 )
-            }
-
-            settingsRepository.observeSettings().collect { settings ->
-                _uiState.update { current ->
-                    current.copy(
-                        general = settings.general,
-                        baseProfile = settings.baseProfile,
-                    )
-                }
             }
         }
     }
