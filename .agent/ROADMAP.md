@@ -57,17 +57,25 @@
 
 ---
 
-## Phase 3: Configuration & Conflict Resolution Engine (Milestone 3)
-- [ ] **Task 3.1: 4-Tier Conflict Resolution Engine (`:core`)**
-  - Deterministic evaluation: Tier 1 (Ephemeral/NFC) > Tier 2 (Schedules) > Tier 3 (Geofences) > Tier 4 (Ambient Fallback).
-  - Intra-tier schedule overlap resolution (Most Restrictive Rule wins).
-- [ ] **Task 3.2: Room & DataStore Persistence (`:data`)**
-  - Local database schema for profiles, schedules, and active tokens.
-  - Reactive streams (`Flow`) for active profile emissions.
-- [ ] **Task 3.3: In-UI Conflict Highlighting & Diagnostics**
-  - Natural-language conflict explanations ("At Home after 21:00, Night Rest takes precedence").
-  - Live home indicator string below the clock.
-- [ ] **Task 3.4: Wallpaper & Lock Screen Sync**
+## Phase 3: Configuration, Base Settings & Profile Cascading Engine (Milestone 3)
+- [ ] **Task 3.1: Base Settings, Quick Actions & 3-Tier App Configuration**
+  - **General Settings**: Show Unlocks, Show Rest, Require full typing of guarded apps.
+  - **Quick Actions**: Up to 7 slots beneath empty search box; reflects calculated state (Blocked = greyed out, Guarded = badge, Standard = launchable); hidden when typing search queries.
+  - **Base App Configuration**: Reusable 3-tier triage screen (Blocked, Guarded, Standard/Normal) with single-tap triage icons, alphabetical ordering, and friction override toggle + radio (Typed Intention, Drag Sort, Caret Tracing, Random).
+  - **Base Friction Selection**: Friction radio group for base guarded apps (including Random).
+  - **Entry Points**: First-run hint ("long-press to configure", 20s fade, permanent flag), home screen long-press gesture, and `:settings` command.
+  - **Reconciliation**: Package uninstall listener automatically removes uninstalled apps from rules and quick actions.
+  - **Universal Dialer Invariant**: Permanently Standard; omitted from configuration picker.
+- [ ] **Task 3.2: Custom Profiles & Cascading Resolution Engine (`:core` / `:data`)**
+  - Profile triggers: Schedules (start day/time to end day/time), NFC (duration timer and/or tap-to-relock), Geofence (list of lat/long/radii), Manual.
+  - User-ordered cascading evaluation: Top-to-bottom active profile evaluation with base profile fallback.
+  - Dynamic profile disable invariant when all app rules are removed due to uninstallation.
+  - Zero-allocation cached effective ruleset computation.
+- [ ] **Task 3.3: Custom Profile Management UI (`:app`)**
+  - Profile list management (create, edit, delete, enable/disable, reorder).
+  - Reusing the 3-tier app configuration screen for custom profile overrides.
+  - Live active profile indicator below the clock.
+- [ ] **Task 3.4: Wallpaper & Lock Screen Sync (`:data` / `:app`)**
   - Solid AMOLED black / profile color wallpaper application.
   - Opt-in `syncLockScreenWallpaper` toggle (`FLAG_LOCK`).
 

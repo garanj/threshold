@@ -335,6 +335,110 @@ class SearchViewModelTest {
         assertThat(haptic.targetSnapCount).isEqualTo(2)
     }
 
+    @Test
+    fun settingsRepository_propagatesQuickActionsAndGeneralSettings() = runTest(testDispatcher) {
+        val fakeRepo = com.garan.threshold.ui.settings.FakeSettingsRepository(
+            com.garan.threshold.core.model.ThresholdSettings(
+                general = com.garan.threshold.core.model.GeneralSettings(
+                    showUnlocks = false,
+                    requireFullTypingOfGuardedApps = true,
+                ),
+                baseProfile = com.garan.threshold.core.model.BaseProfileSettings(
+                    quickActions = listOf(cameraComponent, socialComponent),
+                    appAssignments = mapOf(socialComponent to com.garan.threshold.core.model.AppAssignment.Blocked),
+                ),
+            ),
+        )
+
+        val testHaptic = TestHapticEngine()
+        val vm = SearchViewModel(
+            packageIndexSource = fakePackageIndexSource,
+            hapticEngine = testHaptic,
+            settingsRepository = fakeRepo,
+            ioDispatcher = testDispatcher,
+        )
+        advanceUntilIdle()
+
+        val state = vm.uiState.value
+        assertThat(state.generalSettings.showUnlocks).isFalse()
+        assertThat(state.generalSettings.requireFullTypingOfGuardedApps).isTrue()
+        assertThat(state.quickActions).hasSize(2)
+        assertThat(state.quickActions[0].component).isEqualTo(cameraComponent)
+        assertThat(state.quickActions[0].accessState).isEqualTo(AppAccessState.Direct)
+        assertThat(state.quickActions[1].component).isEqualTo(socialComponent)
+        assertThat(state.quickActions[1].accessState).isEqualTo(AppAccessState.Blocked)
+    }
+
+    @Test
+    fun requireFullTypingOfGuardedApps_blocksFrictionUntilFullNameTyped() = runTest(testDispatcher) {
+        val testHaptic = TestHapticEngine()
+        val fakeRepo = com.garan.threshold.ui.settings.FakeSettingsRepository(
+            com.garan.threshold.core.model.ThresholdSettings(
+                general = com.garan.threshold.core.model.GeneralSettings(requireFullTypingOfGuardedApps = true),
+                baseProfile = com.garan.threshold.core.model.BaseProfileSettings(
+                    appAssignments = mapOf(socialComponent to com.garan.threshold.core.model.AppAssignment.Guarded()),
+                ),
+            ),
+        )
+
+        val vm = SearchViewModel(
+            packageIndexSource = fakePackageIndexSource,
+            hapticEngine = testHaptic,
+            settingsRepository = fakeRepo,
+            ioDispatcher = testDispatcher,
+        )
+        advanceUntilIdle()
+
+        // Partial query: "Soc" (not "Social Feed")
+        vm.onQueryChanged("Soc")
+        advanceUntilIdle()
+
+        val item = SearchItem.App(socialComponent, "Social Feed", AppAccessState.Guarded(FrictionPolicy.TypedIntention))
+        vm.openFriction(item, FrictionPolicy.TypedIntention)
+
+        // Must NOT open friction, must trigger resistance detent
+        assertThat(vm.uiState.value.activeFriction).isNull()
+        assertThat(testHaptic.resistanceDetentCount).isEqualTo(1)
+
+        // Now type exact full name: "Social Feed"
+        vm.onQueryChanged("Social Feed")
+        advanceUntilIdle()
+        vm.openFriction(item, FrictionPolicy.TypedIntention)
+
+        // Opens friction successfully
+        assertThat(vm.uiState.value.activeFriction).isNotNull()
+    }
+
+    @Test
+    fun launchQuickAction_triggersAppropriateResponse() = runTest(testDispatcher) {
+        val testHaptic = TestHapticEngine()
+        val vm = SearchViewModel(
+            packageIndexSource = fakePackageIndexSource,
+            hapticEngine = testHaptic,
+            ioDispatcher = testDispatcher,
+        )
+
+        var launched = false
+        val directItem = QuickActionUiItem(1, cameraComponent, "Camera", AppAccessState.Direct)
+        vm.launchQuickAction(directItem) { launched = true }
+        assertThat(launched).isTrue()
+
+        val blockedItem = QuickActionUiItem(2, socialComponent, "Social", AppAccessState.Blocked)
+        vm.launchQuickAction(blockedItem) { launched = false }
+        assertThat(testHaptic.resistanceDetentCount).isEqualTo(1)
+
+        val guardedItem =
+            QuickActionUiItem(
+                3,
+                calculatorComponent,
+                "Calculator",
+                AppAccessState.Guarded(FrictionPolicy.TypedIntention),
+            )
+        vm.launchQuickAction(guardedItem) {}
+        assertThat(vm.uiState.value.activeFriction).isNotNull()
+        assertThat(vm.uiState.value.activeFriction?.app?.component).isEqualTo(calculatorComponent)
+    }
+
     private class TestHapticEngine : HapticEngine {
         var rotaryDetentCount = 0
             private set

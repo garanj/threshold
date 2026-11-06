@@ -1,0 +1,137 @@
+package com.garan.threshold.ui.settings
+
+import androidx.compose.runtime.Immutable
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import com.garan.threshold.core.model.AppAssignment
+import com.garan.threshold.core.model.BaseProfileSettings
+import com.garan.threshold.core.model.ComponentKey
+import com.garan.threshold.core.model.FrictionChoice
+import com.garan.threshold.core.model.GeneralSettings
+import com.garan.threshold.core.model.InstalledApp
+import com.garan.threshold.core.port.PackageIndexSource
+import com.garan.threshold.core.port.SettingsRepository
+import kotlinx.collections.immutable.ImmutableList
+import kotlinx.collections.immutable.persistentListOf
+import kotlinx.collections.immutable.toImmutableList
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
+
+@Immutable
+data class SettingsUiState(
+    val general: GeneralSettings = GeneralSettings(),
+    val baseProfile: BaseProfileSettings = BaseProfileSettings(),
+    val availableApps: ImmutableList<InstalledApp> = persistentListOf(),
+    val isLoading: Boolean = true,
+)
+
+class SettingsViewModel(
+    private val packageIndexSource: PackageIndexSource,
+    private val settingsRepository: SettingsRepository,
+    private val dialerPackageResolver: () -> String,
+    private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
+) : ViewModel() {
+
+    private val _uiState = MutableStateFlow(SettingsUiState())
+    val uiState: StateFlow<SettingsUiState> = _uiState.asStateFlow()
+
+    init {
+        loadData()
+    }
+
+    private fun loadData() {
+        viewModelScope.launch(ioDispatcher) {
+            val dialerPkg = dialerPackageResolver()
+            val apps = packageIndexSource.getInstalledApps()
+                .filterNot { it.component.packageName == dialerPkg }
+                .sortedBy { it.label.lowercase() }
+
+            _uiState.update {
+                it.copy(
+                    availableApps = apps.toImmutableList(),
+                    isLoading = false,
+                )
+            }
+
+            settingsRepository.observeSettings().collect { settings ->
+                _uiState.update { current ->
+                    current.copy(
+                        general = settings.general,
+                        baseProfile = settings.baseProfile,
+                    )
+                }
+            }
+        }
+    }
+
+    fun updateShowUnlocks(show: Boolean) {
+        viewModelScope.launch(ioDispatcher) {
+            val current = settingsRepository.getSettings().general
+            settingsRepository.updateGeneralSettings(current.copy(showUnlocks = show))
+        }
+    }
+
+    fun updateShowRest(show: Boolean) {
+        viewModelScope.launch(ioDispatcher) {
+            val current = settingsRepository.getSettings().general
+            settingsRepository.updateGeneralSettings(current.copy(showRest = show))
+        }
+    }
+
+    fun updateRequireFullTyping(requireFull: Boolean) {
+        viewModelScope.launch(ioDispatcher) {
+            val current = settingsRepository.getSettings().general
+            settingsRepository.updateGeneralSettings(current.copy(requireFullTypingOfGuardedApps = requireFull))
+        }
+    }
+
+    fun updateDefaultFriction(friction: FrictionChoice) {
+        viewModelScope.launch(ioDispatcher) {
+            val current = settingsRepository.getSettings().baseProfile
+            settingsRepository.updateBaseProfile(current.copy(defaultFriction = friction))
+        }
+    }
+
+    fun addQuickAction(component: ComponentKey) {
+        viewModelScope.launch(ioDispatcher) {
+            val current = settingsRepository.getSettings().baseProfile
+            if (current.quickActions.size < BaseProfileSettings.MAX_QUICK_ACTIONS &&
+                component !in current.quickActions
+            ) {
+                settingsRepository.updateBaseProfile(
+                    current.copy(quickActions = current.quickActions + component),
+                )
+            }
+        }
+    }
+
+    fun removeQuickAction(component: ComponentKey) {
+        viewModelScope.launch(ioDispatcher) {
+            val current = settingsRepository.getSettings().baseProfile
+            settingsRepository.updateBaseProfile(
+                current.copy(quickActions = current.quickActions - component),
+            )
+        }
+    }
+
+    fun reorderQuickActions(reordered: List<ComponentKey>) {
+        viewModelScope.launch(ioDispatcher) {
+            val current = settingsRepository.getSettings().baseProfile
+            if (reordered.size <= BaseProfileSettings.MAX_QUICK_ACTIONS) {
+                settingsRepository.updateBaseProfile(current.copy(quickActions = reordered))
+            }
+        }
+    }
+
+    fun saveAppAssignments(assignments: Map<ComponentKey, AppAssignment>) {
+        viewModelScope.launch(ioDispatcher) {
+            val current = settingsRepository.getSettings().baseProfile
+            settingsRepository.updateBaseProfile(current.copy(appAssignments = assignments))
+        }
+    }
+}

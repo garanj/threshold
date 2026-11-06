@@ -8,6 +8,39 @@
     <string name="badge_guarded">GUARDED</string>
     <string name="badge_action">ACTION</string>
 
+    <!-- Onboarding Hints -->
+    <string name="hint_long_press_to_configure">long-press to configure</string>
+
+    <!-- Settings & App Configuration -->
+    <string name="settings_title">Settings</string>
+    <string name="section_quick_actions">Quick Actions</string>
+    <string name="section_general">General</string>
+    <string name="setting_show_unlocks">Show unlocks</string>
+    <string name="setting_show_rest">Show rest</string>
+    <string name="setting_require_full_typing">Require full typing of guarded apps</string>
+    <string name="section_app_configuration">App Configuration</string>
+    <string name="card_guarded_apps">Guarded Apps</string>
+    <string name="card_blocked_apps">Blocked Apps</string>
+    <string name="label_default_friction">Default Friction</string>
+    <string name="friction_typed_intention">Typed Intention</string>
+    <string name="friction_drag_sort">Drag-to-Match</string>
+    <string name="friction_caret_tracing">Caret Tracing</string>
+    <string name="friction_random">Random</string>
+    <string name="action_configure_default_apps">Configure Default Apps</string>
+    <string name="action_save">Save</string>
+    <string name="tier_blocked">Blocked</string>
+    <string name="tier_guarded">Guarded</string>
+    <string name="tier_standard">Standard</string>
+    <string name="setting_override_friction">Override friction</string>
+    <string name="label_empty">empty</string>
+    <string name="label_apps_count">%d apps</string>
+    <string name="label_one_app">1 app</string>
+    <string name="cd_block">Block</string>
+    <string name="cd_guard">Guard</string>
+    <string name="cd_reset">Reset to standard</string>
+    <string name="cd_delete">Remove</string>
+    <string name="cd_add">Add</string>
+
     <!-- Action Labels -->
     <string name="action_go_back">Go back</string>
     <string name="action_open">Open</string>

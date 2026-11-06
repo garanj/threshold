@@ -36,6 +36,14 @@ interface PackageIndexSource {
     suspend fun getInstalledComponents(): List<ComponentKey> = getInstalledApps().map { it.component }
 
     /**
+     * Retrieves an individual installed application matching [component], if present.
+     */
+    suspend fun getApp(component: ComponentKey): InstalledApp? = getInstalledApps().firstOrNull {
+        it.component ==
+            component
+    }
+
+    /**
      * Observes real-time package install, uninstall, and update events.
      */
     fun observePackageChanges(): Flow<PackageChangeEvent>

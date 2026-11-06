@@ -75,6 +75,29 @@ class AndroidPackageIndexSource(
         apps
     }
 
+    override suspend fun getApp(component: ComponentKey): InstalledApp? = withContext(ioDispatcher) {
+        val cachedLabel = knownComponents[component]
+        if (cachedLabel != null) {
+            return@withContext InstalledApp(component, cachedLabel)
+        }
+
+        val profiles = launcherApps.profiles
+        for (user in profiles) {
+            val serial = userManager.getSerialNumberForUser(user)
+            if (serial == component.userSerial) {
+                val activities = launcherApps.getActivityList(component.packageName, user)
+                for (info in activities) {
+                    if (info.componentName.className == component.activityName) {
+                        val label = info.label?.toString()?.ifBlank { null } ?: info.componentName.packageName
+                        knownComponents[component] = label
+                        return@withContext InstalledApp(component = component, label = label)
+                    }
+                }
+            }
+        }
+        null
+    }
+
     override fun observePackageChanges(): Flow<PackageChangeEvent> = callbackFlow {
         val callback = createLauncherCallback(
             retryScope = this,

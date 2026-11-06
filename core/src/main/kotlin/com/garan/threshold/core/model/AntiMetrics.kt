@@ -39,14 +39,15 @@ object AntiMetricsFormatter {
         else -> "$count UNLOCKS"
     }
 
-    fun formatStatus(metrics: AntiMetrics): String {
-        val restPart = metrics.restDurationMs?.let { formatRestDuration(it) }
-        val unlockPart = formatUnlocks(metrics.unlockCount)
+    fun formatStatus(metrics: AntiMetrics, showUnlocks: Boolean = true, showRest: Boolean = true): String {
+        val restPart = if (showRest) metrics.restDurationMs?.let { formatRestDuration(it) } else null
+        val unlockPart = if (showUnlocks) formatUnlocks(metrics.unlockCount) else null
 
-        return if (restPart != null) {
-            "$restPart  ·  $unlockPart"
-        } else {
-            unlockPart
+        return when {
+            restPart != null && unlockPart != null -> "$restPart  ·  $unlockPart"
+            restPart != null -> restPart
+            unlockPart != null -> unlockPart
+            else -> ""
         }
     }
 }

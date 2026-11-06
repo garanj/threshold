@@ -5,26 +5,46 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
+import com.garan.threshold.core.search.ActionCandidate
 import com.garan.threshold.data.antimetrics.AndroidAntiMetricsRepository
 import com.garan.threshold.data.haptics.AndroidHapticEngine
 import com.garan.threshold.data.packageindex.AndroidPackageIndexSource
+import com.garan.threshold.data.settings.AndroidSettingsRepository
 import com.garan.threshold.ui.home.ThresholdHomeScreen
 import com.garan.threshold.ui.launcher.AndroidAppLauncher
 import com.garan.threshold.ui.launcher.DialerPackageResolver
 import com.garan.threshold.ui.search.SearchViewModel
+import com.garan.threshold.ui.settings.ConfigureAppsScreen
+import com.garan.threshold.ui.settings.SettingsViewModel
+import com.garan.threshold.ui.settings.ThresholdSettingsScreen
 import com.garan.threshold.ui.theme.ThresholdTheme
 import com.garan.threshold.ui.util.ImeUtils
+
+enum class ThresholdScreen {
+    HOME,
+    SETTINGS,
+    CONFIGURE_APPS,
+}
 
 class MainActivity : ComponentActivity() {
 
     private val packageIndexSource by lazy { AndroidPackageIndexSource(applicationContext ?: this) }
     private val appLauncher by lazy { AndroidAppLauncher(this) }
     private val hapticEngine by lazy { AndroidHapticEngine(applicationContext ?: this) }
+    private val settingsRepository by lazy { AndroidSettingsRepository(applicationContext ?: this) }
     internal val antiMetricsRepository by lazy { AndroidAntiMetricsRepository(applicationContext ?: this) }
     internal lateinit var searchViewModel: SearchViewModel
         private set
+    internal lateinit var settingsViewModel: SettingsViewModel
+        private set
+
+    private var activeScreenState = mutableStateOf(ThresholdScreen.HOME)
 
     @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
@@ -34,10 +54,11 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        // Pressing Home while already on Threshold collapses transient search/friction state and hides IME
+        // Pressing Home while already on Threshold collapses transient search/friction/settings state and hides IME
         if (::searchViewModel.isInitialized) {
             searchViewModel.dismissSearch()
         }
+        activeScreenState.value = ThresholdScreen.HOME
         ImeUtils.dismissIme(this)
     }
 
@@ -45,23 +66,10 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
-        // Temporary test rules for Phase 2 Task 2.3 verification
-        // Chrome -> TimedDelay (Caret Tracing 10s), YouTube -> DragSort (6 pairs)
-        // TODO(Phase-3): Remove temporary hardcoded rules when Room profile persistence is introduced
-        val youtubeRule = com.garan.threshold.core.model.ComponentKey("com.google.android.youtube", "*")
-        val chromeRule = com.garan.threshold.core.model.ComponentKey("com.android.chrome", "*")
-        val defaultProfile = com.garan.threshold.core.model.Profile(
-            id = "ambient",
-            name = "Ambient",
-            defaultAccess = com.garan.threshold.core.model.AppAccessState.Direct,
-            appRules = mapOf(
-                chromeRule to com.garan.threshold.core.model.AppAccessState.Guarded(
-                    com.garan.threshold.core.model.FrictionPolicy.TimedDelay(10),
-                ),
-                youtubeRule to com.garan.threshold.core.model.AppAccessState.Guarded(
-                    com.garan.threshold.core.model.FrictionPolicy.DragSort(6),
-                ),
-            ),
+        val settingsAction = ActionCandidate(
+            id = "settings",
+            label = "Settings",
+            shortcutKeyword = ":settings",
         )
 
         searchViewModel = ViewModelProvider(
@@ -74,10 +82,25 @@ class MainActivity : ComponentActivity() {
                     dialerPackageResolver = {
                         DialerPackageResolver.resolveDefaultDialerPackage(this@MainActivity.applicationContext)
                     },
-                    initialProfile = defaultProfile,
+                    actions = listOf(settingsAction),
+                    settingsRepository = settingsRepository,
                 ) as T
             },
         )[SearchViewModel::class.java]
+
+        settingsViewModel = ViewModelProvider(
+            this,
+            object : ViewModelProvider.Factory {
+                @Suppress("UNCHECKED_CAST")
+                override fun <T : ViewModel> create(modelClass: Class<T>): T = SettingsViewModel(
+                    packageIndexSource = packageIndexSource,
+                    settingsRepository = settingsRepository,
+                    dialerPackageResolver = {
+                        DialerPackageResolver.resolveDefaultDialerPackage(this@MainActivity.applicationContext)
+                    },
+                ) as T
+            },
+        )[SettingsViewModel::class.java]
 
         // IMPORTANT MEMORY INVARIANT (< 25 MB Typographic Mode / < 35 MB CI PSS Ceiling):
         // Never call searchViewModel.ensureIndexLoaded() eagerly in onCreate().
@@ -87,13 +110,43 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             ThresholdTheme {
-                ThresholdHomeScreen(
-                    viewModel = searchViewModel,
-                    appLauncher = appLauncher,
-                    hapticEngine = hapticEngine,
-                    onDismissIme = { ImeUtils.dismissIme(this@MainActivity) },
-                    antiMetricsRepository = antiMetricsRepository,
-                )
+                var currentScreen by activeScreenState
+                val settingsUiState by settingsViewModel.uiState.collectAsState()
+
+                when (currentScreen) {
+                    ThresholdScreen.HOME -> {
+                        ThresholdHomeScreen(
+                            viewModel = searchViewModel,
+                            appLauncher = appLauncher,
+                            hapticEngine = hapticEngine,
+                            onDismissIme = { ImeUtils.dismissIme(this@MainActivity) },
+                            antiMetricsRepository = antiMetricsRepository,
+                            onOpenSettings = { currentScreen = ThresholdScreen.SETTINGS },
+                        )
+                    }
+                    ThresholdScreen.SETTINGS -> {
+                        ThresholdSettingsScreen(
+                            uiState = settingsUiState,
+                            onBack = { currentScreen = ThresholdScreen.HOME },
+                            onNavigateToConfigureApps = { currentScreen = ThresholdScreen.CONFIGURE_APPS },
+                            onUpdateShowUnlocks = settingsViewModel::updateShowUnlocks,
+                            onUpdateShowRest = settingsViewModel::updateShowRest,
+                            onUpdateRequireFullTyping = settingsViewModel::updateRequireFullTyping,
+                            onUpdateDefaultFriction = settingsViewModel::updateDefaultFriction,
+                            onAddQuickAction = settingsViewModel::addQuickAction,
+                            onRemoveQuickAction = settingsViewModel::removeQuickAction,
+                        )
+                    }
+                    ThresholdScreen.CONFIGURE_APPS -> {
+                        ConfigureAppsScreen(
+                            availableApps = settingsUiState.availableApps,
+                            initialAssignments = settingsUiState.baseProfile.appAssignments,
+                            defaultFriction = settingsUiState.baseProfile.defaultFriction,
+                            onSave = settingsViewModel::saveAppAssignments,
+                            onBack = { currentScreen = ThresholdScreen.SETTINGS },
+                        )
+                    }
+                }
             }
         }
     }
