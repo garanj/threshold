@@ -218,8 +218,8 @@ fun ThresholdSearchSurface(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(top = 8.dp),
-                verticalArrangement = Arrangement.spacedBy(2.dp),
+                    .padding(top = 10.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
                 quickActions.forEach { item ->
                     QuickActionRow(
@@ -367,9 +367,9 @@ fun QuickActionRow(
     onLongClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
-    val baseLabelSmall = MaterialTheme.typography.labelSmall
-    val badgeTextStyle = remember(baseLabelSmall) {
-        baseLabelSmall.copy(
+    val baseLabelMedium = MaterialTheme.typography.labelMedium
+    val badgeTextStyle = remember(baseLabelMedium) {
+        baseLabelMedium.copy(
             letterSpacing = 1.2.sp,
             fontWeight = FontWeight.SemiBold,
         )
@@ -387,13 +387,13 @@ fun QuickActionRow(
                 onClick = onClick,
                 onLongClick = onLongClick,
             )
-            .padding(vertical = 10.dp),
+            .padding(vertical = 14.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
-            text = "$slotFormatted  ${item.label}",
-            style = MaterialTheme.typography.titleMedium,
+            text = "$slotFormatted   ${item.label}",
+            style = MaterialTheme.typography.titleLarge,
             color = textColor,
         )
 
