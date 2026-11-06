@@ -33,6 +33,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.random.Random
 
 data class ActiveFrictionGate(val app: SearchItem.App, val policy: FrictionPolicy)
 
@@ -72,6 +73,7 @@ class SearchViewModel(
     ),
     private val settingsRepository: SettingsRepository? = null,
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
+    private val random: Random = Random.Default,
 ) : ViewModel() {
 
     private val resolvedDialerPackage: String by lazy(LazyThreadSafetyMode.PUBLICATION) {
@@ -191,7 +193,14 @@ class SearchViewModel(
     }
 
     fun launchQuickAction(item: QuickActionUiItem, onDirectLaunch: () -> Unit) {
-        when (val state = item.accessState) {
+        val isDefaultDialer = (item.component.packageName == resolvedDialerPackage)
+        val access = lastObservedSettings?.baseProfile?.resolveAccess(
+            component = item.component,
+            isDefaultDialer = isDefaultDialer,
+            random = random,
+        ) ?: item.accessState
+
+        when (access) {
             is AppAccessState.Blocked -> {
                 hapticEngine.resistanceDetent()
             }
@@ -199,8 +208,8 @@ class SearchViewModel(
                 _uiState.update {
                     it.copy(
                         activeFriction = ActiveFrictionGate(
-                            SearchItem.App(item.component, item.label, state),
-                            state.policy,
+                            SearchItem.App(item.component, item.label, access),
+                            access.policy,
                         ),
                     )
                 }
@@ -285,11 +294,18 @@ class SearchViewModel(
 
     fun evaluateLaunch(item: SearchItem): LaunchResult = when (item) {
         is SearchItem.App -> {
-            val result = gatekeeper.evaluateLaunch(
+            val isDefaultDialer = (item.component.packageName == resolvedDialerPackage)
+            val effectiveAccess = lastObservedSettings?.baseProfile?.resolveAccess(
                 component = item.component,
-                profile = activeProfile,
-                defaultDialerPackage = resolvedDialerPackage,
-            )
+                isDefaultDialer = isDefaultDialer,
+                random = random,
+            ) ?: gatekeeper.resolveAccess(item.component, activeProfile, resolvedDialerPackage)
+
+            val result = when (effectiveAccess) {
+                is AppAccessState.Direct -> LaunchResult.Launched
+                is AppAccessState.Guarded -> LaunchResult.FrictionRequired(effectiveAccess.policy)
+                is AppAccessState.Blocked -> LaunchResult.Blocked
+            }
             if (result is LaunchResult.FrictionRequired &&
                 _uiState.value.generalSettings.requireFullTypingOfGuardedApps
             ) {

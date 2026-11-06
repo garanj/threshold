@@ -48,6 +48,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.garan.threshold.R
 import com.garan.threshold.core.model.AppAssignment
 import com.garan.threshold.core.model.ComponentKey
@@ -112,10 +113,13 @@ fun ConfigureAppsScreen(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 8.dp, vertical = 8.dp),
+                .padding(horizontal = 12.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            IconButton(onClick = onBack) {
+            IconButton(
+                onClick = onBack,
+                modifier = Modifier.size(44.dp),
+            ) {
                 Icon(
                     imageVector = ThresholdIcons.ArrowBack,
                     contentDescription = stringResource(R.string.action_go_back),
@@ -125,7 +129,7 @@ fun ConfigureAppsScreen(
             Spacer(modifier = Modifier.width(8.dp))
             Text(
                 text = stringResource(R.string.action_configure_default_apps),
-                style = MaterialTheme.typography.titleMedium,
+                style = MaterialTheme.typography.titleLarge,
                 color = Color.White,
             )
         }
@@ -224,7 +228,7 @@ fun ConfigureAppsScreen(
                 },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(48.dp),
+                    .height(52.dp),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = Color.White,
                     contentColor = Color.Black,
@@ -232,7 +236,7 @@ fun ConfigureAppsScreen(
             ) {
                 Text(
                     text = stringResource(R.string.action_save),
-                    style = MaterialTheme.typography.labelLarge,
+                    style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.Bold,
                 )
             }
@@ -246,15 +250,16 @@ private fun SectionHeader(title: String, count: Int, modifier: Modifier = Modifi
         modifier = modifier
             .fillMaxWidth()
             .background(Color(0xFF111111))
-            .padding(horizontal = 16.dp, vertical = 10.dp),
+            .padding(horizontal = 16.dp, vertical = 12.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
             text = title.uppercase(),
-            style = MaterialTheme.typography.labelMedium,
-            fontWeight = FontWeight.SemiBold,
-            color = Color(0xFF999999),
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = 1.2.sp,
+            color = Color(0xFFAAAAAA),
         )
         Text(
             text = if (count == 0) {
@@ -264,8 +269,8 @@ private fun SectionHeader(title: String, count: Int, modifier: Modifier = Modifi
             } else {
                 stringResource(R.string.label_apps_count, count)
             },
-            style = MaterialTheme.typography.labelSmall,
-            color = Color(0xFF666666),
+            style = MaterialTheme.typography.bodySmall,
+            color = Color(0xFF777777),
         )
     }
 }
@@ -280,30 +285,30 @@ private fun BlockedAppRow(
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 6.dp),
+            .padding(horizontal = 16.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
             text = app.label,
-            style = MaterialTheme.typography.bodyMedium,
-            color = Color(0xFF777777),
+            style = MaterialTheme.typography.bodyLarge,
+            color = Color(0xFF888888),
             modifier = Modifier.weight(1f),
         )
-        IconButton(onClick = onMoveToGuarded, modifier = Modifier.size(36.dp)) {
+        IconButton(onClick = onMoveToGuarded, modifier = Modifier.size(40.dp)) {
             Icon(
                 imageVector = ThresholdIcons.Shield,
                 contentDescription = stringResource(R.string.cd_guard),
                 tint = Color(0xFFAAAAAA),
-                modifier = Modifier.size(20.dp),
+                modifier = Modifier.size(22.dp),
             )
         }
-        Spacer(modifier = Modifier.width(4.dp))
-        IconButton(onClick = onResetToStandard, modifier = Modifier.size(36.dp)) {
+        Spacer(modifier = Modifier.width(6.dp))
+        IconButton(onClick = onResetToStandard, modifier = Modifier.size(40.dp)) {
             Icon(
                 imageVector = ThresholdIcons.Delete,
                 contentDescription = stringResource(R.string.cd_reset),
                 tint = Color(0xFF666666),
-                modifier = Modifier.size(20.dp),
+                modifier = Modifier.size(22.dp),
             )
         }
     }
@@ -330,13 +335,13 @@ private fun GuardedAppRow(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 6.dp),
+                .padding(horizontal = 16.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = app.label,
-                    style = MaterialTheme.typography.bodyMedium,
+                    style = MaterialTheme.typography.bodyLarge,
                     color = Color.White,
                 )
                 val effectiveFriction = assignment.frictionOverride ?: defaultFriction
@@ -348,25 +353,25 @@ private fun GuardedAppRow(
                     } else {
                         "${stringResource(R.string.tier_guarded)} · default"
                     },
-                    style = MaterialTheme.typography.labelSmall,
-                    color = Color(0xFF888888),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color(0xFF999999),
                 )
             }
-            IconButton(onClick = onMoveToBlocked, modifier = Modifier.size(36.dp)) {
+            IconButton(onClick = onMoveToBlocked, modifier = Modifier.size(40.dp)) {
                 Icon(
                     imageVector = ThresholdIcons.Block,
                     contentDescription = stringResource(R.string.cd_block),
                     tint = Color(0xFFAAAAAA),
-                    modifier = Modifier.size(20.dp),
+                    modifier = Modifier.size(22.dp),
                 )
             }
-            Spacer(modifier = Modifier.width(4.dp))
-            IconButton(onClick = onResetToStandard, modifier = Modifier.size(36.dp)) {
+            Spacer(modifier = Modifier.width(6.dp))
+            IconButton(onClick = onResetToStandard, modifier = Modifier.size(40.dp)) {
                 Icon(
                     imageVector = ThresholdIcons.Delete,
                     contentDescription = stringResource(R.string.cd_reset),
                     tint = Color(0xFF666666),
-                    modifier = Modifier.size(20.dp),
+                    modifier = Modifier.size(22.dp),
                 )
             }
         }
@@ -389,17 +394,19 @@ private fun GuardedAppRow(
                 modifier = Modifier
                     .fillMaxWidth()
                     .background(Color(0xFF161616))
-                    .padding(horizontal = 24.dp, vertical = 8.dp),
+                    .padding(horizontal = 24.dp, vertical = 10.dp),
             ) {
                 val hasOverride = assignment.frictionOverride != null
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 4.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(
                         text = stringResource(R.string.setting_override_friction),
-                        style = MaterialTheme.typography.bodySmall,
+                        style = MaterialTheme.typography.bodyMedium,
                         color = Color.White,
                     )
                     Switch(
@@ -467,30 +474,30 @@ private fun StandardAppRow(
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 6.dp),
+            .padding(horizontal = 16.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
             text = app.label,
-            style = MaterialTheme.typography.bodyMedium,
+            style = MaterialTheme.typography.bodyLarge,
             color = Color.White,
             modifier = Modifier.weight(1f),
         )
-        IconButton(onClick = onMoveToBlocked, modifier = Modifier.size(36.dp)) {
+        IconButton(onClick = onMoveToBlocked, modifier = Modifier.size(40.dp)) {
             Icon(
                 imageVector = ThresholdIcons.Block,
                 contentDescription = stringResource(R.string.cd_block),
                 tint = Color(0xFF888888),
-                modifier = Modifier.size(20.dp),
+                modifier = Modifier.size(22.dp),
             )
         }
-        Spacer(modifier = Modifier.width(4.dp))
-        IconButton(onClick = onMoveToGuarded, modifier = Modifier.size(36.dp)) {
+        Spacer(modifier = Modifier.width(6.dp))
+        IconButton(onClick = onMoveToGuarded, modifier = Modifier.size(40.dp)) {
             Icon(
                 imageVector = ThresholdIcons.Shield,
                 contentDescription = stringResource(R.string.cd_guard),
                 tint = Color(0xFF888888),
-                modifier = Modifier.size(20.dp),
+                modifier = Modifier.size(22.dp),
             )
         }
     }
@@ -508,7 +515,7 @@ internal fun FrictionRadioOption(
         modifier = modifier
             .fillMaxWidth()
             .clickable(onClick = onSelect)
-            .padding(vertical = 4.dp),
+            .padding(vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         RadioButton(
@@ -519,10 +526,10 @@ internal fun FrictionRadioOption(
                 unselectedColor = Color(0xFF666666),
             ),
         )
-        Spacer(modifier = Modifier.width(8.dp))
+        Spacer(modifier = Modifier.width(10.dp))
         Text(
             text = title,
-            style = MaterialTheme.typography.bodySmall,
+            style = MaterialTheme.typography.bodyMedium,
             color = if (selected) Color.White else Color(0xFFAAAAAA),
         )
     }
