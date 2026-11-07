@@ -25,7 +25,7 @@
     - Adaptive layout with Material 3 / Threshold monochrome aesthetic.
     - General settings section toggles (`Show unlocks`, `Show rest`, `Require full typing`).
     - Quick actions section (up to 7 slots, add with dialog, remove).
-    - Base app configuration cards (`Guarded`, `Blocked` counts, `"Configure Default Apps"` button).
+    - Base app configuration cards (`Guarded`, `Blocked` counts, `"Configure default app behavior"` button).
     - Base friction policy radio selector (Typed Intention, Drag-to-Match, Caret Tracing, Random).
   - [x] Reusable Unified App Configuration screen (`ConfigureAppsScreen`):
     - Minimalist filter counter header bar: `[ ALL (count) ]  [ BLOCKED (count) ]  [ GUARDED (count) ]  [ ALLOW (count) ]`.
