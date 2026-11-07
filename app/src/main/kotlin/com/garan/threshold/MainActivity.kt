@@ -150,6 +150,7 @@ class MainActivity : ComponentActivity() {
                             defaultFriction = settingsUiState.baseProfile.defaultFriction,
                             onSave = settingsViewModel::saveAppAssignments,
                             onBack = { currentScreen = ThresholdScreen.SETTINGS },
+                            hapticEngine = hapticEngine,
                         )
                     }
                 }

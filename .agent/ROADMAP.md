@@ -65,12 +65,12 @@
   - **Entry Points**: First-run hint ("long-press to configure", 20s fade, permanent flag), home screen long-press gesture, and `:settings` command.
   - **Reconciliation**: Package uninstall listener automatically removes uninstalled apps from rules and quick actions.
   - **Universal Dialer Invariant**: Permanently Standard; omitted from configuration picker.
-- [ ] **Task 3.2: Tactile Multi-State Toggle & Unified App Configuration (`:app`)**
+- [x] **Task 3.2: Tactile Multi-State Toggle & Unified App Configuration (`:app`)**
   - **Multi-State Toggle Component**: Precision mechanical segmented / slider toggle in Compose with discrete state positions:
-    - Base / Default Profile: `[Standard | Guard | Block]`.
-    - Custom Profiles: `[Inherit | Standard | Guard | Block]` (`Inherit` as default).
+    - Base / Default Profile: `[Allow | Guard | Block]`.
+    - Custom Profiles: `[Default] | [Allow | Guard | Block]` (`Default` as unmanaged/inactive).
   - **Tactile Ergonomics & Micro-Haptics**: Micro-haptic detent feedback on state transitions (`PRIMITIVE_CLICK` / resistance), optical motion easing, high-contrast monochrome design.
-  - **Filter Counter Header Bar**: Minimalist horizontal summary bar (`[ ALL (count) ]  [ BLOCKED (count) ]  [ GUARDED (count) ]  [ STANDARD (count) ]`) allowing instant audit/filtering of restricted apps without losing single-list stability.
+  - **Filter Counter Header Bar**: Minimalist horizontal summary bar (`[ ALL (count) ]  [ BLOCKED (count) ]  [ GUARDED (count) ]  [ ALLOW (count) ]`) allowing instant audit/filtering of restricted apps without losing single-list stability.
   - **Unified App Configuration List**: Replace multi-list triage with a single alphabetical list of all installed apps, each with its multi-state toggle.
   - **Friction Override Integration**: Expandable row or inline options for app-level friction override when set to `Guard`.
 - [ ] **Task 3.3: Custom Profiles & Cascading Resolution Engine (`:core` / `:data`)**

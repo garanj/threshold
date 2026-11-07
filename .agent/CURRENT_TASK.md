@@ -27,9 +27,11 @@
     - Quick actions section (up to 7 slots, add with dialog, remove).
     - Base app configuration cards (`Guarded`, `Blocked` counts, `"Configure Default Apps"` button).
     - Base friction policy radio selector (Typed Intention, Drag-to-Match, Caret Tracing, Random).
-  - [x] Reusable 3-Tier App Configuration screen (`ConfigureAppsScreen`):
-    - Alphabetical sections for *Blocked*, *Guarded*, and *Standard*.
-    - Single-tap triage icons: `[Block]`, `[Guard]`, `[Reset]`.
+  - [x] Reusable Unified App Configuration screen (`ConfigureAppsScreen`):
+    - Minimalist filter counter header bar: `[ ALL (count) ]  [ BLOCKED (count) ]  [ GUARDED (count) ]  [ ALLOW (count) ]`.
+    - Single unified alphabetical list of all apps with high-performance `derivedStateOf` filtering.
+    - Precision mechanical multi-state toggle (`[ALLOW | GUARD | BLOCK]`) with 120Hz optical motion easing and micro-haptic detents.
+    - Support for custom profile overrides (`[DEFAULT] | [ALLOW | GUARD | BLOCK]`) with dimmed inactive state.
     - Expandable rows in *Guarded* with friction override toggle & radio group.
     - Persistent Save button at the bottom.
   - [x] Home Screen integration:
