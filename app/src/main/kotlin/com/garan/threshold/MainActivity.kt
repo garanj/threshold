@@ -68,7 +68,7 @@ class MainActivity : ComponentActivity() {
 
         val settingsAction = ActionCandidate(
             id = "settings",
-            label = "Settings",
+            label = "Threshold Settings",
             shortcutKeyword = ":settings",
         )
 

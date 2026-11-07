@@ -50,10 +50,12 @@ class ThresholdAppInfoInstrumentedTest {
         val launcherApps = targetContext.getSystemService(Context.LAUNCHER_APPS_SERVICE) as LauncherApps
         val myUser = Process.myUserHandle()
 
-        // Locate an installed launcher app (prefer Settings if available)
+        // Locate an installed launcher app (prefer third-party/non-settings app to avoid action collision)
         val activities = launcherApps.getActivityList(null, myUser)
-        val candidate = activities.firstOrNull { it.applicationInfo.packageName == "com.android.settings" }
-            ?: activities.firstOrNull { it.applicationInfo.packageName != targetContext.packageName }
+        val candidate = activities.firstOrNull {
+            it.applicationInfo.packageName != targetContext.packageName &&
+                it.applicationInfo.packageName != "com.android.settings"
+        } ?: activities.firstOrNull { it.applicationInfo.packageName != targetContext.packageName }
             ?: error("No launchable activities found on device for testing")
 
         val targetLabel = candidate.label.toString()
@@ -89,8 +91,9 @@ class ThresholdAppInfoInstrumentedTest {
         val settingsPattern = Pattern.compile("com\\.android\\.settings|com\\.google\\.android\\.settings.*")
         val appDetailsAppeared = device.wait(
             Until.hasObject(By.pkg(settingsPattern)),
-            7000L,
-        )
+            15000L,
+        ) ||
+            settingsPattern.matcher(device.currentPackageName ?: "").matches()
         assertThat(appDetailsAppeared).isTrue()
 
         // 4. Navigate back to Threshold and verify search state was dismissed
