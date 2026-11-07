@@ -40,4 +40,19 @@ interface SettingsRepository {
      * Removes specified app components from assignments and quick action slots (e.g. upon uninstallation).
      */
     suspend fun removeApps(keys: Set<ComponentKey>)
+
+    /**
+     * Updates the full ordered list of [com.garan.threshold.core.model.CustomProfile]s.
+     */
+    suspend fun updateCustomProfiles(profiles: List<com.garan.threshold.core.model.CustomProfile>)
+
+    /**
+     * Adds or updates a single [com.garan.threshold.core.model.CustomProfile].
+     */
+    suspend fun saveCustomProfile(profile: com.garan.threshold.core.model.CustomProfile)
+
+    /**
+     * Deletes a [com.garan.threshold.core.model.CustomProfile] by its ID.
+     */
+    suspend fun deleteCustomProfile(profileId: String)
 }

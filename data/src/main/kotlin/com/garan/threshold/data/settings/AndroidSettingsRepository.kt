@@ -11,9 +11,14 @@ import androidx.datastore.preferences.preferencesDataStore
 import com.garan.threshold.core.model.AppAssignment
 import com.garan.threshold.core.model.BaseProfileSettings
 import com.garan.threshold.core.model.ComponentKey
+import com.garan.threshold.core.model.CustomProfile
+import com.garan.threshold.core.model.DayOfWeek
 import com.garan.threshold.core.model.FrictionChoice
 import com.garan.threshold.core.model.GeneralSettings
+import com.garan.threshold.core.model.ProfileTrigger
+import com.garan.threshold.core.model.ScheduleTrigger
 import com.garan.threshold.core.model.ThresholdSettings
+import com.garan.threshold.core.model.TimeOfDay
 import com.garan.threshold.core.port.SettingsRepository
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
@@ -23,6 +28,8 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
+import org.json.JSONArray
+import org.json.JSONObject
 import java.io.IOException
 
 val Context.settingsDataStore: DataStore<Preferences> by preferencesDataStore(name = "threshold_settings")
@@ -48,6 +55,7 @@ class AndroidSettingsRepository(
         val DEFAULT_FRICTION = stringPreferencesKey("default_friction")
         val QUICK_ACTIONS = stringPreferencesKey("quick_actions")
         val APP_ASSIGNMENTS = stringPreferencesKey("app_assignments")
+        val CUSTOM_PROFILES = stringPreferencesKey("custom_profiles")
     }
 
     override fun observeSettings(): Flow<ThresholdSettings> = dataStore.data
@@ -94,6 +102,39 @@ class AndroidSettingsRepository(
         }
     }
 
+    override suspend fun updateCustomProfiles(profiles: List<CustomProfile>) {
+        withContext(ioDispatcher) {
+            dataStore.edit { prefs ->
+                prefs[Keys.CUSTOM_PROFILES] = serializeCustomProfiles(profiles)
+            }
+        }
+    }
+
+    override suspend fun saveCustomProfile(profile: CustomProfile) {
+        withContext(ioDispatcher) {
+            dataStore.edit { prefs ->
+                val current = deserializeCustomProfiles(prefs[Keys.CUSTOM_PROFILES].orEmpty())
+                val existingIndex = current.indexOfFirst { it.id == profile.id }
+                val updated = if (existingIndex >= 0) {
+                    current.toMutableList().apply { set(existingIndex, profile) }
+                } else {
+                    current + profile
+                }
+                prefs[Keys.CUSTOM_PROFILES] = serializeCustomProfiles(updated)
+            }
+        }
+    }
+
+    override suspend fun deleteCustomProfile(profileId: String) {
+        withContext(ioDispatcher) {
+            dataStore.edit { prefs ->
+                val current = deserializeCustomProfiles(prefs[Keys.CUSTOM_PROFILES].orEmpty())
+                val updated = current.filter { it.id != profileId }
+                prefs[Keys.CUSTOM_PROFILES] = serializeCustomProfiles(updated)
+            }
+        }
+    }
+
     override suspend fun removeApps(keys: Set<ComponentKey>) {
         if (keys.isEmpty()) return
         withContext(ioDispatcher) {
@@ -108,8 +149,20 @@ class AndroidSettingsRepository(
                     comp !in keys && comp.packageName !in removedPkgNames
                 }
 
+                val prunedProfiles = currentSettings.customProfiles.map { profile ->
+                    val pruned = profile.appAssignments.filter { (comp, _) ->
+                        comp !in keys && comp.packageName !in removedPkgNames
+                    }
+                    val shouldDisable = pruned.isEmpty() && profile.appAssignments.isNotEmpty()
+                    profile.copy(
+                        appAssignments = pruned,
+                        enabled = if (shouldDisable) false else profile.enabled,
+                    )
+                }
+
                 prefs[Keys.QUICK_ACTIONS] = prunedQuickActions.joinToString(";") { it.flattenToString() }
                 prefs[Keys.APP_ASSIGNMENTS] = serializeAppAssignments(prunedAssignments)
+                prefs[Keys.CUSTOM_PROFILES] = serializeCustomProfiles(prunedProfiles)
             }
         }
     }
@@ -137,6 +190,9 @@ class AndroidSettingsRepository(
         val appAssignmentsRaw = prefs[Keys.APP_ASSIGNMENTS].orEmpty()
         val appAssignments = deserializeAppAssignments(appAssignmentsRaw)
 
+        val customProfilesRaw = prefs[Keys.CUSTOM_PROFILES].orEmpty()
+        val customProfiles = deserializeCustomProfiles(customProfilesRaw)
+
         return ThresholdSettings(
             general = GeneralSettings(
                 showUnlocks = showUnlocks,
@@ -149,6 +205,7 @@ class AndroidSettingsRepository(
                 appAssignments = appAssignments,
                 quickActions = quickActions,
             ),
+            customProfiles = customProfiles,
         )
     }
 
@@ -200,5 +257,98 @@ class AndroidSettingsRepository(
             }
         }
         return map
+    }
+
+    private fun serializeCustomProfiles(profiles: List<CustomProfile>): String {
+        val jsonArray = JSONArray()
+        for (profile in profiles) {
+            val obj = JSONObject()
+            obj.put("id", profile.id)
+            obj.put("name", profile.name)
+            obj.put("enabled", profile.enabled)
+            obj.put("priority", profile.priority)
+            profile.frictionOverride?.let { obj.put("frictionOverride", it.name) }
+
+            val triggerObj = JSONObject()
+            when (val trigger = profile.trigger) {
+                is ProfileTrigger.Schedule -> {
+                    triggerObj.put("type", "SCHEDULE")
+                    val daysArray = JSONArray()
+                    trigger.schedule.days.forEach { daysArray.put(it.name) }
+                    triggerObj.put("days", daysArray)
+                    triggerObj.put("startHour", trigger.schedule.startTime.hour)
+                    triggerObj.put("startMinute", trigger.schedule.startTime.minute)
+                    triggerObj.put("endHour", trigger.schedule.endTime.hour)
+                    triggerObj.put("endMinute", trigger.schedule.endTime.minute)
+                    triggerObj.put("isAllDay", trigger.schedule.isAllDay)
+                }
+            }
+            obj.put("trigger", triggerObj)
+            obj.put("appAssignments", serializeAppAssignments(profile.appAssignments))
+            jsonArray.put(obj)
+        }
+        return jsonArray.toString()
+    }
+
+    private fun deserializeCustomProfiles(raw: String): List<CustomProfile> {
+        if (raw.isBlank()) return emptyList()
+        return runCatching {
+            val jsonArray = JSONArray(raw)
+            val list = mutableListOf<CustomProfile>()
+            for (i in 0 until jsonArray.length()) {
+                val obj = jsonArray.getJSONObject(i)
+                val id = obj.getString("id")
+                val name = obj.getString("name")
+                val enabled = obj.optBoolean("enabled", true)
+                val priority = obj.optInt("priority", i)
+                val frictionOverride = if (obj.has("frictionOverride")) {
+                    runCatching { FrictionChoice.valueOf(obj.getString("frictionOverride")) }.getOrNull()
+                } else {
+                    null
+                }
+
+                val triggerObj = obj.optJSONObject("trigger")
+                val trigger = if (triggerObj != null && triggerObj.optString("type") == "SCHEDULE") {
+                    val daysArray = triggerObj.optJSONArray("days")
+                    val days = mutableSetOf<DayOfWeek>()
+                    if (daysArray != null) {
+                        for (j in 0 until daysArray.length()) {
+                            runCatching { DayOfWeek.valueOf(daysArray.getString(j)) }.getOrNull()?.let { days.add(it) }
+                        }
+                    }
+                    val startHour = triggerObj.optInt("startHour", 9)
+                    val startMinute = triggerObj.optInt("startMinute", 0)
+                    val endHour = triggerObj.optInt("endHour", 17)
+                    val endMinute = triggerObj.optInt("endMinute", 0)
+                    val isAllDay = triggerObj.optBoolean("isAllDay", false)
+                    ProfileTrigger.Schedule(
+                        ScheduleTrigger(
+                            days = days,
+                            startTime = TimeOfDay(startHour, startMinute),
+                            endTime = TimeOfDay(endHour, endMinute),
+                            isAllDay = isAllDay,
+                        ),
+                    )
+                } else {
+                    ProfileTrigger.Schedule()
+                }
+
+                val appAssignmentsRaw = obj.optString("appAssignments", "")
+                val appAssignments = deserializeAppAssignments(appAssignmentsRaw)
+
+                list.add(
+                    CustomProfile(
+                        id = id,
+                        name = name,
+                        enabled = enabled,
+                        priority = priority,
+                        trigger = trigger,
+                        appAssignments = appAssignments,
+                        frictionOverride = frictionOverride,
+                    ),
+                )
+            }
+            list.sortedBy { it.priority }
+        }.getOrDefault(emptyList())
     }
 }
