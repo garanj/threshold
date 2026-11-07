@@ -26,7 +26,7 @@
     <string name="friction_drag_sort">Drag-to-Match</string>
     <string name="friction_caret_tracing">Caret Tracing</string>
     <string name="friction_random">Random</string>
-    <string name="action_configure_default_apps">Configure Default Apps</string>
+    <string name="action_configure_default_apps">Configure default app behavior</string>
     <string name="action_save">Save</string>
     <string name="tier_blocked">Blocked</string>
     <string name="tier_guarded">Guarded</string>
