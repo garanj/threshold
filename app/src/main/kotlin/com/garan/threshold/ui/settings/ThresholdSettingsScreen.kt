@@ -63,6 +63,7 @@ fun ThresholdSettingsScreen(
     onAddQuickAction: (ComponentKey) -> Unit,
     onRemoveQuickAction: (ComponentKey) -> Unit,
     modifier: Modifier = Modifier,
+    onNavigateToProfiles: () -> Unit = {},
 ) {
     BackHandler(onBack = onBack)
 
@@ -207,7 +208,55 @@ fun ThresholdSettingsScreen(
                 )
             }
 
-            // SECTION 3: APP CONFIGURATION
+            // SECTION 3: PROFILES
+            SettingsSectionHeader(title = "Profiles")
+
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onNavigateToProfiles() },
+                shape = RoundedCornerShape(4.dp),
+                color = Color(0xFF0F0F0F),
+                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF222222)),
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    Column {
+                        Text(
+                            text = "Custom Profiles",
+                            style = MaterialTheme.typography.bodyLarge,
+                            fontWeight = FontWeight.SemiBold,
+                            color = Color.White,
+                        )
+                        val profileCount = uiState.customProfiles.size
+                        val activeCount = uiState.customProfiles.count { it.enabled }
+                        val summary = when {
+                            profileCount == 0 -> "No profiles configured"
+                            activeCount == 1 -> "1 profile active"
+                            else -> "$profileCount profiles ($activeCount active)"
+                        }
+                        Text(
+                            text = summary,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Color(0xFF888888),
+                        )
+                    }
+
+                    Text(
+                        text = "Manage →",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White,
+                    )
+                }
+            }
+
+            // SECTION 4: APP CONFIGURATION
             SettingsSectionHeader(title = stringResource(R.string.section_app_configuration))
 
             Row(

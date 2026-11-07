@@ -8,9 +8,11 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
+import com.garan.threshold.core.model.CustomProfile
 import com.garan.threshold.core.search.ActionCandidate
 import com.garan.threshold.data.antimetrics.AndroidAntiMetricsRepository
 import com.garan.threshold.data.haptics.AndroidHapticEngine
@@ -29,6 +31,7 @@ import com.garan.threshold.ui.util.ImeUtils
 enum class ThresholdScreen {
     HOME,
     SETTINGS,
+    PROFILES,
     CONFIGURE_APPS,
 }
 
@@ -111,6 +114,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             ThresholdTheme {
                 var currentScreen by activeScreenState
+                var editingProfileId by remember { mutableStateOf<String?>(null) }
                 val settingsUiState by settingsViewModel.uiState.collectAsState()
 
                 when (currentScreen) {
@@ -131,7 +135,11 @@ class MainActivity : ComponentActivity() {
                         ThresholdSettingsScreen(
                             uiState = settingsUiState,
                             onBack = { currentScreen = ThresholdScreen.HOME },
-                            onNavigateToConfigureApps = { currentScreen = ThresholdScreen.CONFIGURE_APPS },
+                            onNavigateToConfigureApps = {
+                                editingProfileId = null
+                                currentScreen = ThresholdScreen.CONFIGURE_APPS
+                            },
+                            onNavigateToProfiles = { currentScreen = ThresholdScreen.PROFILES },
                             onUpdateShowUnlocks = settingsViewModel::updateShowUnlocks,
                             onUpdateShowRest = settingsViewModel::updateShowRest,
                             onUpdateRequireFullTyping = settingsViewModel::updateRequireFullTyping,
@@ -140,17 +148,58 @@ class MainActivity : ComponentActivity() {
                             onRemoveQuickAction = settingsViewModel::removeQuickAction,
                         )
                     }
+                    ThresholdScreen.PROFILES -> {
+                        androidx.compose.runtime.LaunchedEffect(Unit) {
+                            settingsViewModel.ensureLoaded()
+                        }
+                        com.garan.threshold.ui.settings.ProfilesScreen(
+                            profiles = settingsUiState.customProfiles,
+                            onSaveProfile = settingsViewModel::saveCustomProfile,
+                            onDeleteProfile = settingsViewModel::deleteCustomProfile,
+                            onReorderProfiles = settingsViewModel::reorderCustomProfiles,
+                            onConfigureProfileApps = { profileId ->
+                                editingProfileId = profileId
+                                currentScreen = ThresholdScreen.CONFIGURE_APPS
+                            },
+                            onBack = { currentScreen = ThresholdScreen.SETTINGS },
+                            hapticEngine = hapticEngine,
+                        )
+                    }
                     ThresholdScreen.CONFIGURE_APPS -> {
                         androidx.compose.runtime.LaunchedEffect(Unit) {
                             settingsViewModel.ensureLoaded()
                         }
+                        val currentId = editingProfileId
+                        val targetProfile: CustomProfile? = if (currentId != null) {
+                            settingsUiState.customProfiles.firstOrNull { it.id == currentId }
+                        } else {
+                            null
+                        }
+                        val initialAssignments =
+                            targetProfile?.appAssignments ?: settingsUiState.baseProfile.appAssignments
+                        val isCustomProfile = targetProfile != null
+
                         ConfigureAppsScreen(
                             availableApps = settingsUiState.availableApps,
-                            initialAssignments = settingsUiState.baseProfile.appAssignments,
+                            initialAssignments = initialAssignments,
                             defaultFriction = settingsUiState.baseProfile.defaultFriction,
-                            onSave = settingsViewModel::saveAppAssignments,
-                            onBack = { currentScreen = ThresholdScreen.SETTINGS },
+                            onSave = { savedAssignments ->
+                                if (targetProfile != null) {
+                                    settingsViewModel.saveCustomProfileAppAssignments(
+                                        targetProfile.id,
+                                        savedAssignments,
+                                    )
+                                } else {
+                                    settingsViewModel.saveAppAssignments(savedAssignments)
+                                }
+                            },
+                            onBack = {
+                                currentScreen =
+                                    if (isCustomProfile) ThresholdScreen.PROFILES else ThresholdScreen.SETTINGS
+                            },
                             hapticEngine = hapticEngine,
+                            isCustomProfile = isCustomProfile,
+                            customProfileName = targetProfile?.name,
                         )
                     }
                 }

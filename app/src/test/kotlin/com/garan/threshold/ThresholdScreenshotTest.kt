@@ -374,4 +374,91 @@ class ThresholdScreenshotTest {
         }
         verifyAndArchiveSnapshot("configure_apps_screen.png")
     }
+
+    @Test
+    fun snapshotProfilesScreen() {
+        val schedule = com.garan.threshold.core.model.ScheduleTrigger(
+            days = setOf(
+                com.garan.threshold.core.model.DayOfWeek.MONDAY,
+                com.garan.threshold.core.model.DayOfWeek.TUESDAY,
+                com.garan.threshold.core.model.DayOfWeek.WEDNESDAY,
+                com.garan.threshold.core.model.DayOfWeek.THURSDAY,
+                com.garan.threshold.core.model.DayOfWeek.FRIDAY,
+            ),
+            startTime = com.garan.threshold.core.model.TimeOfDay(9, 0),
+            endTime = com.garan.threshold.core.model.TimeOfDay(17, 0),
+        )
+        val profile1 = com.garan.threshold.core.model.CustomProfile(
+            id = "work",
+            name = "Deep Work",
+            priority = 0,
+            enabled = true,
+            trigger = com.garan.threshold.core.model.ProfileTrigger.Schedule(schedule),
+            appAssignments = mapOf(
+                ComponentKey("com.instagram.android", "MainActivity") to
+                    com.garan.threshold.core.model.AppAssignment.Blocked,
+            ),
+        )
+        val profile2 = com.garan.threshold.core.model.CustomProfile(
+            id = "bedtime",
+            name = "Bedtime",
+            priority = 1,
+            enabled = false,
+            trigger = com.garan.threshold.core.model.ProfileTrigger.Schedule(
+                schedule.copy(
+                    days = setOf(
+                        com.garan.threshold.core.model.DayOfWeek.SATURDAY,
+                        com.garan.threshold.core.model.DayOfWeek.SUNDAY,
+                    ),
+                    isAllDay = true,
+                ),
+            ),
+        )
+
+        composeTestRule.setContent {
+            ThresholdTheme {
+                com.garan.threshold.ui.settings.ProfilesScreen(
+                    profiles = listOf(profile1, profile2),
+                    onSaveProfile = {},
+                    onDeleteProfile = {},
+                    onReorderProfiles = {},
+                    onConfigureProfileApps = {},
+                    onBack = {},
+                )
+            }
+        }
+        verifyAndArchiveSnapshot("profiles_screen.png")
+    }
+
+    @Test
+    fun snapshotConfigureAppsScreenCustomProfile() {
+        val chromeKey = ComponentKey("com.android.chrome", "Main")
+        val clockKey = ComponentKey("com.google.android.deskclock", "DeskClock")
+        val socialKey = ComponentKey("com.instagram.android", "MainActivity")
+
+        val apps = persistentListOf(
+            com.garan.threshold.core.model.InstalledApp(chromeKey, "Chrome"),
+            com.garan.threshold.core.model.InstalledApp(clockKey, "Clock"),
+            com.garan.threshold.core.model.InstalledApp(socialKey, "Instagram"),
+        )
+        val assignments = mapOf(
+            chromeKey to com.garan.threshold.core.model.AppAssignment.Standard,
+            socialKey to com.garan.threshold.core.model.AppAssignment.Blocked,
+        )
+
+        composeTestRule.setContent {
+            ThresholdTheme {
+                com.garan.threshold.ui.settings.ConfigureAppsScreen(
+                    availableApps = apps,
+                    initialAssignments = assignments,
+                    defaultFriction = com.garan.threshold.core.model.FrictionChoice.TYPED_INTENTION,
+                    onSave = {},
+                    onBack = {},
+                    isCustomProfile = true,
+                    customProfileName = "Deep Work Overrides",
+                )
+            }
+        }
+        verifyAndArchiveSnapshot("configure_apps_custom_profile.png")
+    }
 }

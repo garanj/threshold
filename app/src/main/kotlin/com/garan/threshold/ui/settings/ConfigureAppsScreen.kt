@@ -80,6 +80,7 @@ enum class AppListFilter {
     BLOCKED,
     GUARDED,
     ALLOW,
+    DEFAULT,
 }
 
 @Composable
@@ -91,6 +92,8 @@ fun ConfigureAppsScreen(
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
     hapticEngine: HapticEngine = NoOpHapticEngine,
+    isCustomProfile: Boolean = false,
+    customProfileName: String? = null,
 ) {
     BackHandler(onBack = onBack)
 
@@ -119,7 +122,20 @@ fun ConfigureAppsScreen(
         derivedStateOf {
             availableApps.count {
                 val current = assignments[it.component]
-                current == null || current is AppAssignment.Standard
+                if (isCustomProfile) {
+                    current is AppAssignment.Standard
+                } else {
+                    current == null || current is AppAssignment.Standard
+                }
+            }
+        }
+    }
+    val defaultCount by remember {
+        derivedStateOf {
+            if (isCustomProfile) {
+                availableApps.count { assignments[it.component] == null }
+            } else {
+                null
             }
         }
     }
@@ -137,7 +153,12 @@ fun ConfigureAppsScreen(
                         AppListFilter.ALL -> true
                         AppListFilter.BLOCKED -> assignment is AppAssignment.Blocked
                         AppListFilter.GUARDED -> assignment is AppAssignment.Guarded
-                        AppListFilter.ALLOW -> assignment == null || assignment is AppAssignment.Standard
+                        AppListFilter.ALLOW -> if (isCustomProfile) {
+                            assignment is AppAssignment.Standard
+                        } else {
+                            assignment == null || assignment is AppAssignment.Standard
+                        }
+                        AppListFilter.DEFAULT -> assignment == null
                     }
                 }
                 .sortedBy { it.label.lowercase() }
@@ -169,7 +190,11 @@ fun ConfigureAppsScreen(
             }
             Spacer(modifier = Modifier.width(8.dp))
             Text(
-                text = stringResource(R.string.action_configure_default_apps),
+                text = if (isCustomProfile) {
+                    customProfileName ?: "Configure Apps"
+                } else {
+                    stringResource(R.string.action_configure_default_apps)
+                },
                 style = MaterialTheme.typography.titleLarge,
                 color = PureWhite,
             )
@@ -188,6 +213,7 @@ fun ConfigureAppsScreen(
             blockedCount = blockedCount,
             guardedCount = guardedCount,
             allowCount = allowCount,
+            defaultCount = defaultCount,
         )
 
         HorizontalDivider(color = HairlineBorder, thickness = 1.dp)
@@ -205,6 +231,7 @@ fun ConfigureAppsScreen(
                         AppListFilter.BLOCKED -> "NO BLOCKED APPS"
                         AppListFilter.GUARDED -> "NO GUARDED APPS"
                         AppListFilter.ALLOW -> "NO ALLOWED APPS"
+                        AppListFilter.DEFAULT -> "NO DEFAULT APPS"
                         AppListFilter.ALL -> "NO APPS INSTALLED"
                     },
                     style = MaterialTheme.typography.bodyMedium,
@@ -247,10 +274,32 @@ fun ConfigureAppsScreen(
                                 }
                             }
                         },
+                        onSelectOverrideToggle = { override ->
+                            when (override) {
+                                null -> {
+                                    assignments.remove(app.component)
+                                    if (isExpanded) expandedAppKey = null
+                                }
+                                BaseToggleState.ALLOW -> {
+                                    assignments[app.component] = AppAssignment.Standard
+                                    if (isExpanded) expandedAppKey = null
+                                }
+                                BaseToggleState.GUARD -> {
+                                    val existing = assignments[app.component] as? AppAssignment.Guarded
+                                    assignments[app.component] = existing ?: AppAssignment.Guarded(null)
+                                    expandedAppKey = app.component
+                                }
+                                BaseToggleState.BLOCK -> {
+                                    assignments[app.component] = AppAssignment.Blocked
+                                    if (isExpanded) expandedAppKey = null
+                                }
+                            }
+                        },
                         onUpdateGuardedAssignment = { updated ->
                             assignments[app.component] = updated
                         },
                         hapticEngine = hapticEngine,
+                        isCustomProfile = isCustomProfile,
                     )
                 }
             }
@@ -300,6 +349,7 @@ private fun FilterCounterHeaderBar(
     blockedCount: Int,
     guardedCount: Int,
     allowCount: Int,
+    defaultCount: Int? = null,
     modifier: Modifier = Modifier,
 ) {
     val scrollState = rememberScrollState()
@@ -318,6 +368,13 @@ private fun FilterCounterHeaderBar(
             isSelected = selectedFilter == AppListFilter.ALL,
             onClick = { onSelectFilter(AppListFilter.ALL) },
         )
+        if (defaultCount != null) {
+            FilterPill(
+                label = "DEFAULT ($defaultCount)",
+                isSelected = selectedFilter == AppListFilter.DEFAULT,
+                onClick = { onSelectFilter(AppListFilter.DEFAULT) },
+            )
+        }
         FilterPill(
             label = "BLOCKED ($blockedCount)",
             isSelected = selectedFilter == AppListFilter.BLOCKED,
@@ -380,6 +437,8 @@ private fun UnifiedAppRow(
     onUpdateGuardedAssignment: (AppAssignment.Guarded) -> Unit,
     hapticEngine: HapticEngine,
     modifier: Modifier = Modifier,
+    isCustomProfile: Boolean = false,
+    onSelectOverrideToggle: (BaseToggleState?) -> Unit = {},
 ) {
     val currentToggleState = when (assignment) {
         is AppAssignment.Blocked -> BaseToggleState.BLOCK
@@ -432,16 +491,29 @@ private fun UnifiedAppRow(
                 }
             }
 
-            // Precision Multi-State Toggle
-            ThresholdMultiStateToggle(
-                options = BaseToggleState.entries,
-                selected = currentToggleState,
-                onSelect = onSelectToggle,
-                label = { it.label },
-                modifier = Modifier.width(200.dp),
-                hapticEngine = hapticEngine,
-                isResistanceState = { it == BaseToggleState.BLOCK },
-            )
+            // Precision Multi-State Toggle (Base or Profile Override)
+            if (isCustomProfile) {
+                ThresholdProfileOverrideToggle(
+                    overrideState = when (assignment) {
+                        is AppAssignment.Standard -> BaseToggleState.ALLOW
+                        is AppAssignment.Guarded -> BaseToggleState.GUARD
+                        is AppAssignment.Blocked -> BaseToggleState.BLOCK
+                        null -> null
+                    },
+                    onOverrideChange = onSelectOverrideToggle,
+                    hapticEngine = hapticEngine,
+                )
+            } else {
+                ThresholdMultiStateToggle(
+                    options = BaseToggleState.entries,
+                    selected = currentToggleState,
+                    onSelect = onSelectToggle,
+                    label = { it.label },
+                    modifier = Modifier.width(200.dp),
+                    hapticEngine = hapticEngine,
+                    isResistanceState = { it == BaseToggleState.BLOCK },
+                )
+            }
         }
 
         // Expandable Friction Override Section for Guarded Apps

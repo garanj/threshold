@@ -201,4 +201,62 @@ object ThresholdIcons {
             }
         }.build()
     }
+
+    val Schedule: ImageVector by lazy {
+        ImageVector.Builder(
+            name = "Schedule",
+            defaultWidth = 24.dp,
+            defaultHeight = 24.dp,
+            viewportWidth = 24f,
+            viewportHeight = 24f,
+        ).apply {
+            path(fill = SolidColor(Color.White)) {
+                moveTo(11.99f, 2f)
+                curveTo(6.47f, 2f, 2f, 6.48f, 2f, 12f)
+                curveTo(2f, 17.52f, 6.47f, 22f, 11.99f, 22f)
+                curveTo(17.52f, 22f, 22f, 17.52f, 22f, 12f)
+                curveTo(22f, 6.48f, 17.52f, 2f, 11.99f, 2f)
+                close()
+                moveTo(12f, 20f)
+                curveTo(7.58f, 20f, 4f, 16.42f, 4f, 12f)
+                curveTo(4f, 7.58f, 7.58f, 4f, 12f, 4f)
+                curveTo(16.42f, 4f, 20f, 7.58f, 20f, 12f)
+                curveTo(20f, 16.42f, 16.42f, 20f, 12f, 20f)
+                close()
+                moveTo(12.5f, 7f)
+                horizontalLineTo(11f)
+                verticalLineTo(13f)
+                lineTo(16.25f, 16.15f)
+                lineTo(17f, 14.92f)
+                lineTo(12.5f, 12.25f)
+                verticalLineTo(7f)
+                close()
+            }
+        }.build()
+    }
+
+    val DragHandle: ImageVector by lazy {
+        ImageVector.Builder(
+            name = "DragHandle",
+            defaultWidth = 24.dp,
+            defaultHeight = 24.dp,
+            viewportWidth = 24f,
+            viewportHeight = 24f,
+        ).apply {
+            path(fill = SolidColor(Color.White)) {
+                moveTo(20f, 9f)
+                horizontalLineTo(4f)
+                verticalLineTo(11f)
+                horizontalLineTo(20f)
+                verticalLineTo(9f)
+                close()
+                moveTo(4f, 15f)
+                horizontalLineTo(20f)
+                verticalLineTo(13f)
+                horizontalLineTo(4f)
+                verticalLineTo(15f)
+                close()
+            }
+        }.build()
+    }
 }

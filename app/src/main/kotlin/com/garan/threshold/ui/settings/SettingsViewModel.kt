@@ -26,6 +26,7 @@ import kotlinx.coroutines.launch
 data class SettingsUiState(
     val general: GeneralSettings = GeneralSettings(),
     val baseProfile: BaseProfileSettings = BaseProfileSettings(),
+    val customProfiles: ImmutableList<com.garan.threshold.core.model.CustomProfile> = persistentListOf(),
     val availableApps: ImmutableList<InstalledApp> = persistentListOf(),
     val isLoading: Boolean = true,
 )
@@ -49,6 +50,7 @@ class SettingsViewModel(
                     current.copy(
                         general = settings.general,
                         baseProfile = settings.baseProfile,
+                        customProfiles = settings.customProfiles.toImmutableList(),
                     )
                 }
             }
@@ -139,6 +141,36 @@ class SettingsViewModel(
         viewModelScope.launch(ioDispatcher) {
             val current = settingsRepository.getSettings().baseProfile
             settingsRepository.updateBaseProfile(current.copy(appAssignments = assignments))
+        }
+    }
+
+    fun saveCustomProfile(profile: com.garan.threshold.core.model.CustomProfile) {
+        viewModelScope.launch(ioDispatcher) {
+            settingsRepository.saveCustomProfile(profile)
+        }
+    }
+
+    fun deleteCustomProfile(profileId: String) {
+        viewModelScope.launch(ioDispatcher) {
+            settingsRepository.deleteCustomProfile(profileId)
+        }
+    }
+
+    fun reorderCustomProfiles(profiles: List<com.garan.threshold.core.model.CustomProfile>) {
+        viewModelScope.launch(ioDispatcher) {
+            val updated = profiles.mapIndexed { index, profile ->
+                profile.copy(priority = index)
+            }
+            settingsRepository.updateCustomProfiles(updated)
+        }
+    }
+
+    fun saveCustomProfileAppAssignments(profileId: String, assignments: Map<ComponentKey, AppAssignment>) {
+        viewModelScope.launch(ioDispatcher) {
+            val current = settingsRepository.getSettings().customProfiles
+            val target = current.firstOrNull { it.id == profileId } ?: return@launch
+            val updated = target.copy(appAssignments = assignments)
+            settingsRepository.saveCustomProfile(updated)
         }
     }
 }
