@@ -83,6 +83,8 @@ fun ThresholdSearchSurface(
     onItemLongClick: ((SearchItem) -> Unit)? = null,
     hapticEngine: HapticEngine = NoOpHapticEngine,
     listState: LazyListState = rememberLazyListState(),
+    quickActions: ImmutableList<QuickActionUiItem> = kotlinx.collections.immutable.persistentListOf(),
+    onQuickActionClick: (QuickActionUiItem) -> Unit = {},
 ) {
     val baseBodyLarge = MaterialTheme.typography.bodyLarge
     val inputTextStyle = remember(baseBodyLarge) { baseBodyLarge.copy(color = PureWhite) }
@@ -207,6 +209,32 @@ fun ThresholdSearchSurface(
             color = HairlineBorder,
         )
 
+        // Quick Actions (visible strictly when search query is blank)
+        AnimatedVisibility(
+            visible = query.isBlank() && quickActions.isNotEmpty(),
+            enter = ThresholdMotion.ResultRevealEnter,
+            exit = ThresholdMotion.ResultRevealExit,
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 10.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                quickActions.forEach { item ->
+                    QuickActionRow(
+                        item = item,
+                        onClick = { onQuickActionClick(item) },
+                        onLongClick = if (onItemLongClick != null) {
+                            { onItemLongClick(SearchItem.App(item.component, item.label, item.accessState)) }
+                        } else {
+                            null
+                        },
+                    )
+                }
+            }
+        }
+
         // Results or Empty Feedback with Decelerating Optical Revealing
         AnimatedVisibility(
             visible = query.isNotBlank(),
@@ -327,6 +355,54 @@ fun SearchResultRow(
                     color = SubtleGray,
                 )
             }
+        }
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+fun QuickActionRow(
+    item: QuickActionUiItem,
+    onClick: () -> Unit,
+    onLongClick: (() -> Unit)? = null,
+    modifier: Modifier = Modifier,
+) {
+    val baseLabelMedium = MaterialTheme.typography.labelMedium
+    val badgeTextStyle = remember(baseLabelMedium) {
+        baseLabelMedium.copy(
+            letterSpacing = 1.2.sp,
+            fontWeight = FontWeight.SemiBold,
+        )
+    }
+
+    val isBlocked = item.accessState is AppAccessState.Blocked
+    val isGuarded = item.accessState is AppAccessState.Guarded
+    val textColor = if (isBlocked) androidx.compose.ui.graphics.Color(0xFF555555) else PureWhite
+    val slotFormatted = String.format("%02d", item.slotNumber)
+
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .combinedClickable(
+                onClick = onClick,
+                onLongClick = onLongClick,
+            )
+            .padding(vertical = 14.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = "$slotFormatted   ${item.label}",
+            style = MaterialTheme.typography.titleLarge,
+            color = textColor,
+        )
+
+        if (isGuarded) {
+            Text(
+                text = stringResource(R.string.badge_guarded),
+                style = badgeTextStyle,
+                color = SubtleGray,
+            )
         }
     }
 }

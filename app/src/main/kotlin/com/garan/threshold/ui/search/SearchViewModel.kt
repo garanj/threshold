@@ -4,13 +4,17 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.garan.threshold.core.gatekeeper.IntentGatekeeper
 import com.garan.threshold.core.model.AppAccessState
+import com.garan.threshold.core.model.ComponentKey
 import com.garan.threshold.core.model.FrictionPolicy
+import com.garan.threshold.core.model.GeneralSettings
 import com.garan.threshold.core.model.Profile
+import com.garan.threshold.core.model.ThresholdSettings
 import com.garan.threshold.core.port.HapticEngine
 import com.garan.threshold.core.port.LaunchResult
 import com.garan.threshold.core.port.NoOpHapticEngine
 import com.garan.threshold.core.port.PackageChangeEvent
 import com.garan.threshold.core.port.PackageIndexSource
+import com.garan.threshold.core.port.SettingsRepository
 import com.garan.threshold.core.search.ActionCandidate
 import com.garan.threshold.core.search.AppSearchCandidate
 import com.garan.threshold.core.search.FuzzyMatcher
@@ -29,8 +33,16 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.random.Random
 
 data class ActiveFrictionGate(val app: SearchItem.App, val policy: FrictionPolicy)
+
+data class QuickActionUiItem(
+    val slotNumber: Int,
+    val component: ComponentKey,
+    val label: String,
+    val accessState: AppAccessState,
+)
 
 data class SearchUiState(
     val query: String = "",
@@ -38,6 +50,8 @@ data class SearchUiState(
     val isSearching: Boolean = false,
     val autoLaunchCandidate: SearchItem? = null,
     val activeFriction: ActiveFrictionGate? = null,
+    val quickActions: ImmutableList<QuickActionUiItem> = persistentListOf(),
+    val generalSettings: GeneralSettings = GeneralSettings(),
 )
 
 class SearchViewModel(
@@ -57,7 +71,9 @@ class SearchViewModel(
         defaultAccess = AppAccessState.Direct,
         appRules = emptyMap(),
     ),
+    private val settingsRepository: SettingsRepository? = null,
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
+    private val random: Random = Random.Default,
 ) : ViewModel() {
 
     private val resolvedDialerPackage: String by lazy(LazyThreadSafetyMode.PUBLICATION) {
@@ -66,6 +82,19 @@ class SearchViewModel(
 
     private val _uiState = MutableStateFlow(SearchUiState())
     val uiState: StateFlow<SearchUiState> = _uiState.asStateFlow()
+
+    @Volatile
+    private var lastObservedSettings: ThresholdSettings? = null
+
+    init {
+        if (settingsRepository != null) {
+            viewModelScope.launch(ioDispatcher) {
+                settingsRepository.observeSettings().collect { settings ->
+                    onSettingsChanged(settings)
+                }
+            }
+        }
+    }
 
     @Volatile
     private var candidates: List<AppSearchCandidate> = emptyList()
@@ -98,6 +127,9 @@ class SearchViewModel(
             }
 
             packageIndexSource.observePackageChanges().collect { event ->
+                if (event is PackageChangeEvent.Removed) {
+                    settingsRepository?.removeApps(setOf(event.component))
+                }
                 candidates = when (event) {
                     is PackageChangeEvent.Added -> {
                         candidates.filterNot { it.component == event.component } +
@@ -111,6 +143,7 @@ class SearchViewModel(
                             AppSearchCandidate(event.app.component, event.app.label)
                     }
                 }
+                lastObservedSettings?.let { refreshQuickActions(it) }
                 val activeQuery = _uiState.value.query
                 if (activeQuery.isNotBlank()) {
                     performSearch(activeQuery)
@@ -126,8 +159,8 @@ class SearchViewModel(
 
     fun dismissSearch() {
         lastDecisiveCandidateKey = null
-        _uiState.update {
-            SearchUiState(
+        _uiState.update { current ->
+            current.copy(
                 query = "",
                 results = persistentListOf(),
                 isSearching = false,
@@ -138,11 +171,102 @@ class SearchViewModel(
     }
 
     fun openFriction(app: SearchItem.App, policy: FrictionPolicy) {
+        if (_uiState.value.generalSettings.requireFullTypingOfGuardedApps) {
+            val query = _uiState.value.query.trim()
+            if (!query.equals(app.label.trim(), ignoreCase = true)) {
+                hapticEngine.resistanceDetent()
+                return
+            }
+        }
         _uiState.update { it.copy(activeFriction = ActiveFrictionGate(app, policy)) }
     }
 
     fun dismissFriction() {
         _uiState.update { it.copy(activeFriction = null) }
+    }
+
+    fun markFirstRunHintSeen() {
+        viewModelScope.launch(ioDispatcher) {
+            settingsRepository?.setHasSeenFirstRunHint(true)
+            _uiState.update { it.copy(generalSettings = it.generalSettings.copy(hasSeenFirstRunHint = true)) }
+        }
+    }
+
+    fun launchQuickAction(item: QuickActionUiItem, onDirectLaunch: () -> Unit) {
+        val isDefaultDialer = (item.component.packageName == resolvedDialerPackage)
+        val access = lastObservedSettings?.baseProfile?.resolveAccess(
+            component = item.component,
+            isDefaultDialer = isDefaultDialer,
+            random = random,
+        ) ?: item.accessState
+
+        when (access) {
+            is AppAccessState.Blocked -> {
+                hapticEngine.resistanceDetent()
+            }
+            is AppAccessState.Guarded -> {
+                _uiState.update {
+                    it.copy(
+                        activeFriction = ActiveFrictionGate(
+                            SearchItem.App(item.component, item.label, access),
+                            access.policy,
+                        ),
+                    )
+                }
+            }
+            is AppAccessState.Direct -> {
+                onDirectLaunch()
+            }
+        }
+    }
+
+    private suspend fun onSettingsChanged(settings: ThresholdSettings) {
+        lastObservedSettings = settings
+        val appRules = settings.baseProfile.appAssignments.mapValues { (comp, _) ->
+            settings.baseProfile.resolveAccess(
+                component = comp,
+                isDefaultDialer = (comp.packageName == resolvedDialerPackage),
+            )
+        }
+        activeProfile = Profile(
+            id = "base",
+            name = "Base",
+            defaultAccess = AppAccessState.Direct,
+            appRules = appRules,
+        )
+
+        refreshQuickActions(settings)
+
+        val currentQuery = _uiState.value.query
+        if (currentQuery.isNotBlank()) {
+            performSearch(currentQuery)
+        }
+    }
+
+    private suspend fun refreshQuickActions(settings: ThresholdSettings) {
+        val quickKeys = settings.baseProfile.quickActions
+        val quickItems = quickKeys.mapIndexedNotNull { index, comp ->
+            val label = candidates.find { it.component == comp }?.label
+                ?: packageIndexSource.getApp(comp)?.label
+                ?: comp.packageName
+            val access = settings.baseProfile.resolveAccess(
+                component = comp,
+                isDefaultDialer = (comp.packageName == resolvedDialerPackage),
+            )
+            QuickActionUiItem(
+                slotNumber = index + 1,
+                component = comp,
+                label = label,
+                accessState = access,
+            )
+        }.toImmutableList()
+
+        _uiState.update {
+            it.copy(
+                generalSettings = settings.general,
+                quickActions = quickItems,
+            )
+        }
     }
 
     fun onQueryChanged(newQuery: String) {
@@ -169,11 +293,33 @@ class SearchViewModel(
     }
 
     fun evaluateLaunch(item: SearchItem): LaunchResult = when (item) {
-        is SearchItem.App -> gatekeeper.evaluateLaunch(
-            component = item.component,
-            profile = activeProfile,
-            defaultDialerPackage = resolvedDialerPackage,
-        )
+        is SearchItem.App -> {
+            val isDefaultDialer = (item.component.packageName == resolvedDialerPackage)
+            val effectiveAccess = lastObservedSettings?.baseProfile?.resolveAccess(
+                component = item.component,
+                isDefaultDialer = isDefaultDialer,
+                random = random,
+            ) ?: gatekeeper.resolveAccess(item.component, activeProfile, resolvedDialerPackage)
+
+            val result = when (effectiveAccess) {
+                is AppAccessState.Direct -> LaunchResult.Launched
+                is AppAccessState.Guarded -> LaunchResult.FrictionRequired(effectiveAccess.policy)
+                is AppAccessState.Blocked -> LaunchResult.Blocked
+            }
+            if (result is LaunchResult.FrictionRequired &&
+                _uiState.value.generalSettings.requireFullTypingOfGuardedApps
+            ) {
+                val query = _uiState.value.query.trim()
+                if (!query.equals(item.label.trim(), ignoreCase = true)) {
+                    hapticEngine.resistanceDetent()
+                    LaunchResult.Blocked
+                } else {
+                    result
+                }
+            } else {
+                result
+            }
+        }
         is SearchItem.Action -> LaunchResult.Launched
     }
 

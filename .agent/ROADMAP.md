@@ -57,17 +57,39 @@
 
 ---
 
-## Phase 3: Configuration & Conflict Resolution Engine (Milestone 3)
-- [ ] **Task 3.1: 4-Tier Conflict Resolution Engine (`:core`)**
-  - Deterministic evaluation: Tier 1 (Ephemeral/NFC) > Tier 2 (Schedules) > Tier 3 (Geofences) > Tier 4 (Ambient Fallback).
-  - Intra-tier schedule overlap resolution (Most Restrictive Rule wins).
-- [ ] **Task 3.2: Room & DataStore Persistence (`:data`)**
-  - Local database schema for profiles, schedules, and active tokens.
-  - Reactive streams (`Flow`) for active profile emissions.
-- [ ] **Task 3.3: In-UI Conflict Highlighting & Diagnostics**
-  - Natural-language conflict explanations ("At Home after 21:00, Night Rest takes precedence").
-  - Live home indicator string below the clock.
-- [ ] **Task 3.4: Wallpaper & Lock Screen Sync**
+## Phase 3: Configuration, Base Settings & Profile Cascading Engine (Milestone 3)
+- [x] **Task 3.1: Base Settings & Quick Actions Baseline**
+  - **General Settings**: Show Unlocks, Show Rest, Require full typing of guarded apps.
+  - **Quick Actions**: Up to 7 slots beneath empty search box; reflects calculated state (Blocked = greyed out, Guarded = badge, Standard = launchable); hidden when typing search queries.
+  - **Base App Configuration Baseline**: Working base configuration, friction radio group (including dynamic Random evaluation on every launch), and DataStore persistence.
+  - **Entry Points**: First-run hint ("long-press to configure", 20s fade, permanent flag), home screen long-press gesture, and `:settings` command.
+  - **Reconciliation**: Package uninstall listener automatically removes uninstalled apps from rules and quick actions.
+  - **Universal Dialer Invariant**: Permanently Standard; omitted from configuration picker.
+- [x] **Task 3.2: Tactile Multi-State Toggle & Unified App Configuration (`:app`)**
+  - **Multi-State Toggle Component**: Precision mechanical segmented / slider toggle in Compose with discrete state positions:
+    - Base / Default Profile: `[Allow | Guard | Block]`.
+    - Custom Profiles: `[Default] | [Allow | Guard | Block]` (`Default` as unmanaged/inactive).
+  - **Tactile Ergonomics & Micro-Haptics**: Micro-haptic detent feedback on state transitions (`PRIMITIVE_CLICK` / resistance), optical motion easing, high-contrast monochrome design.
+  - **Filter Counter Header Bar**: Minimalist horizontal summary bar (`[ ALL (count) ]  [ BLOCKED (count) ]  [ GUARDED (count) ]  [ ALLOW (count) ]`) allowing instant audit/filtering of restricted apps without losing single-list stability.
+  - **Unified App Configuration List**: Replace multi-list triage with a single alphabetical list of all installed apps, each with its multi-state toggle.
+  - **Friction Override Integration**: Expandable row or inline options for app-level friction override when set to `Guard`.
+- [ ] **Task 3.3: Custom Profiles & Cascading Resolution Engine (`:core` / `:data`)**
+  - Profile triggers: Schedules (start day/time to end day/time), NFC (duration timer and/or tap-to-relock), Geofence (list of lat/long/radii), Manual.
+  - User-ordered cascading evaluation: Top-to-bottom active profile evaluation with base profile fallback.
+  - Dynamic profile disable invariant when all app rules are removed due to uninstallation.
+  - Zero-allocation cached effective ruleset computation.
+- [ ] **Task 3.4: Custom Profile Management UI (`:app`)**
+  - Profile list management (create, edit, delete, enable/disable, reorder).
+  - Reusing the unified multi-state toggle app configuration screen for custom profile overrides.
+  - Live active profile indicator below the clock.
+- [ ] **Task 3.5: Launcher Management & Restore Launcher Action (`:app`)**
+  - Button in Threshold Settings to switch / restore previous default launcher (via `RoleManager` / `ACTION_MANAGE_DEFAULT_APPS_SETTINGS` / `ACTION_HOME_SETTINGS`).
+- [ ] **Task 3.6: Onboarding Flow & First-Run Educational Wizard (`:app`)**
+  - First-launch detection from Play Store / external launcher (checking if `RoleManager.isRoleHeld(RoleManager.ROLE_HOME)` is false).
+  - Swipeable multi-step introduction educating the user on Threshold's philosophy, intent gatekeeping, and tactile mechanics.
+  - Direct "Set Threshold as Default Launcher" prompt (`RoleManager.createRequestRoleIntent(RoleManager.ROLE_HOME)`).
+  - Seamless handoff into Threshold home screen upon role grant.
+- [ ] **Task 3.7: Wallpaper & Lock Screen Sync (`:data` / `:app`)**
   - Solid AMOLED black / profile color wallpaper application.
   - Opt-in `syncLockScreenWallpaper` toggle (`FLAG_LOCK`).
 

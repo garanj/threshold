@@ -1,25 +1,45 @@
-# Current Task: Phase 2 Retrospective Hardening & Polish (#52)
+# Current Task: Base Settings, Quick Actions, and 3-Tier App Configuration (#54)
 
 ## Active Issue
-- **Issue**: `#52` - Phase 2 Retrospective: Fix friction bypasses, edge-to-edge insets, haptic IPC caching, and edge cases
-- **Branch**: `fix/52-phase2-retrospective-hardening`
+- **Issue**: `#54` - feat(settings): base settings, quick actions, and 3-tier app configuration
+- **Branch**: `feat/54-base-settings-app-configuration`
 
 ## Checklist
-- [x] **`:core` Hardening & Tests**:
-  - [x] Constrain `FrictionPolicy.DragSort` `pairCount` to `2..6` matching the 6 distinct monochrome glyphs (`FrictionPolicyTest`).
-  - [x] Shuffle fallback grid points using `random` in `DragSortSession.generateLayout` (`DragSortSessionTest`).
-  - [x] Add `refreshForCurrentDate(timestampMs: Long = System.currentTimeMillis())` to `AntiMetricsRepository` port.
-- [x] **`:data` Hardening & Tests**:
-  - [x] `AndroidAntiMetricsRepository`: Centralize static `BroadcastReceiver` in companion object so `unregister()` works across instances and clears references; implement `refreshForCurrentDate()`; use monotonic `elapsedRealtimeProvider` fallback when wall-clock shifts backward during sleep (`AndroidAntiMetricsRepositoryTest`).
-  - [x] `AndroidHapticEngine`: Pre-compute and cache `VibrationEffect` instances and `hasVibrator` capability via `by lazy`; make `resistanceDetent()` fallback distinct from `targetSnap()`; store `context.applicationContext` (`AndroidHapticEngineTest`).
-  - [x] `AndroidPackageIndexSource`: Use `context.applicationContext ?: context` to prevent Activity context retention.
-- [x] **`:app` Hardening & Tests**:
-  - [x] Move `activeFriction` (`ActiveFrictionGate`) into `SearchViewModel` / `SearchUiState` so `dismissSearch()` (and `MainActivity.onNewIntent`) clears active friction; clear active friction on `Lifecycle.Event.ON_STOP` in `ThresholdHomeScreen` (`SearchViewModelTest`, `ThresholdHomeScreenTest`).
-  - [x] Enforce lazy package index loading invariant on `MainActivity.onCreate` to prevent foreign `.apk mmap` PSS bloat (+25 MB) in ambient home mode (`ThresholdHomeScreenTest`).
-  - [x] Add `windowInsetsPadding(WindowInsets.systemBars.union(WindowInsets.displayCutout))` to `CaretTracingSurface` (`CaretTracingSurfaceTest`).
-  - [x] Harden `TypedIntentionSurface`: `KeyboardType.Ascii`, multi-character backspace, 2-char IME commit handling (rejecting >2 char bulk paste with `resistanceDetent()`), vertical scroll support (`TypedIntentionSurfaceTest`).
-  - [x] `DragSortSurface`: Remember painter lists across recompositions.
-  - [x] `ThresholdSearchSurface`: Trigger `hapticEngine.resistanceDetent()` when pressing IME `Go` on a guarded partial match; deduplicate IME/search reset helper in `ThresholdHomeScreen` and fix `SessionBudget` IME flicker.
+- [x] **`:core` Models & Ports**:
+  - [x] `GeneralSettings` model (`showUnlocks: Boolean`, `showRest: Boolean`, `requireFullTypingOfGuardedApps: Boolean`, `hasSeenFirstRunHint: Boolean`).
+  - [x] `AppAssignment` and `BaseProfileSettings` models with app states (`Blocked`, `Guarded` with optional friction override, `Standard`) and base friction choice (supporting `Random`).
+  - [x] `QuickActions` model (up to 7 items).
+  - [x] `SettingsRepository` port interface.
+  - [x] Universal dialer safety invariant: permanently `Standard` and filtered out of settings triage.
+  - [x] Unit tests for all domain models and invariants in `:core` (`BaseProfileSettingsTest`, `FrictionChoiceTest`).
+- [x] **`:data` Persistence & Package Reconciliation**:
+  - [x] `AndroidSettingsRepository`: Local DataStore persistence implementation of `SettingsRepository`.
+  - [x] Auto-reconciliation of package uninstalls: remove uninstalled package keys from base app rules and quick action slots.
+  - [x] Unit tests for `AndroidSettingsRepository` and uninstall cleanup.
+- [x] **`:app` UI & Home Screen Integration**:
+  - [x] Settings entry points:
+    - First-run hint (`"long-press to configure"`, 20s optical fade-out, permanent persistence via DataStore).
+    - Long-press gesture on home screen background.
+    - `:settings` command in search index.
+  - [x] Main Settings screen (`ThresholdSettingsScreen`):
+    - Adaptive layout with Material 3 / Threshold monochrome aesthetic.
+    - General settings section toggles (`Show unlocks`, `Show rest`, `Require full typing`).
+    - Quick actions section (up to 7 slots, add with dialog, remove).
+    - Base app configuration cards (`Guarded`, `Blocked` counts, `"Configure default app behavior"` button).
+    - Base friction policy radio selector (Typed Intention, Drag-to-Match, Caret Tracing, Random).
+  - [x] Reusable Unified App Configuration screen (`ConfigureAppsScreen`):
+    - Minimalist filter counter header bar: `[ ALL (count) ]  [ BLOCKED (count) ]  [ GUARDED (count) ]  [ ALLOW (count) ]`.
+    - Single unified alphabetical list of all apps with high-performance `derivedStateOf` filtering.
+    - Precision mechanical multi-state toggle (`[ALLOW | GUARD | BLOCK]`) with 120Hz optical motion easing and micro-haptic detents.
+    - Support for custom profile overrides (`[DEFAULT] | [ALLOW | GUARD | BLOCK]`) with dimmed inactive state.
+    - Expandable rows in *Guarded* with friction override toggle & radio group.
+    - Persistent Save button at the bottom.
+  - [x] Home Screen integration:
+    - Quick actions rendered below empty search box, hidden when search query is entered.
+    - Quick action items honor calculated access state (`Blocked` greyed out with resistance detent, `Guarded` with friction gate, `Standard` direct launch).
+    - Respect `showUnlocks` and `showRest` toggles in anti-metrics status bar.
+    - Respect `requireFullTypingOfGuardedApps` and Random friction policy.
 - [x] **Verification**:
-  - [x] `./gradlew test` (100% pass across `:core`, `:data`, `:app`, including Roborazzi golden screenshots)
-  - [x] `./gradlew spotlessApply spotlessCheck`
+  - [x] Host JVM unit tests (`./gradlew test` - 100% pass across `:core`, `:data`, and `:app`).
+  - [x] Roborazzi golden screenshot tests for Settings, Quick Actions, and 3-tier configuration screens.
+  - [x] Spotless formatting check (`./gradlew spotlessApply spotlessCheck`).

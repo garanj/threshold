@@ -97,7 +97,8 @@ class AndroidAntiMetricsRepositoryTest {
     @Test
     fun processRecreation_preservesStateAndCarriesOver() {
         val repo1 = AndroidAntiMetricsRepository(context, zoneIdProvider = { fixedZone })
-        val time = LocalDate.of(2026, 11, 5).atTime(12, 0, 0).toInstant(ZoneOffset.UTC).toEpochMilli()
+        val today = LocalDate.now(fixedZone)
+        val time = today.atTime(12, 0, 0).toInstant(ZoneOffset.UTC).toEpochMilli()
 
         repo1.onUnlock(time)
         repo1.onScreenOff(time + 10_000L)

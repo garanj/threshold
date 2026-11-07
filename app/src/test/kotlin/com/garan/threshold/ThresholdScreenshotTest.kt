@@ -248,4 +248,130 @@ class ThresholdScreenshotTest {
         }
         verifyAndArchiveSnapshot("caret_tracing_checkpoint.png")
     }
+
+    @Test
+    fun snapshotHomeCanvasWithQuickActions() {
+        val quickActions = persistentListOf(
+            com.garan.threshold.ui.search.QuickActionUiItem(
+                slotNumber = 1,
+                component = ComponentKey("com.android.chrome", "Main"),
+                label = "Chrome",
+                accessState = AppAccessState.Direct,
+            ),
+            com.garan.threshold.ui.search.QuickActionUiItem(
+                slotNumber = 2,
+                component = ComponentKey("com.google.android.deskclock", "DeskClock"),
+                label = "Clock",
+                accessState = AppAccessState.Direct,
+            ),
+            com.garan.threshold.ui.search.QuickActionUiItem(
+                slotNumber = 3,
+                component = ComponentKey("com.google.android.gm", "ConversationListActivityGmail"),
+                label = "Gmail",
+                accessState = AppAccessState.Guarded(FrictionPolicy.TypedIntention),
+            ),
+            com.garan.threshold.ui.search.QuickActionUiItem(
+                slotNumber = 4,
+                component = ComponentKey("com.example.games", "MainActivity"),
+                label = "Arcade Games",
+                accessState = AppAccessState.Blocked,
+            ),
+        )
+
+        composeTestRule.setContent {
+            ThresholdTheme {
+                ThresholdHomeCanvas(
+                    timeText = "10:09",
+                    dateText = "Monday, November 2",
+                    statusText = "REST 48M  ·  2 UNLOCKS",
+                ) {
+                    Spacer(modifier = Modifier.height(24.dp))
+                    ThresholdSearchSurface(
+                        query = "",
+                        onQueryChange = {},
+                        results = persistentListOf(),
+                        onItemClick = {},
+                        quickActions = quickActions,
+                    )
+                }
+            }
+        }
+        verifyAndArchiveSnapshot("home_canvas_quick_actions.png")
+    }
+
+    @Test
+    fun snapshotSettingsScreen() {
+        val chromeKey = ComponentKey("com.android.chrome", "Main")
+        val clockKey = ComponentKey("com.google.android.deskclock", "DeskClock")
+        val socialKey = ComponentKey("com.instagram.android", "MainActivity")
+
+        val uiState = com.garan.threshold.ui.settings.SettingsUiState(
+            general = com.garan.threshold.core.model.GeneralSettings(
+                showUnlocks = true,
+                showRest = true,
+                requireFullTypingOfGuardedApps = false,
+            ),
+            baseProfile = com.garan.threshold.core.model.BaseProfileSettings(
+                defaultFriction = com.garan.threshold.core.model.FrictionChoice.TYPED_INTENTION,
+                quickActions = listOf(chromeKey, clockKey),
+                appAssignments = mapOf(
+                    chromeKey to com.garan.threshold.core.model.AppAssignment.Guarded(),
+                    socialKey to com.garan.threshold.core.model.AppAssignment.Blocked,
+                ),
+            ),
+            availableApps = persistentListOf(
+                com.garan.threshold.core.model.InstalledApp(chromeKey, "Chrome"),
+                com.garan.threshold.core.model.InstalledApp(clockKey, "Clock"),
+                com.garan.threshold.core.model.InstalledApp(socialKey, "Instagram"),
+            ),
+            isLoading = false,
+        )
+
+        composeTestRule.setContent {
+            ThresholdTheme {
+                com.garan.threshold.ui.settings.ThresholdSettingsScreen(
+                    uiState = uiState,
+                    onBack = {},
+                    onNavigateToConfigureApps = {},
+                    onUpdateShowUnlocks = {},
+                    onUpdateShowRest = {},
+                    onUpdateRequireFullTyping = {},
+                    onUpdateDefaultFriction = {},
+                    onAddQuickAction = {},
+                    onRemoveQuickAction = {},
+                )
+            }
+        }
+        verifyAndArchiveSnapshot("settings_screen.png")
+    }
+
+    @Test
+    fun snapshotConfigureAppsScreen() {
+        val chromeKey = ComponentKey("com.android.chrome", "Main")
+        val clockKey = ComponentKey("com.google.android.deskclock", "DeskClock")
+        val socialKey = ComponentKey("com.instagram.android", "MainActivity")
+
+        val apps = persistentListOf(
+            com.garan.threshold.core.model.InstalledApp(chromeKey, "Chrome"),
+            com.garan.threshold.core.model.InstalledApp(clockKey, "Clock"),
+            com.garan.threshold.core.model.InstalledApp(socialKey, "Instagram"),
+        )
+        val assignments = mapOf(
+            chromeKey to com.garan.threshold.core.model.AppAssignment.Guarded(),
+            socialKey to com.garan.threshold.core.model.AppAssignment.Blocked,
+        )
+
+        composeTestRule.setContent {
+            ThresholdTheme {
+                com.garan.threshold.ui.settings.ConfigureAppsScreen(
+                    availableApps = apps,
+                    initialAssignments = assignments,
+                    defaultFriction = com.garan.threshold.core.model.FrictionChoice.TYPED_INTENTION,
+                    onSave = {},
+                    onBack = {},
+                )
+            }
+        }
+        verifyAndArchiveSnapshot("configure_apps_screen.png")
+    }
 }
