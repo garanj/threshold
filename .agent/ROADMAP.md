@@ -70,6 +70,7 @@
     - Base / Default Profile: `[Standard | Guard | Block]`.
     - Custom Profiles: `[Inherit | Standard | Guard | Block]` (`Inherit` as default).
   - **Tactile Ergonomics & Micro-Haptics**: Micro-haptic detent feedback on state transitions (`PRIMITIVE_CLICK` / resistance), optical motion easing, high-contrast monochrome design.
+  - **Filter Counter Header Bar**: Minimalist horizontal summary bar (`[ ALL (count) ]  [ BLOCKED (count) ]  [ GUARDED (count) ]  [ STANDARD (count) ]`) allowing instant audit/filtering of restricted apps without losing single-list stability.
   - **Unified App Configuration List**: Replace multi-list triage with a single alphabetical list of all installed apps, each with its multi-state toggle.
   - **Friction Override Integration**: Expandable row or inline options for app-level friction override when set to `Guard`.
 - [ ] **Task 3.3: Custom Profiles & Cascading Resolution Engine (`:core` / `:data`)**
