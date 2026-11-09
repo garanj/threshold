@@ -2,6 +2,7 @@ package com.garan.threshold.ui.settings
 
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import com.garan.threshold.core.model.AppAssignment
@@ -66,6 +67,34 @@ class ConfigureAppsScreenTest {
     }
 
     @Test
+    fun customProfileModeDisplaysAllAppNamesAndOverrideControls() {
+        val initial = mapOf(
+            chromeKey to AppAssignment.Standard,
+            socialKey to AppAssignment.Blocked,
+        )
+
+        composeTestRule.setContent {
+            ThresholdTheme {
+                ConfigureAppsScreen(
+                    availableApps = apps,
+                    initialAssignments = initial,
+                    defaultFriction = FrictionChoice.TYPED_INTENTION,
+                    onSave = {},
+                    onBack = {},
+                    isCustomProfile = true,
+                    customProfileName = "Deep Work Overrides",
+                )
+            }
+        }
+
+        composeTestRule.onNodeWithText("Deep Work Overrides").assertIsDisplayed()
+        composeTestRule.onNodeWithText("DEFAULT (1)").assertIsDisplayed()
+        composeTestRule.onNodeWithText("Chrome").assertIsDisplayed()
+        composeTestRule.onNodeWithText("Clock").assertIsDisplayed()
+        composeTestRule.onNodeWithText("Instagram").assertIsDisplayed()
+    }
+
+    @Test
     fun filterHeaderFiltersAppsList() {
         val initial = mapOf(
             chromeKey to AppAssignment.Guarded(),
@@ -102,9 +131,8 @@ class ConfigureAppsScreenTest {
     }
 
     @Test
-    fun savingAssignmentsInvokesCallbackWithUpdatedMap() {
+    fun changingAssignmentReactivelyInvokesOnSaveCallback() {
         var savedMap: Map<ComponentKey, AppAssignment>? = null
-        var backCalled = false
 
         val initial = mapOf(
             chromeKey to AppAssignment.Guarded(),
@@ -117,16 +145,15 @@ class ConfigureAppsScreenTest {
                     initialAssignments = initial,
                     defaultFriction = FrictionChoice.TYPED_INTENTION,
                     onSave = { savedMap = it },
-                    onBack = { backCalled = true },
+                    onBack = {},
                 )
             }
         }
 
-        // Click Save
-        composeTestRule.onNodeWithText("Save").performClick()
+        // Toggling first row (Chrome) to BLOCK immediately persists via onSave
+        composeTestRule.onAllNodesWithText("BLOCK")[0].performClick()
 
         assertThat(savedMap).isNotNull()
-        assertThat(savedMap).containsKey(chromeKey)
-        assertThat(backCalled).isTrue()
+        assertThat(savedMap?.get(chromeKey)).isEqualTo(AppAssignment.Blocked)
     }
 }

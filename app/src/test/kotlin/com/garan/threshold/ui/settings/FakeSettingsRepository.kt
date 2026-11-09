@@ -37,12 +37,44 @@ class FakeSettingsRepository(initialSettings: ThresholdSettings = ThresholdSetti
             val newAssignments = current.baseProfile.appAssignments.filter { (comp, _) ->
                 comp !in keys && comp.packageName !in pkgNames
             }
+            val newProfiles = current.customProfiles.map { profile ->
+                val pruned = profile.appAssignments.filter { (comp, _) ->
+                    comp !in keys && comp.packageName !in pkgNames
+                }
+                profile.copy(
+                    appAssignments = pruned,
+                    enabled = if (pruned.isEmpty() && profile.appAssignments.isNotEmpty()) false else profile.enabled,
+                )
+            }
             current.copy(
                 baseProfile = current.baseProfile.copy(
                     quickActions = newQuick,
                     appAssignments = newAssignments,
                 ),
+                customProfiles = newProfiles,
             )
+        }
+    }
+
+    override suspend fun updateCustomProfiles(profiles: List<com.garan.threshold.core.model.CustomProfile>) {
+        _settings.update { it.copy(customProfiles = profiles) }
+    }
+
+    override suspend fun saveCustomProfile(profile: com.garan.threshold.core.model.CustomProfile) {
+        _settings.update { current ->
+            val existingIndex = current.customProfiles.indexOfFirst { it.id == profile.id }
+            val updated = if (existingIndex >= 0) {
+                current.customProfiles.toMutableList().apply { set(existingIndex, profile) }
+            } else {
+                current.customProfiles + profile
+            }
+            current.copy(customProfiles = updated)
+        }
+    }
+
+    override suspend fun deleteCustomProfile(profileId: String) {
+        _settings.update { current ->
+            current.copy(customProfiles = current.customProfiles.filter { it.id != profileId })
         }
     }
 }

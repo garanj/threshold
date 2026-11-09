@@ -3,12 +3,27 @@ package com.garan.threshold.ui.home
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.Animatable
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.material3.Button
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ListItem
+import androidx.compose.material3.ListItemDefaults
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -17,6 +32,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
@@ -29,6 +45,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.garan.threshold.R
 import com.garan.threshold.core.model.AntiMetricsFormatter
 import com.garan.threshold.core.model.FrictionPolicy
+import com.garan.threshold.core.model.ProfileCapability
+import com.garan.threshold.core.model.ProfileCapabilityIssue
 import com.garan.threshold.core.port.AntiMetricsRepository
 import com.garan.threshold.core.port.HapticEngine
 import com.garan.threshold.core.port.LaunchResult
@@ -42,6 +60,7 @@ import com.garan.threshold.ui.motion.ThresholdMotion
 import com.garan.threshold.ui.search.SearchViewModel
 import com.garan.threshold.ui.search.ThresholdSearchSurface
 import com.garan.threshold.ui.theme.SubtleGray
+import kotlinx.collections.immutable.ImmutableList
 import kotlinx.coroutines.delay
 
 /**
@@ -66,11 +85,13 @@ fun ThresholdHomeScreen(
     antiMetricsRepository: AntiMetricsRepository? = null,
     statusText: String? = null,
     onOpenSettings: () -> Unit = {},
+    onResolveCapabilityIssue: (ProfileCapability) -> Unit = {},
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
     val lifecycleOwner = LocalLifecycleOwner.current
+    var showCapabilityFaultSheet by remember { mutableStateOf(false) }
 
     val metrics by antiMetricsRepository?.metrics?.collectAsStateWithLifecycle()
         ?: remember { mutableStateOf(null) }
@@ -119,8 +140,14 @@ fun ThresholdHomeScreen(
     // preventing pre-warmed friction checkpoints from lingering across sessions.
     DisposableEffect(lifecycleOwner, viewModel) {
         val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_STOP) {
-                viewModel.dismissFriction()
+            when (event) {
+                Lifecycle.Event.ON_RESUME -> {
+                    viewModel.refreshScheduleEvaluation()
+                }
+                Lifecycle.Event.ON_STOP -> {
+                    viewModel.dismissFriction()
+                }
+                else -> Unit
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -204,7 +231,13 @@ fun ThresholdHomeScreen(
                         )
                     },
                 statusText = effectiveStatusText,
-                onTimeTick = { antiMetricsRepository?.refreshForCurrentDate() },
+                activeProfiles = uiState.activeProfiles,
+                hasCapabilityIssues = uiState.capabilityIssues.isNotEmpty(),
+                onCapabilityFaultClick = { showCapabilityFaultSheet = true },
+                onTimeTick = {
+                    antiMetricsRepository?.refreshForCurrentDate()
+                    viewModel.refreshScheduleEvaluation()
+                },
             ) {
                 Spacer(modifier = Modifier.height(24.dp))
 
@@ -275,13 +308,105 @@ fun ThresholdHomeScreen(
                     modifier = Modifier.fillMaxSize(),
                     contentAlignment = androidx.compose.ui.Alignment.Center,
                 ) {
-                    androidx.compose.material3.Text(
+                    Text(
                         text = stringResource(R.string.hint_long_press_to_configure),
-                        style = androidx.compose.material3.MaterialTheme.typography.bodyMedium,
+                        style = MaterialTheme.typography.bodyMedium,
                         color = SubtleGray.copy(alpha = hintAlpha.value),
                     )
                 }
             }
+
+            if (showCapabilityFaultSheet && uiState.capabilityIssues.isNotEmpty()) {
+                CapabilityFaultBottomSheet(
+                    issues = uiState.capabilityIssues,
+                    onGrantPermission = { capability ->
+                        showCapabilityFaultSheet = false
+                        onResolveCapabilityIssue(capability)
+                    },
+                    onDismiss = { showCapabilityFaultSheet = false },
+                )
+            }
         }
     }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+internal fun CapabilityFaultBottomSheet(
+    issues: ImmutableList<ProfileCapabilityIssue>,
+    onGrantPermission: (ProfileCapability) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val primaryCapability = issues.firstOrNull()?.missingCapabilities?.firstOrNull()
+        ?: ProfileCapability.EXACT_ALARM
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        containerColor = MaterialTheme.colorScheme.surfaceContainer,
+        contentWindowInsets = { WindowInsets(0, 0, 0, 0) },
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp)
+                .padding(bottom = 24.dp),
+        ) {
+            Text(
+                text = "Profile permissions required",
+                style = MaterialTheme.typography.titleLarge,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = "The following enabled profiles are missing permissions needed to trigger reliably:",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(modifier = Modifier.height(12.dp))
+
+            issues.forEach { issue ->
+                ListItem(
+                    leadingContent = {
+                        ActiveProfileSquareBadge(profile = issue.profile)
+                    },
+                    headlineContent = {
+                        Text(
+                            text = issue.profile.name,
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.onSurface,
+                        )
+                    },
+                    supportingContent = {
+                        Text(
+                            text = issue.missingCapabilities.joinToString(", ") { capabilityLabel(it) },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                    },
+                    colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                )
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp, androidx.compose.ui.Alignment.End),
+            ) {
+                TextButton(onClick = onDismiss) {
+                    Text("Dismiss")
+                }
+                Button(onClick = { onGrantPermission(primaryCapability) }) {
+                    Text("Grant Permission")
+                }
+            }
+        }
+    }
+}
+
+private fun capabilityLabel(capability: ProfileCapability): String = when (capability) {
+    ProfileCapability.EXACT_ALARM -> "Exact schedule alarms permission required"
+    ProfileCapability.BACKGROUND_LOCATION -> "Background location permission required"
+    ProfileCapability.NFC_HARDWARE_ENABLED -> "NFC must be enabled in system settings"
 }

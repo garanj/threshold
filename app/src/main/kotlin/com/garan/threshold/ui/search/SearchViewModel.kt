@@ -2,25 +2,34 @@ package com.garan.threshold.ui.search
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.garan.threshold.core.cascading.CascadingResolutionEngine
 import com.garan.threshold.core.gatekeeper.IntentGatekeeper
 import com.garan.threshold.core.model.AppAccessState
 import com.garan.threshold.core.model.ComponentKey
+import com.garan.threshold.core.model.CustomProfile
 import com.garan.threshold.core.model.FrictionPolicy
 import com.garan.threshold.core.model.GeneralSettings
 import com.garan.threshold.core.model.Profile
+import com.garan.threshold.core.model.ProfileCapabilityIssue
 import com.garan.threshold.core.model.ThresholdSettings
+import com.garan.threshold.core.port.ClockSource
 import com.garan.threshold.core.port.HapticEngine
 import com.garan.threshold.core.port.LaunchResult
 import com.garan.threshold.core.port.NoOpHapticEngine
+import com.garan.threshold.core.port.NoOpScheduleAlarmScheduler
 import com.garan.threshold.core.port.PackageChangeEvent
 import com.garan.threshold.core.port.PackageIndexSource
+import com.garan.threshold.core.port.ProfileCapabilityChecker
+import com.garan.threshold.core.port.ScheduleAlarmScheduler
 import com.garan.threshold.core.port.SettingsRepository
+import com.garan.threshold.core.port.SystemClockSource
 import com.garan.threshold.core.search.ActionCandidate
 import com.garan.threshold.core.search.AppSearchCandidate
 import com.garan.threshold.core.search.FuzzyMatcher
 import com.garan.threshold.core.search.SearchEngine
 import com.garan.threshold.core.search.SearchItem
 import com.garan.threshold.core.search.SearchResult
+import com.garan.threshold.schedule.ScheduleTransitionNotifier
 import com.garan.threshold.ui.launcher.DialerPackageResolver
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.persistentListOf
@@ -32,6 +41,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.random.Random
 
@@ -52,6 +63,8 @@ data class SearchUiState(
     val activeFriction: ActiveFrictionGate? = null,
     val quickActions: ImmutableList<QuickActionUiItem> = persistentListOf(),
     val generalSettings: GeneralSettings = GeneralSettings(),
+    val activeProfiles: ImmutableList<CustomProfile> = persistentListOf(),
+    val capabilityIssues: ImmutableList<ProfileCapabilityIssue> = persistentListOf(),
 )
 
 class SearchViewModel(
@@ -72,6 +85,10 @@ class SearchViewModel(
         appRules = emptyMap(),
     ),
     private val settingsRepository: SettingsRepository? = null,
+    private val cascadingEngine: CascadingResolutionEngine = CascadingResolutionEngine(),
+    private val clockSource: ClockSource = SystemClockSource,
+    private val scheduleAlarmScheduler: ScheduleAlarmScheduler = NoOpScheduleAlarmScheduler,
+    private val capabilityChecker: ProfileCapabilityChecker = ProfileCapabilityChecker { true },
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
     private val random: Random = Random.Default,
 ) : ViewModel() {
@@ -83,6 +100,8 @@ class SearchViewModel(
     private val _uiState = MutableStateFlow(SearchUiState())
     val uiState: StateFlow<SearchUiState> = _uiState.asStateFlow()
 
+    private val reconcileMutex = Mutex()
+
     @Volatile
     private var lastObservedSettings: ThresholdSettings? = null
 
@@ -91,6 +110,13 @@ class SearchViewModel(
             viewModelScope.launch(ioDispatcher) {
                 settingsRepository.observeSettings().collect { settings ->
                     onSettingsChanged(settings)
+                }
+            }
+            viewModelScope.launch(ioDispatcher) {
+                ScheduleTransitionNotifier.events.collect {
+                    reconcileMutex.withLock {
+                        lastObservedSettings?.let { reconcileWorkingSetLocked(it) }
+                    }
                 }
             }
         }
@@ -118,37 +144,63 @@ class SearchViewModel(
 
         viewModelScope.launch(ioDispatcher) {
             val apps = packageIndexSource.getInstalledApps()
-            candidates = apps.map { AppSearchCandidate(it.component, it.label) }
-
-            // Re-evaluate search if the user entered a query while the cold-start scan was in flight
-            val currentQuery = _uiState.value.query
-            if (currentQuery.isNotBlank()) {
-                performSearch(currentQuery)
+            reconcileMutex.withLock {
+                candidates = apps.map { AppSearchCandidate(it.component, it.label) }
+                val currentQuery = _uiState.value.query
+                if (currentQuery.isNotBlank()) {
+                    performSearch(currentQuery)
+                }
             }
 
             packageIndexSource.observePackageChanges().collect { event ->
                 if (event is PackageChangeEvent.Removed) {
                     settingsRepository?.removeApps(setOf(event.component))
                 }
-                candidates = when (event) {
-                    is PackageChangeEvent.Added -> {
-                        candidates.filterNot { it.component == event.component } +
-                            AppSearchCandidate(event.app.component, event.app.label)
+                reconcileMutex.withLock {
+                    candidates = when (event) {
+                        is PackageChangeEvent.Added -> {
+                            candidates.filterNot { it.component == event.component } +
+                                AppSearchCandidate(event.app.component, event.app.label)
+                        }
+                        is PackageChangeEvent.Removed -> {
+                            candidates.filterNot { it.component == event.component }
+                        }
+                        is PackageChangeEvent.Changed -> {
+                            candidates.filterNot { it.component == event.component } +
+                                AppSearchCandidate(event.app.component, event.app.label)
+                        }
                     }
-                    is PackageChangeEvent.Removed -> {
-                        candidates.filterNot { it.component == event.component }
-                    }
-                    is PackageChangeEvent.Changed -> {
-                        candidates.filterNot { it.component == event.component } +
-                            AppSearchCandidate(event.app.component, event.app.label)
-                    }
-                }
-                lastObservedSettings?.let { refreshQuickActions(it) }
-                val activeQuery = _uiState.value.query
-                if (activeQuery.isNotBlank()) {
-                    performSearch(activeQuery)
+                    lastObservedSettings?.let { reconcileWorkingSetLocked(it) }
                 }
             }
+        }
+    }
+
+    /**
+     * Re-evaluates the working set of active custom profiles and effective app rules against
+     * the current day and time (called on minute ticks, activity resume, or alarm boundaries).
+     */
+    fun refreshScheduleEvaluation() {
+        viewModelScope.launch(ioDispatcher) {
+            reconcileMutex.withLock {
+                lastObservedSettings?.let { reconcileWorkingSetLocked(it) }
+            }
+        }
+    }
+
+    internal suspend fun reconcileForTesting(settings: ThresholdSettings? = null) {
+        if (candidates.isEmpty()) {
+            val apps = packageIndexSource.getInstalledApps()
+            isIndexInitialized.set(true)
+            reconcileMutex.withLock {
+                candidates = apps.map { AppSearchCandidate(it.component, it.label) }
+            }
+        }
+        reconcileMutex.withLock {
+            val effective = settings ?: lastObservedSettings ?: settingsRepository?.getSettings() ?: return
+            lastObservedSettings = effective
+            scheduleAlarmScheduler.syncNextScheduleAlarm(effective.customProfiles)
+            reconcileWorkingSetLocked(effective)
         }
     }
 
@@ -194,11 +246,21 @@ class SearchViewModel(
 
     fun launchQuickAction(item: QuickActionUiItem, onDirectLaunch: () -> Unit) {
         val isDefaultDialer = (item.component.packageName == resolvedDialerPackage)
-        val access = lastObservedSettings?.baseProfile?.resolveAccess(
-            component = item.component,
-            isDefaultDialer = isDefaultDialer,
-            random = random,
-        ) ?: item.accessState
+        val settings = lastObservedSettings
+        val access = if (settings != null) {
+            val now = clockSource.now()
+            cascadingEngine.resolveAppAccess(
+                component = item.component,
+                baseProfile = settings.baseProfile,
+                customProfiles = settings.customProfiles,
+                currentDay = now.dayOfWeek,
+                currentTime = now.timeOfDay,
+                isDefaultDialer = isDefaultDialer,
+                random = random,
+            )
+        } else {
+            item.accessState
+        }
 
         when (access) {
             is AppAccessState.Blocked -> {
@@ -221,38 +283,41 @@ class SearchViewModel(
     }
 
     private suspend fun onSettingsChanged(settings: ThresholdSettings) {
-        lastObservedSettings = settings
-        val appRules = settings.baseProfile.appAssignments.mapValues { (comp, _) ->
-            settings.baseProfile.resolveAccess(
-                component = comp,
-                isDefaultDialer = (comp.packageName == resolvedDialerPackage),
-            )
-        }
-        activeProfile = Profile(
-            id = "base",
-            name = "Base",
-            defaultAccess = AppAccessState.Direct,
-            appRules = appRules,
-        )
-
-        refreshQuickActions(settings)
-
-        val currentQuery = _uiState.value.query
-        if (currentQuery.isNotBlank()) {
-            performSearch(currentQuery)
+        reconcileMutex.withLock {
+            lastObservedSettings = settings
+            scheduleAlarmScheduler.syncNextScheduleAlarm(settings.customProfiles)
+            reconcileWorkingSetLocked(settings)
         }
     }
 
-    private suspend fun refreshQuickActions(settings: ThresholdSettings) {
+    private suspend fun reconcileWorkingSetLocked(settings: ThresholdSettings) {
+        val now = clockSource.now()
+        val workingSet = cascadingEngine.resolveWorkingSet(
+            baseProfile = settings.baseProfile,
+            customProfiles = settings.customProfiles,
+            currentDay = now.dayOfWeek,
+            currentTime = now.timeOfDay,
+            defaultDialerPackage = resolvedDialerPackage,
+            additionalComponents = settings.baseProfile.quickActions,
+            random = random,
+        )
+        activeProfile = workingSet.effectiveProfile
+
         val quickKeys = settings.baseProfile.quickActions
         val quickItems = quickKeys.mapIndexedNotNull { index, comp ->
             val label = candidates.find { it.component == comp }?.label
                 ?: packageIndexSource.getApp(comp)?.label
                 ?: comp.packageName
-            val access = settings.baseProfile.resolveAccess(
-                component = comp,
-                isDefaultDialer = (comp.packageName == resolvedDialerPackage),
-            )
+            val access = workingSet.effectiveProfile.appRules[comp]
+                ?: cascadingEngine.resolveAppAccess(
+                    component = comp,
+                    baseProfile = settings.baseProfile,
+                    customProfiles = settings.customProfiles,
+                    currentDay = now.dayOfWeek,
+                    currentTime = now.timeOfDay,
+                    isDefaultDialer = (comp.packageName == resolvedDialerPackage),
+                    random = random,
+                )
             QuickActionUiItem(
                 slotNumber = index + 1,
                 component = comp,
@@ -261,11 +326,22 @@ class SearchViewModel(
             )
         }.toImmutableList()
 
+        val capabilityIssues = capabilityChecker
+            .findCapabilityIssues(settings.customProfiles)
+            .toImmutableList()
+
         _uiState.update {
             it.copy(
                 generalSettings = settings.general,
                 quickActions = quickItems,
+                activeProfiles = workingSet.activeProfiles.toImmutableList(),
+                capabilityIssues = capabilityIssues,
             )
+        }
+
+        val currentQuery = _uiState.value.query
+        if (currentQuery.isNotBlank()) {
+            performSearch(currentQuery)
         }
     }
 
@@ -295,11 +371,21 @@ class SearchViewModel(
     fun evaluateLaunch(item: SearchItem): LaunchResult = when (item) {
         is SearchItem.App -> {
             val isDefaultDialer = (item.component.packageName == resolvedDialerPackage)
-            val effectiveAccess = lastObservedSettings?.baseProfile?.resolveAccess(
-                component = item.component,
-                isDefaultDialer = isDefaultDialer,
-                random = random,
-            ) ?: gatekeeper.resolveAccess(item.component, activeProfile, resolvedDialerPackage)
+            val settings = lastObservedSettings
+            val effectiveAccess = if (settings != null) {
+                val now = clockSource.now()
+                cascadingEngine.resolveAppAccess(
+                    component = item.component,
+                    baseProfile = settings.baseProfile,
+                    customProfiles = settings.customProfiles,
+                    currentDay = now.dayOfWeek,
+                    currentTime = now.timeOfDay,
+                    isDefaultDialer = isDefaultDialer,
+                    random = random,
+                )
+            } else {
+                gatekeeper.resolveAccess(item.component, activeProfile, resolvedDialerPackage)
+            }
 
             val result = when (effectiveAccess) {
                 is AppAccessState.Direct -> LaunchResult.Launched

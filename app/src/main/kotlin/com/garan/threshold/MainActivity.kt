@@ -5,31 +5,62 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
+import androidx.navigation3.runtime.NavKey
+import androidx.navigation3.runtime.entryProvider
+import androidx.navigation3.runtime.rememberNavBackStack
+import androidx.navigation3.ui.NavDisplay
+import com.garan.threshold.core.model.BaseProfileSettings
+import com.garan.threshold.core.model.CustomProfile
+import com.garan.threshold.core.model.DayOfWeek
+import com.garan.threshold.core.model.ProfileCapability
+import com.garan.threshold.core.model.TimeOfDay
+import com.garan.threshold.core.port.ClockSource
+import com.garan.threshold.core.port.LocalDayTime
+import com.garan.threshold.core.port.SystemClockSource
 import com.garan.threshold.core.search.ActionCandidate
 import com.garan.threshold.data.antimetrics.AndroidAntiMetricsRepository
 import com.garan.threshold.data.haptics.AndroidHapticEngine
 import com.garan.threshold.data.packageindex.AndroidPackageIndexSource
 import com.garan.threshold.data.settings.AndroidSettingsRepository
+import com.garan.threshold.schedule.AndroidProfileCapabilityChecker
+import com.garan.threshold.schedule.AndroidScheduleAlarmScheduler
+import com.garan.threshold.schedule.ScheduleAlarmReceiver
+import com.garan.threshold.schedule.ScheduleTransitionNotifier
 import com.garan.threshold.ui.home.ThresholdHomeScreen
 import com.garan.threshold.ui.launcher.AndroidAppLauncher
 import com.garan.threshold.ui.launcher.DialerPackageResolver
+import com.garan.threshold.ui.motion.ThresholdMotion
 import com.garan.threshold.ui.search.SearchViewModel
 import com.garan.threshold.ui.settings.ConfigureAppsScreen
+import com.garan.threshold.ui.settings.ProfilesScreen
 import com.garan.threshold.ui.settings.SettingsViewModel
 import com.garan.threshold.ui.settings.ThresholdSettingsScreen
 import com.garan.threshold.ui.theme.ThresholdTheme
 import com.garan.threshold.ui.util.ImeUtils
+import kotlinx.serialization.Serializable
 
-enum class ThresholdScreen {
-    HOME,
-    SETTINGS,
-    CONFIGURE_APPS,
+@Serializable
+sealed interface ThresholdRoute : NavKey {
+    @Serializable
+    data object Home : ThresholdRoute
+
+    @Serializable
+    data object Settings : ThresholdRoute
+
+    @Serializable
+    data object Profiles : ThresholdRoute
+
+    @Serializable
+    data class ConfigureApps(val profileId: String? = null) : ThresholdRoute
 }
 
 class MainActivity : ComponentActivity() {
@@ -38,13 +69,36 @@ class MainActivity : ComponentActivity() {
     private val appLauncher by lazy { AndroidAppLauncher(this) }
     private val hapticEngine by lazy { AndroidHapticEngine(applicationContext ?: this) }
     private val settingsRepository by lazy { AndroidSettingsRepository(applicationContext ?: this) }
+
+    @Volatile
+    private var clockOverrideForTesting: ClockSource? = null
+
+    @Volatile
+    private var exactAlarmOverrideForTesting: Boolean? = null
+
+    private val activeClockSource = ClockSource {
+        clockOverrideForTesting?.now() ?: SystemClockSource.now()
+    }
+
+    private val scheduleAlarmScheduler by lazy {
+        AndroidScheduleAlarmScheduler(
+            context = applicationContext ?: this,
+            clockSource = activeClockSource,
+        )
+    }
+    private val capabilityChecker by lazy {
+        AndroidProfileCapabilityChecker(
+            context = applicationContext ?: this,
+            exactAlarmOverride = { exactAlarmOverrideForTesting },
+        )
+    }
     internal val antiMetricsRepository by lazy { AndroidAntiMetricsRepository(applicationContext ?: this) }
     internal lateinit var searchViewModel: SearchViewModel
         private set
     internal lateinit var settingsViewModel: SettingsViewModel
         private set
 
-    private var activeScreenState = mutableStateOf(ThresholdScreen.HOME)
+    private val homeIntentResetCounter = mutableIntStateOf(0)
 
     @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
@@ -58,8 +112,46 @@ class MainActivity : ComponentActivity() {
         if (::searchViewModel.isInitialized) {
             searchViewModel.dismissSearch()
         }
-        activeScreenState.value = ThresholdScreen.HOME
+        homeIntentResetCounter.intValue++
         ImeUtils.dismissIme(this)
+    }
+
+    @androidx.annotation.VisibleForTesting
+    suspend fun configureScheduleProfilesForTesting(
+        baseProfile: BaseProfileSettings = BaseProfileSettings(),
+        customProfiles: List<CustomProfile>,
+    ) {
+        settingsRepository.updateBaseProfile(baseProfile)
+        settingsRepository.updateCustomProfiles(customProfiles)
+        if (::searchViewModel.isInitialized) {
+            searchViewModel.reconcileForTesting(settingsRepository.getSettings())
+        }
+    }
+
+    @androidx.annotation.VisibleForTesting
+    fun setClockAndTriggerAlarmForTesting(dayOfWeek: DayOfWeek, timeOfDay: TimeOfDay) {
+        clockOverrideForTesting = ClockSource { LocalDayTime(dayOfWeek, timeOfDay) }
+        val alarmIntent = Intent(this, ScheduleAlarmReceiver::class.java).apply {
+            action = AndroidScheduleAlarmScheduler.ACTION_SCHEDULE_TRANSITION_ALARM
+            setPackage(packageName)
+        }
+        ScheduleAlarmReceiver().onReceive(this, alarmIntent)
+        if (::searchViewModel.isInitialized) {
+            kotlinx.coroutines.runBlocking {
+                searchViewModel.reconcileForTesting()
+            }
+        }
+    }
+
+    @androidx.annotation.VisibleForTesting
+    fun setExactAlarmPermissionForTesting(granted: Boolean?) {
+        exactAlarmOverrideForTesting = granted
+        ScheduleTransitionNotifier.notifyTransition()
+        if (::searchViewModel.isInitialized) {
+            kotlinx.coroutines.runBlocking {
+                searchViewModel.reconcileForTesting()
+            }
+        }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -84,6 +176,9 @@ class MainActivity : ComponentActivity() {
                     },
                     actions = listOf(settingsAction),
                     settingsRepository = settingsRepository,
+                    clockSource = activeClockSource,
+                    scheduleAlarmScheduler = scheduleAlarmScheduler,
+                    capabilityChecker = capabilityChecker,
                 ) as T
             },
         )[SearchViewModel::class.java]
@@ -110,50 +205,158 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             ThresholdTheme {
-                var currentScreen by activeScreenState
+                val backStack = rememberNavBackStack(ThresholdRoute.Home)
+                val resetTrigger by homeIntentResetCounter
                 val settingsUiState by settingsViewModel.uiState.collectAsState()
 
-                when (currentScreen) {
-                    ThresholdScreen.HOME -> {
-                        ThresholdHomeScreen(
-                            viewModel = searchViewModel,
-                            appLauncher = appLauncher,
-                            hapticEngine = hapticEngine,
-                            onDismissIme = { ImeUtils.dismissIme(this@MainActivity) },
-                            antiMetricsRepository = antiMetricsRepository,
-                            onOpenSettings = { currentScreen = ThresholdScreen.SETTINGS },
-                        )
-                    }
-                    ThresholdScreen.SETTINGS -> {
-                        androidx.compose.runtime.LaunchedEffect(Unit) {
-                            settingsViewModel.ensureLoaded()
+                LaunchedEffect(resetTrigger) {
+                    if (resetTrigger > 0) {
+                        while (backStack.size > 1) {
+                            backStack.removeLastOrNull()
                         }
-                        ThresholdSettingsScreen(
-                            uiState = settingsUiState,
-                            onBack = { currentScreen = ThresholdScreen.HOME },
-                            onNavigateToConfigureApps = { currentScreen = ThresholdScreen.CONFIGURE_APPS },
-                            onUpdateShowUnlocks = settingsViewModel::updateShowUnlocks,
-                            onUpdateShowRest = settingsViewModel::updateShowRest,
-                            onUpdateRequireFullTyping = settingsViewModel::updateRequireFullTyping,
-                            onUpdateDefaultFriction = settingsViewModel::updateDefaultFriction,
-                            onAddQuickAction = settingsViewModel::addQuickAction,
-                            onRemoveQuickAction = settingsViewModel::removeQuickAction,
-                        )
-                    }
-                    ThresholdScreen.CONFIGURE_APPS -> {
-                        androidx.compose.runtime.LaunchedEffect(Unit) {
-                            settingsViewModel.ensureLoaded()
-                        }
-                        ConfigureAppsScreen(
-                            availableApps = settingsUiState.availableApps,
-                            initialAssignments = settingsUiState.baseProfile.appAssignments,
-                            defaultFriction = settingsUiState.baseProfile.defaultFriction,
-                            onSave = settingsViewModel::saveAppAssignments,
-                            onBack = { currentScreen = ThresholdScreen.SETTINGS },
-                            hapticEngine = hapticEngine,
-                        )
                     }
                 }
+
+                NavDisplay(
+                    backStack = backStack,
+                    onBack = {
+                        if (backStack.size > 1) {
+                            backStack.removeLastOrNull()
+                        }
+                    },
+                    transitionSpec = {
+                        fadeIn(
+                            animationSpec = ThresholdMotion.opticalTween(ThresholdMotion.SHUTTER_OPEN_DURATION_MS),
+                        ) togetherWith fadeOut(
+                            animationSpec = ThresholdMotion.opticalTween(ThresholdMotion.SHUTTER_CLOSE_DURATION_MS),
+                        )
+                    },
+                    popTransitionSpec = {
+                        fadeIn(
+                            animationSpec = ThresholdMotion.opticalTween(ThresholdMotion.SHUTTER_OPEN_DURATION_MS),
+                        ) togetherWith fadeOut(
+                            animationSpec = ThresholdMotion.opticalTween(ThresholdMotion.SHUTTER_CLOSE_DURATION_MS),
+                        )
+                    },
+                    predictivePopTransitionSpec = {
+                        fadeIn(
+                            animationSpec = ThresholdMotion.opticalTween(ThresholdMotion.SHUTTER_OPEN_DURATION_MS),
+                        ) togetherWith fadeOut(
+                            animationSpec = ThresholdMotion.opticalTween(ThresholdMotion.SHUTTER_CLOSE_DURATION_MS),
+                        )
+                    },
+                    entryProvider = entryProvider {
+                        entry<ThresholdRoute.Home> {
+                            ThresholdHomeScreen(
+                                viewModel = searchViewModel,
+                                appLauncher = appLauncher,
+                                hapticEngine = hapticEngine,
+                                onDismissIme = { ImeUtils.dismissIme(this@MainActivity) },
+                                antiMetricsRepository = antiMetricsRepository,
+                                onOpenSettings = {
+                                    if (backStack.lastOrNull() != ThresholdRoute.Settings) {
+                                        backStack.add(ThresholdRoute.Settings)
+                                    }
+                                },
+                                onResolveCapabilityIssue = { capability ->
+                                    when (capability) {
+                                        ProfileCapability.EXACT_ALARM -> {
+                                            scheduleAlarmScheduler.requestExactAlarmPermission()
+                                        }
+                                        ProfileCapability.BACKGROUND_LOCATION,
+                                        ProfileCapability.NFC_HARDWARE_ENABLED,
+                                        -> {
+                                            if (backStack.lastOrNull() != ThresholdRoute.Profiles) {
+                                                backStack.add(ThresholdRoute.Profiles)
+                                            }
+                                        }
+                                    }
+                                },
+                            )
+                        }
+
+                        entry<ThresholdRoute.Settings> {
+                            LaunchedEffect(Unit) {
+                                settingsViewModel.ensureLoaded()
+                            }
+                            ThresholdSettingsScreen(
+                                uiState = settingsUiState,
+                                onBack = {
+                                    if (backStack.size > 1) backStack.removeLastOrNull()
+                                },
+                                onNavigateToConfigureApps = {
+                                    backStack.add(ThresholdRoute.ConfigureApps(profileId = null))
+                                },
+                                onNavigateToProfiles = {
+                                    backStack.add(ThresholdRoute.Profiles)
+                                },
+                                onUpdateShowUnlocks = settingsViewModel::updateShowUnlocks,
+                                onUpdateShowRest = settingsViewModel::updateShowRest,
+                                onUpdateRequireFullTyping = settingsViewModel::updateRequireFullTyping,
+                                onUpdateDefaultFriction = settingsViewModel::updateDefaultFriction,
+                                onAddQuickAction = settingsViewModel::addQuickAction,
+                                onRemoveQuickAction = settingsViewModel::removeQuickAction,
+                            )
+                        }
+
+                        entry<ThresholdRoute.Profiles> {
+                            LaunchedEffect(Unit) {
+                                settingsViewModel.ensureLoaded()
+                            }
+                            ProfilesScreen(
+                                profiles = settingsUiState.customProfiles,
+                                onSaveProfile = settingsViewModel::saveCustomProfile,
+                                onDeleteProfile = settingsViewModel::deleteCustomProfile,
+                                onReorderProfiles = settingsViewModel::reorderCustomProfiles,
+                                onConfigureProfileApps = { profileId ->
+                                    backStack.add(ThresholdRoute.ConfigureApps(profileId = profileId))
+                                },
+                                onBack = {
+                                    if (backStack.size > 1) backStack.removeLastOrNull()
+                                },
+                                hapticEngine = hapticEngine,
+                                canScheduleExactAlarms = scheduleAlarmScheduler::canScheduleExactAlarms,
+                                onRequestExactAlarmPermission = scheduleAlarmScheduler::requestExactAlarmPermission,
+                            )
+                        }
+
+                        entry<ThresholdRoute.ConfigureApps> { route ->
+                            LaunchedEffect(Unit) {
+                                settingsViewModel.ensureLoaded()
+                            }
+                            val targetProfile: CustomProfile? = if (route.profileId != null) {
+                                settingsUiState.customProfiles.firstOrNull { it.id == route.profileId }
+                            } else {
+                                null
+                            }
+                            val initialAssignments =
+                                targetProfile?.appAssignments ?: settingsUiState.baseProfile.appAssignments
+                            val isCustomProfile = targetProfile != null
+
+                            ConfigureAppsScreen(
+                                availableApps = settingsUiState.availableApps,
+                                initialAssignments = initialAssignments,
+                                defaultFriction = settingsUiState.baseProfile.defaultFriction,
+                                onSave = { savedAssignments ->
+                                    if (targetProfile != null) {
+                                        settingsViewModel.saveCustomProfileAppAssignments(
+                                            targetProfile.id,
+                                            savedAssignments,
+                                        )
+                                    } else {
+                                        settingsViewModel.saveAppAssignments(savedAssignments)
+                                    }
+                                },
+                                onBack = {
+                                    if (backStack.size > 1) backStack.removeLastOrNull()
+                                },
+                                hapticEngine = hapticEngine,
+                                isCustomProfile = isCustomProfile,
+                                customProfileName = targetProfile?.name,
+                            )
+                        }
+                    },
+                )
             }
         }
     }

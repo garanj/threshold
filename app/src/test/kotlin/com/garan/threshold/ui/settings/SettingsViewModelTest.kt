@@ -138,4 +138,49 @@ class SettingsViewModelTest {
         assertThat(base.appAssignments[socialComponent]).isEqualTo(AppAssignment.Blocked)
         assertThat(base.appAssignments[clockComponent]).isNull() // unassigned = Standard
     }
+
+    @Test
+    fun customProfiles_saveDeleteAndReorder_updatesUiState() = runTest(testDispatcher) {
+        advanceUntilIdle()
+
+        val profile1 = com.garan.threshold.core.model.CustomProfile(id = "work", name = "Work", priority = 0)
+        val profile2 = com.garan.threshold.core.model.CustomProfile(id = "bedtime", name = "Bedtime", priority = 1)
+
+        viewModel.saveCustomProfile(profile1)
+        viewModel.saveCustomProfile(profile2)
+        advanceUntilIdle()
+
+        assertThat(viewModel.uiState.value.customProfiles).hasSize(2)
+        assertThat(viewModel.uiState.value.customProfiles[0].name).isEqualTo("Work")
+        assertThat(viewModel.uiState.value.customProfiles[1].name).isEqualTo("Bedtime")
+
+        // Reorder
+        viewModel.reorderCustomProfiles(listOf(profile2, profile1))
+        advanceUntilIdle()
+        assertThat(viewModel.uiState.value.customProfiles[0].name).isEqualTo("Bedtime")
+        assertThat(viewModel.uiState.value.customProfiles[0].priority).isEqualTo(0)
+        assertThat(viewModel.uiState.value.customProfiles[1].name).isEqualTo("Work")
+        assertThat(viewModel.uiState.value.customProfiles[1].priority).isEqualTo(1)
+
+        // Delete
+        viewModel.deleteCustomProfile("work")
+        advanceUntilIdle()
+        assertThat(viewModel.uiState.value.customProfiles.map { it.id }).containsExactly("bedtime")
+    }
+
+    @Test
+    fun saveCustomProfileAppAssignments_updatesAssignmentsForTargetProfile() = runTest(testDispatcher) {
+        advanceUntilIdle()
+
+        val profile = com.garan.threshold.core.model.CustomProfile(id = "work", name = "Work", priority = 0)
+        viewModel.saveCustomProfile(profile)
+        advanceUntilIdle()
+
+        val overrides = mapOf(socialComponent to AppAssignment.Blocked)
+        viewModel.saveCustomProfileAppAssignments("work", overrides)
+        advanceUntilIdle()
+
+        val saved = viewModel.uiState.value.customProfiles.first { it.id == "work" }
+        assertThat(saved.appAssignments[socialComponent]).isEqualTo(AppAssignment.Blocked)
+    }
 }

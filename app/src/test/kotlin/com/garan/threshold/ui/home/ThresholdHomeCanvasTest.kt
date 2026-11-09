@@ -5,14 +5,18 @@ import android.content.Intent
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.LifecycleRegistry
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.test.core.app.ApplicationProvider
+import com.garan.threshold.core.model.CustomProfile
 import com.garan.threshold.ui.theme.ThresholdTheme
 import com.google.common.truth.Truth.assertThat
+import kotlinx.collections.immutable.persistentListOf
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -100,5 +104,32 @@ class ThresholdHomeCanvasTest {
             it.intentFilter.hasAction(Intent.ACTION_TIME_TICK)
         }
         assertThat(hasTimeTickReceiverWhenRestarted).isTrue()
+    }
+
+    @Test
+    fun canvas_displaysCapabilityFaultBadgeAndActiveProfileBadges_andInvokesCallbackOnClick() {
+        var faultClicked = false
+        val workProfile = CustomProfile(id = "work", name = "Work Focus", colorIndex = 0)
+
+        composeTestRule.setContent {
+            ThresholdTheme {
+                ThresholdHomeCanvas(
+                    timeText = "09:41",
+                    dateText = "Monday, November 2",
+                    statusText = "REST 8H 12M  •  4 UNLOCKS",
+                    activeProfiles = persistentListOf(workProfile),
+                    hasCapabilityIssues = true,
+                    onCapabilityFaultClick = { faultClicked = true },
+                )
+            }
+        }
+
+        composeTestRule.onNodeWithContentDescription("Active profile: Work Focus").assertIsDisplayed()
+        composeTestRule.onNodeWithText("W").assertIsDisplayed()
+        composeTestRule.onNodeWithContentDescription("Missing profile permissions").assertIsDisplayed()
+        composeTestRule.onNodeWithText("!").assertIsDisplayed()
+
+        composeTestRule.onNodeWithContentDescription("Missing profile permissions").performClick()
+        assertThat(faultClicked).isTrue()
     }
 }
