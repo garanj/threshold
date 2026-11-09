@@ -86,4 +86,34 @@ class ArchitectureAndConfigGuardTest {
             assertThat(File(dir, "ic_launcher_round.png").exists()).isTrue()
         }
     }
+
+    @Test
+    fun uiScreens_neverDefineInlineHexColorsOrAsciiIconsAndUseNavigation3() {
+        val appSourceDir = File(rootDir, "app/src/main/kotlin")
+        val colorViolations = mutableListOf<String>()
+        val asciiIconViolations = mutableListOf<String>()
+
+        appSourceDir.walkTopDown()
+            .filter { it.isFile && it.extension == "kt" }
+            .forEach { file ->
+                val relPath = file.relativeTo(rootDir).path.replace('\\', '/')
+                file.useLines { lines ->
+                    lines.forEachIndexed { index, line ->
+                        if (!relPath.endsWith("ui/theme/Color.kt") && line.contains("Color(0x")) {
+                            colorViolations.add("$relPath:${index + 1} -> ${line.trim()}")
+                        }
+                        if (line.contains("\"▲\"") || line.contains("\"▼\"") || line.contains("Manage →")) {
+                            asciiIconViolations.add("$relPath:${index + 1} -> ${line.trim()}")
+                        }
+                    }
+                }
+            }
+
+        assertThat(colorViolations).isEmpty()
+        assertThat(asciiIconViolations).isEmpty()
+
+        val mainActivityContent = File(appSourceDir, "com/garan/threshold/MainActivity.kt").readText()
+        assertThat(mainActivityContent).contains("NavDisplay")
+        assertThat(mainActivityContent).contains("rememberNavBackStack")
+    }
 }

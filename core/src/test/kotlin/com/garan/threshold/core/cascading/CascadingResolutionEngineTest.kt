@@ -285,4 +285,43 @@ class CascadingResolutionEngineTest {
         )
         assertThat(work).isEqualTo(AppAccessState.Guarded(FrictionPolicy.DragSort(pairCount = 6)))
     }
+
+    @Test
+    fun resolveWorkingSet_mergesActiveProfilesAndBaseProfileRules() {
+        val base = BaseProfileSettings(
+            defaultFriction = FrictionChoice.TYPED_INTENTION,
+            appAssignments = mapOf(
+                utilityComponent to AppAssignment.Guarded(),
+                socialComponent to AppAssignment.Standard,
+            ),
+        )
+        val focusProfile = CustomProfile(
+            id = "focus",
+            name = "Deep Focus",
+            priority = 0,
+            enabled = true,
+            trigger = ProfileTrigger.Schedule(weekdayDaySchedule),
+            appAssignments = mapOf(
+                socialComponent to AppAssignment.Blocked,
+                dialerComponent to AppAssignment.Blocked,
+            ),
+        )
+
+        val workingSet = engine.resolveWorkingSet(
+            baseProfile = base,
+            customProfiles = listOf(focusProfile),
+            currentDay = DayOfWeek.MONDAY,
+            currentTime = TimeOfDay(10, 0),
+            defaultDialerPackage = dialerComponent.packageName,
+        )
+
+        assertThat(workingSet.activeProfiles).containsExactly(focusProfile)
+        assertThat(workingSet.effectiveProfile.id).isEqualTo("focus")
+        assertThat(workingSet.effectiveProfile.name).isEqualTo("Deep Focus")
+        assertThat(workingSet.effectiveProfile.appRules[socialComponent]).isEqualTo(AppAccessState.Blocked)
+        assertThat(workingSet.effectiveProfile.appRules[utilityComponent])
+            .isEqualTo(AppAccessState.Guarded(FrictionPolicy.TypedIntention))
+        assertThat(workingSet.effectiveProfile.appRules[dialerComponent]).isEqualTo(AppAccessState.Direct)
+        assertThat(workingSet.blockedComponents).containsExactly(socialComponent)
+    }
 }

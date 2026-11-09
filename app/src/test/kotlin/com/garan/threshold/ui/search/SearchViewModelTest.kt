@@ -517,6 +517,140 @@ class SearchViewModelTest {
             assertThat(uniquePolicyTypes.size).isAtLeast(2)
         }
 
+    @Test
+    fun customScheduleProfile_reconcilesWorkingSetAcrossScheduleBoundariesAndSyncsAlarmScheduler() =
+        runTest(testDispatcher) {
+            var currentNow = com.garan.threshold.core.port.LocalDayTime(
+                dayOfWeek = com.garan.threshold.core.model.DayOfWeek.MONDAY,
+                timeOfDay = com.garan.threshold.core.model.TimeOfDay(8, 30),
+            )
+            var syncedProfilesCount = 0
+
+            val schedule = com.garan.threshold.core.model.ScheduleTrigger(
+                days = setOf(com.garan.threshold.core.model.DayOfWeek.MONDAY),
+                startTime = com.garan.threshold.core.model.TimeOfDay(9, 0),
+                endTime = com.garan.threshold.core.model.TimeOfDay(17, 0),
+            )
+            val deepWorkProfile = com.garan.threshold.core.model.CustomProfile(
+                id = "deep-work",
+                name = "Deep Work",
+                priority = 0,
+                enabled = true,
+                trigger = com.garan.threshold.core.model.ProfileTrigger.Schedule(schedule),
+                appAssignments = mapOf(
+                    socialComponent to com.garan.threshold.core.model.AppAssignment.Blocked,
+                ),
+            )
+
+            val fakeRepo = com.garan.threshold.ui.settings.FakeSettingsRepository(
+                com.garan.threshold.core.model.ThresholdSettings(
+                    baseProfile = com.garan.threshold.core.model.BaseProfileSettings(
+                        quickActions = listOf(socialComponent),
+                        appAssignments = mapOf(
+                            socialComponent to com.garan.threshold.core.model.AppAssignment.Standard,
+                        ),
+                    ),
+                    customProfiles = listOf(deepWorkProfile),
+                ),
+            )
+
+            val fakeAlarmScheduler = object : com.garan.threshold.core.port.ScheduleAlarmScheduler {
+                override fun canScheduleExactAlarms(): Boolean = true
+                override fun syncNextScheduleAlarm(profiles: List<com.garan.threshold.core.model.CustomProfile>) {
+                    syncedProfilesCount = profiles.size
+                }
+            }
+
+            val vm = SearchViewModel(
+                packageIndexSource = fakePackageIndexSource,
+                settingsRepository = fakeRepo,
+                clockSource = { currentNow },
+                scheduleAlarmScheduler = fakeAlarmScheduler,
+                ioDispatcher = testDispatcher,
+            ).apply {
+                ensureIndexLoaded()
+            }
+            advanceUntilIdle()
+
+            // 1. At 08:30 Monday (before 09:00 window), Deep Work is inactive -> socialComponent is Direct
+            assertThat(syncedProfilesCount).isEqualTo(1)
+            assertThat(vm.uiState.value.activeProfiles).isEmpty()
+            assertThat(vm.uiState.value.quickActions.first().accessState).isEqualTo(AppAccessState.Direct)
+
+            // 2. Clock crosses into 09:00 Monday -> refreshScheduleEvaluation() activates Deep Work
+            currentNow = com.garan.threshold.core.port.LocalDayTime(
+                dayOfWeek = com.garan.threshold.core.model.DayOfWeek.MONDAY,
+                timeOfDay = com.garan.threshold.core.model.TimeOfDay(9, 0),
+            )
+            vm.refreshScheduleEvaluation()
+            advanceUntilIdle()
+
+            assertThat(vm.uiState.value.activeProfiles).containsExactly(deepWorkProfile)
+            assertThat(vm.uiState.value.quickActions.first().accessState).isEqualTo(AppAccessState.Blocked)
+
+            // Searching for "Social" while blocked by active profile returns 0 results (Intent Gatekeeper)
+            vm.onQueryChanged("Social")
+            advanceUntilIdle()
+            assertThat(vm.uiState.value.results).isEmpty()
+
+            // 3. Clock crosses 17:00 Monday -> Deep Work deactivates -> socialComponent is Direct again
+            currentNow = com.garan.threshold.core.port.LocalDayTime(
+                dayOfWeek = com.garan.threshold.core.model.DayOfWeek.MONDAY,
+                timeOfDay = com.garan.threshold.core.model.TimeOfDay(17, 0),
+            )
+            vm.refreshScheduleEvaluation()
+            advanceUntilIdle()
+
+            assertThat(vm.uiState.value.activeProfiles).isEmpty()
+            assertThat(vm.uiState.value.quickActions.first().accessState).isEqualTo(AppAccessState.Direct)
+            assertThat(vm.uiState.value.results).hasSize(1)
+        }
+
+    @Test
+    fun capabilityIssues_reportsMissingCapabilitiesForEnabledProfilesAndClearsWhenGranted() = runTest(testDispatcher) {
+        val enabledProfile = com.garan.threshold.core.model.CustomProfile(
+            id = "work",
+            name = "Work Focus",
+            enabled = true,
+            priority = 0,
+        )
+        val disabledProfile = com.garan.threshold.core.model.CustomProfile(
+            id = "rest",
+            name = "Evening Rest",
+            enabled = false,
+            priority = 1,
+        )
+        val fakeRepo = com.garan.threshold.ui.settings.FakeSettingsRepository(
+            com.garan.threshold.core.model.ThresholdSettings(
+                customProfiles = listOf(enabledProfile, disabledProfile),
+            ),
+        )
+
+        var exactAlarmGranted = false
+        val vm = SearchViewModel(
+            packageIndexSource = fakePackageIndexSource,
+            settingsRepository = fakeRepo,
+            capabilityChecker = { exactAlarmGranted },
+            ioDispatcher = testDispatcher,
+        )
+        advanceUntilIdle()
+
+        // Initially exactAlarmGranted == false -> enabledProfile is flagged in capabilityIssues
+        assertThat(vm.uiState.value.capabilityIssues).containsExactly(
+            com.garan.threshold.core.model.ProfileCapabilityIssue(
+                profile = enabledProfile,
+                missingCapabilities = setOf(com.garan.threshold.core.model.ProfileCapability.EXACT_ALARM),
+            ),
+        )
+
+        // User grants permission and returns to app -> refreshScheduleEvaluation() clears capabilityIssues
+        exactAlarmGranted = true
+        vm.refreshScheduleEvaluation()
+        advanceUntilIdle()
+
+        assertThat(vm.uiState.value.capabilityIssues).isEmpty()
+    }
+
     private class TestHapticEngine : HapticEngine {
         var rotaryDetentCount = 0
             private set

@@ -49,11 +49,11 @@ import com.garan.threshold.core.port.HapticEngine
 import com.garan.threshold.core.port.NoOpHapticEngine
 import com.garan.threshold.ui.motion.ThresholdMotion
 import com.garan.threshold.ui.theme.AmoledBlack
+import com.garan.threshold.ui.theme.OutlineGray
 import com.garan.threshold.ui.theme.PureWhite
 import com.garan.threshold.ui.theme.SubtleGray
 import kotlinx.coroutines.withContext
 
-private val CARET_DARK_GREY = Color(0xFF404040)
 private const val CARET_ASPECT_RATIO = 1.515f
 
 /**
@@ -217,7 +217,7 @@ fun CaretTracingSurface(
 
                 // Pass 1: Dark Grey
                 if (p1 > 0f) {
-                    drawSegment(pass1Path, 0f, p1, CARET_DARK_GREY)
+                    drawSegment(pass1Path, 0f, p1, OutlineGray)
                 }
 
                 // Pass 2: Mid Grey (Additive reverse: right-to-left covering (1 - p2) to 1)

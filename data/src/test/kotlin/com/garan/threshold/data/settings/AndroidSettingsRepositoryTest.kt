@@ -143,7 +143,6 @@ class AndroidSettingsRepositoryTest {
                     ),
                     startTime = com.garan.threshold.core.model.TimeOfDay(8, 30),
                     endTime = com.garan.threshold.core.model.TimeOfDay(16, 45),
-                    isAllDay = false,
                 ),
             ),
             appAssignments = mapOf(
@@ -172,6 +171,53 @@ class AndroidSettingsRepositoryTest {
         )
         assertThat(schedule.startTime).isEqualTo(com.garan.threshold.core.model.TimeOfDay(8, 30))
         assertThat(schedule.endTime).isEqualTo(com.garan.threshold.core.model.TimeOfDay(16, 45))
+        assertThat(schedule.sameScheduleEveryDay).isTrue()
+    }
+
+    @Test
+    fun customProfiles_perDaySchedulePersistedAndRetrievedCorrectly() = runTest(testDispatcher) {
+        val profile = com.garan.threshold.core.model.CustomProfile(
+            id = "flexible-schedule",
+            name = "Flexible Schedule",
+            enabled = true,
+            priority = 0,
+            trigger = com.garan.threshold.core.model.ProfileTrigger.Schedule(
+                com.garan.threshold.core.model.ScheduleTrigger(
+                    dailyWindows = mapOf(
+                        com.garan.threshold.core.model.DayOfWeek.MONDAY to
+                            com.garan.threshold.core.model.TimeWindow(
+                                com.garan.threshold.core.model.TimeOfDay(19, 0),
+                                com.garan.threshold.core.model.TimeOfDay(6, 0),
+                            ),
+                        com.garan.threshold.core.model.DayOfWeek.TUESDAY to
+                            com.garan.threshold.core.model.TimeWindow(
+                                com.garan.threshold.core.model.TimeOfDay(10, 0),
+                                com.garan.threshold.core.model.TimeOfDay(11, 0),
+                            ),
+                    ),
+                    sameScheduleEveryDay = false,
+                ),
+            ),
+        )
+
+        repository.saveCustomProfile(profile)
+
+        val latest = repository.getSettings()
+        val loaded = latest.customProfiles.first()
+        val schedule = (loaded.trigger as com.garan.threshold.core.model.ProfileTrigger.Schedule).schedule
+        assertThat(schedule.sameScheduleEveryDay).isFalse()
+        assertThat(schedule.dailyWindows[com.garan.threshold.core.model.DayOfWeek.MONDAY]).isEqualTo(
+            com.garan.threshold.core.model.TimeWindow(
+                com.garan.threshold.core.model.TimeOfDay(19, 0),
+                com.garan.threshold.core.model.TimeOfDay(6, 0),
+            ),
+        )
+        assertThat(schedule.dailyWindows[com.garan.threshold.core.model.DayOfWeek.TUESDAY]).isEqualTo(
+            com.garan.threshold.core.model.TimeWindow(
+                com.garan.threshold.core.model.TimeOfDay(10, 0),
+                com.garan.threshold.core.model.TimeOfDay(11, 0),
+            ),
+        )
     }
 
     @Test

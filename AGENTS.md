@@ -36,8 +36,13 @@ Every line of code committed to Threshold must adhere to these non-negotiable bo
 
 ---
 
-## 2. Sensory Contract: Micro-Haptics & Motion
+## 2. Sensory & UI Contract: Material 3, Navigation 3, Micro-Haptics & Motion
 
+- **Material 3 & Navigation 3 UI Standard (Mandatory `compose-m3-ui` Skill):**
+  - Before designing, building, modifying, or reviewing any UI in `:app`, you **MUST** read [`.agent/skills/compose-m3-ui/SKILL.md`](.agent/skills/compose-m3-ui/SKILL.md).
+  - Use Jetpack Navigation 3 (`NavDisplay`, `@Serializable` `NavKey` routes, `rememberNavBackStack`) for all screen navigation.
+  - Use canonical Material 3 components (`Scaffold` + `TopAppBar`, `ListItem`, `FilterChip`, `SingleChoiceSegmentedButtonRow`, `ModalBottomSheet`, `TimeInput`/`TimePicker`) and semantic `MaterialTheme.colorScheme` roles.
+  - **Zero "AI-Slop" UI:** No inline `Color(0x...)` literals outside `Color.kt`, no ASCII characters (`"▲"`, `"▼"`, `"→"`) used as icons, no nested bordered box-in-a-box containers, no pinned `"Save"` footer buttons on settings screens, and no `Dialog`s for pickers, lists, or multi-field forms.
 - **Micro-Haptics (`VibrationEffect.Composition`):**
   - Use `PRIMITIVE_CLICK` / `PRIMITIVE_TICK` for rotary index detents.
   - Use `PRIMITIVE_HEAVY_CLICK` + delayed `PRIMITIVE_TICK` (30ms) for the physical "Relay Snap" on NFC tap.
@@ -95,5 +100,6 @@ To optimize token efficiency and agent context:
 - **`AGENTS.md`** (this file): Invariants, core rules, DoD, architecture overview.
 - **`.agent/ROADMAP.md`**: Breakdown of phases, epics, and planned tasks.
 - **`.agent/CURRENT_TASK.md`**: Single source of truth for the active task being developed right now.
-- **`.agent/STANDARDS.md`**: Compose stability guidelines, memory benchmarks, code style rules.
+- **`.agent/STANDARDS.md`**: Compose stability guidelines, Material 3 & Navigation 3 UI standards, memory benchmarks, code style rules.
+- **`.agent/skills/compose-m3-ui/SKILL.md`**: Mandatory Material 3, Navigation 3, and UX design & audit skill for all `:app` UI work.
 - **`.agent/issues/`**: Issue templates and ready-to-file specs.

@@ -1,6 +1,8 @@
 # Engineering Standards & Guardrails: Threshold
 
-## 1. Jetpack Compose Guidelines
+## 1. Jetpack Compose, Material 3 & Navigation 3 Guidelines
+
+> **Mandatory Skill:** Whenever designing, building, refactoring, or auditing UI in `:app`, you MUST read and follow [`.agent/skills/compose-m3-ui/SKILL.md`](skills/compose-m3-ui/SKILL.md).
 
 1. **State Immutability & Stability:**
    - Mark domain models exposed to Composables with `@Immutable` or `@Stable`.
@@ -12,6 +14,16 @@
    - Optical curve spec: `CubicBezierEasing(0.16f, 1.0f, 0.3f, 1.0f)`.
    - Durations strictly between 80ms and 140ms.
    - Zero spring physics or bouncy overshoot.
+4. **Jetpack Navigation 3 (`androidx.navigation3`):**
+   - All multi-screen navigation MUST use Navigation 3 (`NavDisplay`, `@Serializable` `NavKey` routes, `rememberNavBackStack()`, and `entryProvider` DSL).
+   - Never use manual `enum class` screen switching (`when (currentScreen)`) or loose `mutableStateOf` route IDs in `MainActivity`.
+5. **Material 3 Component & Token Fidelity (Zero "AI-Slop" UI):**
+   - **No Hardcoded Colors or Font Sizes:** Never declare `Color(0x...)` literals or ad-hoc `fontSize = ...sp` in screen files. Always use `MaterialTheme.colorScheme` semantic roles and `MaterialTheme.typography`.
+   - **Canonical M3 Components:** Always use `Scaffold` + `TopAppBar`, `ListItem`, `FilterChip`, `SingleChoiceSegmentedButtonRow`, `ModalBottomSheet`, and `TimePicker` / `TimeInput`. Do not hand-roll top bars, settings rows, or custom `"▲"`/`"▼"` steppers.
+   - **No ASCII Icons:** Never use text characters (`"▲"`, `"▼"`, `"→"`, `"☾"`) as icons or buttons.
+   - **Dialog Restraint:** `AlertDialog` is strictly reserved for binary destructive confirmations. Never put scrollable lists, app pickers, schedule editors, or multi-field forms inside a `Dialog`.
+   - **Edge-to-Edge Insets:** On `Scaffold` screens, pass `innerPadding` to `LazyColumn(contentPadding = innerPadding)` and `Modifier.consumeWindowInsets(innerPadding)`. Never apply `.windowInsetsPadding(WindowInsets.safeDrawing)` on the root container of a `Scaffold` screen.
+   - **48dp Minimum Touch Targets:** Every interactive control must meet the `48.dp × 48.dp` accessibility touch target minimum.
 
 ---
 

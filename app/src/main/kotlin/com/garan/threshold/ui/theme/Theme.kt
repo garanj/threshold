@@ -8,12 +8,25 @@ private val DarkColorScheme =
     darkColorScheme(
         primary = PureWhite,
         onPrimary = AmoledBlack,
+        primaryContainer = SurfaceContainerHigh,
+        onPrimaryContainer = PureWhite,
+        secondary = MutedWhite,
+        onSecondary = AmoledBlack,
+        secondaryContainer = SurfaceContainer,
+        onSecondaryContainer = PureWhite,
         background = AmoledBlack,
         onBackground = PureWhite,
         surface = AmoledBlack,
         onSurface = PureWhite,
         surfaceVariant = CharcoalGray,
-        onSurfaceVariant = MutedWhite,
+        onSurfaceVariant = SubtleGray,
+        surfaceContainerLowest = AmoledBlack,
+        surfaceContainerLow = SurfaceContainerLow,
+        surfaceContainer = SurfaceContainer,
+        surfaceContainerHigh = SurfaceContainerHigh,
+        surfaceContainerHighest = SurfaceContainerHighest,
+        outline = OutlineGray,
+        outlineVariant = HairlineBorder,
     )
 
 @Composable

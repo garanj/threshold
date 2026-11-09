@@ -218,8 +218,8 @@ fun ThresholdSearchSurface(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(top = 10.dp),
-                verticalArrangement = Arrangement.spacedBy(4.dp),
+                    .padding(top = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(2.dp),
             ) {
                 quickActions.forEach { item ->
                     QuickActionRow(
@@ -377,7 +377,7 @@ fun QuickActionRow(
 
     val isBlocked = item.accessState is AppAccessState.Blocked
     val isGuarded = item.accessState is AppAccessState.Guarded
-    val textColor = if (isBlocked) androidx.compose.ui.graphics.Color(0xFF555555) else PureWhite
+    val textColor = if (isBlocked) MaterialTheme.colorScheme.outline else MaterialTheme.colorScheme.onSurface
     val slotFormatted = String.format("%02d", item.slotNumber)
 
     Row(
@@ -387,7 +387,7 @@ fun QuickActionRow(
                 onClick = onClick,
                 onLongClick = onLongClick,
             )
-            .padding(vertical = 14.dp),
+            .padding(vertical = 10.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -401,7 +401,7 @@ fun QuickActionRow(
             Text(
                 text = stringResource(R.string.badge_guarded),
                 style = badgeTextStyle,
-                color = SubtleGray,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
     }

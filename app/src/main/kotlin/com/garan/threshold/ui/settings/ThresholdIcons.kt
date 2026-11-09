@@ -259,4 +259,92 @@ object ThresholdIcons {
             }
         }.build()
     }
+
+    val ChevronRight: ImageVector by lazy {
+        ImageVector.Builder(
+            name = "ChevronRight",
+            defaultWidth = 24.dp,
+            defaultHeight = 24.dp,
+            viewportWidth = 24f,
+            viewportHeight = 24f,
+        ).apply {
+            path(fill = SolidColor(Color.White)) {
+                moveTo(10f, 6f)
+                lineTo(8.59f, 7.41f)
+                lineTo(13.17f, 12f)
+                lineTo(8.59f, 16.59f)
+                lineTo(10f, 18f)
+                lineTo(16f, 12f)
+                close()
+            }
+        }.build()
+    }
+
+    val KeyboardArrowUp: ImageVector by lazy {
+        ImageVector.Builder(
+            name = "KeyboardArrowUp",
+            defaultWidth = 24.dp,
+            defaultHeight = 24.dp,
+            viewportWidth = 24f,
+            viewportHeight = 24f,
+        ).apply {
+            path(fill = SolidColor(Color.White)) {
+                moveTo(7.41f, 15.41f)
+                lineTo(12f, 10.83f)
+                lineTo(16.59f, 15.41f)
+                lineTo(18f, 14f)
+                lineTo(12f, 8f)
+                lineTo(6f, 14f)
+                close()
+            }
+        }.build()
+    }
+
+    val KeyboardArrowDown: ImageVector by lazy {
+        ImageVector.Builder(
+            name = "KeyboardArrowDown",
+            defaultWidth = 24.dp,
+            defaultHeight = 24.dp,
+            viewportWidth = 24f,
+            viewportHeight = 24f,
+        ).apply {
+            path(fill = SolidColor(Color.White)) {
+                moveTo(7.41f, 8.59f)
+                lineTo(12f, 13.17f)
+                lineTo(16.59f, 8.59f)
+                lineTo(18f, 10f)
+                lineTo(12f, 16f)
+                lineTo(6f, 10f)
+                close()
+            }
+        }.build()
+    }
+
+    val Edit: ImageVector by lazy {
+        ImageVector.Builder(
+            name = "Edit",
+            defaultWidth = 24.dp,
+            defaultHeight = 24.dp,
+            viewportWidth = 24f,
+            viewportHeight = 24f,
+        ).apply {
+            path(fill = SolidColor(Color.White)) {
+                moveTo(3f, 17.25f)
+                verticalLineTo(21f)
+                horizontalLineTo(6.75f)
+                lineTo(17.81f, 9.94f)
+                lineTo(14.06f, 6.19f)
+                lineTo(3f, 17.25f)
+                close()
+                moveTo(20.71f, 7.04f)
+                curveTo(21.1f, 6.65f, 21.1f, 6.02f, 20.71f, 5.63f)
+                lineTo(18.37f, 3.29f)
+                curveTo(17.98f, 2.9f, 17.35f, 2.9f, 16.96f, 3.29f)
+                lineTo(15.13f, 5.12f)
+                lineTo(18.88f, 8.87f)
+                lineTo(20.71f, 7.04f)
+                close()
+            }
+        }.build()
+    }
 }

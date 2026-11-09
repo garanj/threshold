@@ -83,17 +83,54 @@ class ScheduleTriggerTest {
     }
 
     @Test
-    fun allDaySchedule_activeAllDayOnSelectedDays() {
+    fun perDaySchedule_differentTimesOnDifferentDays() {
+        // Monday 16:00-18:00, Tuesday 10:00-11:00
         val schedule = ScheduleTrigger(
-            days = setOf(DayOfWeek.SATURDAY, DayOfWeek.SUNDAY),
-            isAllDay = true,
+            dailyWindows = mapOf(
+                DayOfWeek.MONDAY to TimeWindow(TimeOfDay(16, 0), TimeOfDay(18, 0)),
+                DayOfWeek.TUESDAY to TimeWindow(TimeOfDay(10, 0), TimeOfDay(11, 0)),
+            ),
+            sameScheduleEveryDay = false,
         )
 
-        assertThat(schedule.isActive(DayOfWeek.SATURDAY, TimeOfDay(0, 0))).isTrue()
-        assertThat(schedule.isActive(DayOfWeek.SATURDAY, TimeOfDay(14, 25))).isTrue()
-        assertThat(schedule.isActive(DayOfWeek.SUNDAY, TimeOfDay(23, 59))).isTrue()
-        assertThat(schedule.isActive(DayOfWeek.FRIDAY, TimeOfDay(23, 59))).isFalse()
-        assertThat(schedule.isActive(DayOfWeek.MONDAY, TimeOfDay(0, 0))).isFalse()
+        // Monday 10:30 -> Inactive (that's Tuesday's slot)
+        assertThat(schedule.isActive(DayOfWeek.MONDAY, TimeOfDay(10, 30))).isFalse()
+        // Monday 16:30 -> Active
+        assertThat(schedule.isActive(DayOfWeek.MONDAY, TimeOfDay(16, 30))).isTrue()
+        // Monday 18:00 -> Inactive
+        assertThat(schedule.isActive(DayOfWeek.MONDAY, TimeOfDay(18, 0))).isFalse()
+
+        // Tuesday 10:30 -> Active
+        assertThat(schedule.isActive(DayOfWeek.TUESDAY, TimeOfDay(10, 30))).isTrue()
+        // Tuesday 16:30 -> Inactive (that's Monday's slot)
+        assertThat(schedule.isActive(DayOfWeek.TUESDAY, TimeOfDay(16, 30))).isFalse()
+    }
+
+    @Test
+    fun perDaySchedule_overnightMondaySpillsIntoTuesdayAlongsideTuesdayDaytimeWindow() {
+        // Monday 19:00-06:00 (spills into Tuesday 06:00), plus Tuesday 10:00-11:00
+        val schedule = ScheduleTrigger(
+            dailyWindows = mapOf(
+                DayOfWeek.MONDAY to TimeWindow(TimeOfDay(19, 0), TimeOfDay(6, 0)),
+                DayOfWeek.TUESDAY to TimeWindow(TimeOfDay(10, 0), TimeOfDay(11, 0)),
+            ),
+            sameScheduleEveryDay = false,
+        )
+
+        // Monday 18:59 -> Inactive
+        assertThat(schedule.isActive(DayOfWeek.MONDAY, TimeOfDay(18, 59))).isFalse()
+        // Monday 19:00 -> Active
+        assertThat(schedule.isActive(DayOfWeek.MONDAY, TimeOfDay(19, 0))).isTrue()
+        // Tuesday 05:59 -> Active (from Monday 19:00-06:00 overnight spillover)
+        assertThat(schedule.isActive(DayOfWeek.TUESDAY, TimeOfDay(5, 59))).isTrue()
+        // Tuesday 06:00 -> Inactive
+        assertThat(schedule.isActive(DayOfWeek.TUESDAY, TimeOfDay(6, 0))).isFalse()
+        // Tuesday 10:30 -> Active (from Tuesday's own 10:00-11:00 window)
+        assertThat(schedule.isActive(DayOfWeek.TUESDAY, TimeOfDay(10, 30))).isTrue()
+        // Tuesday 11:00 -> Inactive
+        assertThat(schedule.isActive(DayOfWeek.TUESDAY, TimeOfDay(11, 0))).isFalse()
+        // Wednesday 02:00 -> Inactive (Tuesday's window was not overnight)
+        assertThat(schedule.isActive(DayOfWeek.WEDNESDAY, TimeOfDay(2, 0))).isFalse()
     }
 
     @Test

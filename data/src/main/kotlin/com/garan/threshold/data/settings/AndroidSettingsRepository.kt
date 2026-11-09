@@ -19,6 +19,7 @@ import com.garan.threshold.core.model.ProfileTrigger
 import com.garan.threshold.core.model.ScheduleTrigger
 import com.garan.threshold.core.model.ThresholdSettings
 import com.garan.threshold.core.model.TimeOfDay
+import com.garan.threshold.core.model.TimeWindow
 import com.garan.threshold.core.port.SettingsRepository
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
@@ -267,20 +268,34 @@ class AndroidSettingsRepository(
             obj.put("name", profile.name)
             obj.put("enabled", profile.enabled)
             obj.put("priority", profile.priority)
+            obj.put("colorIndex", profile.colorIndex)
             profile.frictionOverride?.let { obj.put("frictionOverride", it.name) }
 
             val triggerObj = JSONObject()
             when (val trigger = profile.trigger) {
                 is ProfileTrigger.Schedule -> {
+                    val schedule = trigger.schedule
                     triggerObj.put("type", "SCHEDULE")
+                    triggerObj.put("sameScheduleEveryDay", schedule.sameScheduleEveryDay)
+                    val dailyWindowsObj = JSONObject()
+                    schedule.dailyWindows.forEach { (day, window) ->
+                        val windowObj = JSONObject()
+                        windowObj.put("startHour", window.startTime.hour)
+                        windowObj.put("startMinute", window.startTime.minute)
+                        windowObj.put("endHour", window.endTime.hour)
+                        windowObj.put("endMinute", window.endTime.minute)
+                        dailyWindowsObj.put(day.name, windowObj)
+                    }
+                    triggerObj.put("dailyWindows", dailyWindowsObj)
+
+                    // Legacy fallback fields
                     val daysArray = JSONArray()
-                    trigger.schedule.days.forEach { daysArray.put(it.name) }
+                    schedule.days.forEach { daysArray.put(it.name) }
                     triggerObj.put("days", daysArray)
-                    triggerObj.put("startHour", trigger.schedule.startTime.hour)
-                    triggerObj.put("startMinute", trigger.schedule.startTime.minute)
-                    triggerObj.put("endHour", trigger.schedule.endTime.hour)
-                    triggerObj.put("endMinute", trigger.schedule.endTime.minute)
-                    triggerObj.put("isAllDay", trigger.schedule.isAllDay)
+                    triggerObj.put("startHour", schedule.startTime.hour)
+                    triggerObj.put("startMinute", schedule.startTime.minute)
+                    triggerObj.put("endHour", schedule.endTime.hour)
+                    triggerObj.put("endMinute", schedule.endTime.minute)
                 }
             }
             obj.put("trigger", triggerObj)
@@ -301,6 +316,7 @@ class AndroidSettingsRepository(
                 val name = obj.getString("name")
                 val enabled = obj.optBoolean("enabled", true)
                 val priority = obj.optInt("priority", i)
+                val colorIndex = obj.optInt("colorIndex", i % CustomProfile.PALETTE_SIZE)
                 val frictionOverride = if (obj.has("frictionOverride")) {
                     runCatching { FrictionChoice.valueOf(obj.getString("frictionOverride")) }.getOrNull()
                 } else {
@@ -309,26 +325,55 @@ class AndroidSettingsRepository(
 
                 val triggerObj = obj.optJSONObject("trigger")
                 val trigger = if (triggerObj != null && triggerObj.optString("type") == "SCHEDULE") {
-                    val daysArray = triggerObj.optJSONArray("days")
-                    val days = mutableSetOf<DayOfWeek>()
-                    if (daysArray != null) {
-                        for (j in 0 until daysArray.length()) {
-                            runCatching { DayOfWeek.valueOf(daysArray.getString(j)) }.getOrNull()?.let { days.add(it) }
+                    val sameScheduleEveryDay = triggerObj.optBoolean("sameScheduleEveryDay", true)
+                    val dailyWindowsObj = triggerObj.optJSONObject("dailyWindows")
+                    if (dailyWindowsObj != null) {
+                        val dailyWindows = mutableMapOf<DayOfWeek, TimeWindow>()
+                        val keys = dailyWindowsObj.keys()
+                        while (keys.hasNext()) {
+                            val dayKey = keys.next()
+                            val day = runCatching { DayOfWeek.valueOf(dayKey) }.getOrNull()
+                            val windowObj = dailyWindowsObj.optJSONObject(dayKey)
+                            if (day != null && windowObj != null) {
+                                val startHour = windowObj.optInt("startHour", 9)
+                                val startMinute = windowObj.optInt("startMinute", 0)
+                                val endHour = windowObj.optInt("endHour", 17)
+                                val endMinute = windowObj.optInt("endMinute", 0)
+                                dailyWindows[day] = TimeWindow(
+                                    startTime = TimeOfDay(startHour, startMinute),
+                                    endTime = TimeOfDay(endHour, endMinute),
+                                )
+                            }
                         }
+                        ProfileTrigger.Schedule(
+                            ScheduleTrigger(
+                                dailyWindows = dailyWindows,
+                                sameScheduleEveryDay = sameScheduleEveryDay,
+                            ),
+                        )
+                    } else {
+                        val daysArray = triggerObj.optJSONArray("days")
+                        val days = mutableSetOf<DayOfWeek>()
+                        if (daysArray != null) {
+                            for (j in 0 until daysArray.length()) {
+                                runCatching { DayOfWeek.valueOf(daysArray.getString(j)) }
+                                    .getOrNull()
+                                    ?.let { days.add(it) }
+                            }
+                        }
+                        val startHour = triggerObj.optInt("startHour", 9)
+                        val startMinute = triggerObj.optInt("startMinute", 0)
+                        val endHour = triggerObj.optInt("endHour", 17)
+                        val endMinute = triggerObj.optInt("endMinute", 0)
+                        ProfileTrigger.Schedule(
+                            ScheduleTrigger(
+                                days = days,
+                                startTime = TimeOfDay(startHour, startMinute),
+                                endTime = TimeOfDay(endHour, endMinute),
+                                sameScheduleEveryDay = sameScheduleEveryDay,
+                            ),
+                        )
                     }
-                    val startHour = triggerObj.optInt("startHour", 9)
-                    val startMinute = triggerObj.optInt("startMinute", 0)
-                    val endHour = triggerObj.optInt("endHour", 17)
-                    val endMinute = triggerObj.optInt("endMinute", 0)
-                    val isAllDay = triggerObj.optBoolean("isAllDay", false)
-                    ProfileTrigger.Schedule(
-                        ScheduleTrigger(
-                            days = days,
-                            startTime = TimeOfDay(startHour, startMinute),
-                            endTime = TimeOfDay(endHour, endMinute),
-                            isAllDay = isAllDay,
-                        ),
-                    )
                 } else {
                     ProfileTrigger.Schedule()
                 }
@@ -345,6 +390,7 @@ class AndroidSettingsRepository(
                         trigger = trigger,
                         appAssignments = appAssignments,
                         frictionOverride = frictionOverride,
+                        colorIndex = colorIndex,
                     ),
                 )
             }

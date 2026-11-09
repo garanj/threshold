@@ -74,12 +74,27 @@ class ThresholdScreenshotTest {
 
     @Test
     fun snapshotHomeCanvasWithProfileStatus() {
+        val activeProfiles = persistentListOf(
+            com.garan.threshold.core.model.CustomProfile(
+                id = "deep-work",
+                name = "Deep Work",
+                priority = 0,
+                colorIndex = 0,
+            ),
+            com.garan.threshold.core.model.CustomProfile(
+                id = "evening",
+                name = "Evening",
+                priority = 1,
+                colorIndex = 2,
+            ),
+        )
         composeTestRule.setContent {
             ThresholdTheme {
                 ThresholdHomeCanvas(
                     timeText = "14:32",
                     dateText = "Wednesday, November 4",
-                    statusText = "Focus · Deep Work (25m remaining)",
+                    statusText = "REST 48M  ·  2 UNLOCKS",
+                    activeProfiles = activeProfiles,
                 )
             }
         }
@@ -393,6 +408,7 @@ class ThresholdScreenshotTest {
             name = "Deep Work",
             priority = 0,
             enabled = true,
+            colorIndex = 0,
             trigger = com.garan.threshold.core.model.ProfileTrigger.Schedule(schedule),
             appAssignments = mapOf(
                 ComponentKey("com.instagram.android", "MainActivity") to
@@ -404,13 +420,22 @@ class ThresholdScreenshotTest {
             name = "Bedtime",
             priority = 1,
             enabled = false,
+            colorIndex = 2,
             trigger = com.garan.threshold.core.model.ProfileTrigger.Schedule(
-                schedule.copy(
-                    days = setOf(
-                        com.garan.threshold.core.model.DayOfWeek.SATURDAY,
-                        com.garan.threshold.core.model.DayOfWeek.SUNDAY,
+                com.garan.threshold.core.model.ScheduleTrigger(
+                    dailyWindows = mapOf(
+                        com.garan.threshold.core.model.DayOfWeek.MONDAY to
+                            com.garan.threshold.core.model.TimeWindow(
+                                com.garan.threshold.core.model.TimeOfDay(16, 0),
+                                com.garan.threshold.core.model.TimeOfDay(18, 0),
+                            ),
+                        com.garan.threshold.core.model.DayOfWeek.TUESDAY to
+                            com.garan.threshold.core.model.TimeWindow(
+                                com.garan.threshold.core.model.TimeOfDay(10, 0),
+                                com.garan.threshold.core.model.TimeOfDay(11, 0),
+                            ),
                     ),
-                    isAllDay = true,
+                    sameScheduleEveryDay = false,
                 ),
             ),
         )

@@ -7,39 +7,41 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.safeDrawing
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.ListItem
+import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.RadioButton
-import androidx.compose.material3.RadioButtonDefaults
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
-import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
@@ -49,14 +51,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.garan.threshold.R
 import com.garan.threshold.core.model.AppAssignment
 import com.garan.threshold.core.model.ComponentKey
@@ -65,11 +65,6 @@ import com.garan.threshold.core.model.InstalledApp
 import com.garan.threshold.core.port.HapticEngine
 import com.garan.threshold.core.port.NoOpHapticEngine
 import com.garan.threshold.ui.motion.ThresholdMotion
-import com.garan.threshold.ui.theme.AmoledBlack
-import com.garan.threshold.ui.theme.CharcoalGray
-import com.garan.threshold.ui.theme.HairlineBorder
-import com.garan.threshold.ui.theme.PureWhite
-import com.garan.threshold.ui.theme.SubtleGray
 import kotlinx.collections.immutable.ImmutableList
 
 /**
@@ -83,6 +78,7 @@ enum class AppListFilter {
     DEFAULT,
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ConfigureAppsScreen(
     availableApps: ImmutableList<InstalledApp>,
@@ -97,17 +93,23 @@ fun ConfigureAppsScreen(
 ) {
     BackHandler(onBack = onBack)
 
-    // In-memory working copy of assignments
-    val assignments = remember {
+    val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior()
+
+    // Reactive working map that persists immediately via onSave whenever mutated
+    val assignments = remember(initialAssignments) {
         mutableStateMapOf<ComponentKey, AppAssignment>().apply {
             putAll(initialAssignments)
         }
     }
 
+    fun commitAssignments() {
+        onSave(assignments.toMap())
+    }
+
     var selectedFilter by remember { mutableStateOf(AppListFilter.ALL) }
     var expandedAppKey by remember { mutableStateOf<ComponentKey?>(null) }
 
-    // Efficient derived counts for header bar
+    // Efficient derived counts for filter chip bar
     val blockedCount by remember {
         derivedStateOf {
             availableApps.count { assignments[it.component] is AppAssignment.Blocked }
@@ -165,65 +167,68 @@ fun ConfigureAppsScreen(
         }
     }
 
-    Column(
+    Scaffold(
         modifier = modifier
             .fillMaxSize()
-            .background(AmoledBlack)
-            .windowInsetsPadding(WindowInsets.safeDrawing),
-    ) {
-        // Top Bar
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            IconButton(
-                onClick = onBack,
-                modifier = Modifier.size(44.dp),
-            ) {
-                Icon(
-                    imageVector = ThresholdIcons.ArrowBack,
-                    contentDescription = stringResource(R.string.action_go_back),
-                    tint = PureWhite,
+            .nestedScroll(scrollBehavior.nestedScrollConnection),
+        topBar = {
+            Column(modifier = Modifier.background(MaterialTheme.colorScheme.surface)) {
+                TopAppBar(
+                    title = {
+                        Text(
+                            text = if (isCustomProfile) {
+                                customProfileName ?: stringResource(R.string.action_configure_default_apps)
+                            } else {
+                                stringResource(R.string.action_configure_default_apps)
+                            },
+                            style = MaterialTheme.typography.titleLarge,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    },
+                    navigationIcon = {
+                        IconButton(onClick = onBack) {
+                            Icon(
+                                imageVector = ThresholdIcons.ArrowBack,
+                                contentDescription = stringResource(R.string.action_go_back),
+                            )
+                        }
+                    },
+                    scrollBehavior = scrollBehavior,
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = MaterialTheme.colorScheme.surface,
+                        scrolledContainerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+                    ),
+                )
+
+                FilterCounterHeaderBar(
+                    selectedFilter = selectedFilter,
+                    onSelectFilter = { filter ->
+                        if (filter != selectedFilter) {
+                            hapticEngine.rotaryDetent()
+                            selectedFilter = filter
+                        }
+                    },
+                    allCount = allCount,
+                    blockedCount = blockedCount,
+                    guardedCount = guardedCount,
+                    allowCount = allowCount,
+                    defaultCount = defaultCount,
+                )
+
+                HorizontalDivider(
+                    color = MaterialTheme.colorScheme.outlineVariant,
+                    thickness = 1.dp,
                 )
             }
-            Spacer(modifier = Modifier.width(8.dp))
-            Text(
-                text = if (isCustomProfile) {
-                    customProfileName ?: "Configure Apps"
-                } else {
-                    stringResource(R.string.action_configure_default_apps)
-                },
-                style = MaterialTheme.typography.titleLarge,
-                color = PureWhite,
-            )
-        }
-
-        // Minimalist Filter Counter Header Bar
-        FilterCounterHeaderBar(
-            selectedFilter = selectedFilter,
-            onSelectFilter = { filter ->
-                if (filter != selectedFilter) {
-                    hapticEngine.rotaryDetent()
-                    selectedFilter = filter
-                }
-            },
-            allCount = allCount,
-            blockedCount = blockedCount,
-            guardedCount = guardedCount,
-            allowCount = allowCount,
-            defaultCount = defaultCount,
-        )
-
-        HorizontalDivider(color = HairlineBorder, thickness = 1.dp)
-
-        // Unified Alphabetical List
+        },
+        containerColor = MaterialTheme.colorScheme.background,
+    ) { innerPadding ->
         if (filteredApps.isEmpty()) {
             Box(
                 modifier = Modifier
-                    .weight(1f)
-                    .fillMaxWidth(),
+                    .fillMaxSize()
+                    .padding(innerPadding),
                 contentAlignment = Alignment.Center,
             ) {
                 Text(
@@ -234,16 +239,16 @@ fun ConfigureAppsScreen(
                         AppListFilter.DEFAULT -> "NO DEFAULT APPS"
                         AppListFilter.ALL -> "NO APPS INSTALLED"
                     },
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = SubtleGray,
-                    letterSpacing = 1.sp,
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
         } else {
             LazyColumn(
                 modifier = Modifier
-                    .weight(1f)
-                    .fillMaxWidth(),
+                    .fillMaxSize()
+                    .consumeWindowInsets(innerPadding),
+                contentPadding = innerPadding,
             ) {
                 items(filteredApps, key = { it.component.id }) { app ->
                     val assignment = assignments[app.component]
@@ -273,6 +278,7 @@ fun ConfigureAppsScreen(
                                     if (isExpanded) expandedAppKey = null
                                 }
                             }
+                            commitAssignments()
                         },
                         onSelectOverrideToggle = { override ->
                             when (override) {
@@ -294,9 +300,11 @@ fun ConfigureAppsScreen(
                                     if (isExpanded) expandedAppKey = null
                                 }
                             }
+                            commitAssignments()
                         },
                         onUpdateGuardedAssignment = { updated ->
                             assignments[app.component] = updated
+                            commitAssignments()
                         },
                         hapticEngine = hapticEngine,
                         isCustomProfile = isCustomProfile,
@@ -304,42 +312,11 @@ fun ConfigureAppsScreen(
                 }
             }
         }
-
-        HorizontalDivider(color = HairlineBorder, thickness = 1.dp)
-
-        // Pinned Save Button
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-        ) {
-            Button(
-                onClick = {
-                    onSave(assignments.toMap())
-                    onBack()
-                },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(52.dp),
-                shape = RoundedCornerShape(2.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = PureWhite,
-                    contentColor = AmoledBlack,
-                ),
-            ) {
-                Text(
-                    text = stringResource(R.string.action_save),
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.Bold,
-                    letterSpacing = 0.5.sp,
-                )
-            }
-        }
     }
 }
 
 /**
- * Horizontal filter and count summary bar.
+ * Horizontal Material 3 FilterChip bar.
  */
 @Composable
 private fun FilterCounterHeaderBar(
@@ -352,79 +329,60 @@ private fun FilterCounterHeaderBar(
     defaultCount: Int? = null,
     modifier: Modifier = Modifier,
 ) {
-    val scrollState = rememberScrollState()
+    val chips = buildList {
+        add(AppListFilter.ALL to "ALL ($allCount)")
+        if (defaultCount != null) {
+            add(AppListFilter.DEFAULT to "DEFAULT ($defaultCount)")
+        }
+        add(AppListFilter.BLOCKED to "BLOCKED ($blockedCount)")
+        add(AppListFilter.GUARDED to "GUARDED ($guardedCount)")
+        add(AppListFilter.ALLOW to "ALLOW ($allowCount)")
+    }
 
-    Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .background(AmoledBlack)
-            .horizontalScroll(scrollState)
-            .padding(horizontal = 16.dp, vertical = 8.dp),
+    LazyRow(
+        modifier = modifier.fillMaxWidth(),
+        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        FilterPill(
-            label = "ALL ($allCount)",
-            isSelected = selectedFilter == AppListFilter.ALL,
-            onClick = { onSelectFilter(AppListFilter.ALL) },
-        )
-        if (defaultCount != null) {
-            FilterPill(
-                label = "DEFAULT ($defaultCount)",
-                isSelected = selectedFilter == AppListFilter.DEFAULT,
-                onClick = { onSelectFilter(AppListFilter.DEFAULT) },
+        items(chips, key = { it.first.name }) { (filter, label) ->
+            val isSelected = selectedFilter == filter
+            FilterChip(
+                selected = isSelected,
+                onClick = { onSelectFilter(filter) },
+                label = {
+                    Text(
+                        text = label,
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                    )
+                },
+                shape = RoundedCornerShape(4.dp),
+                colors = FilterChipDefaults.filterChipColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceContainer,
+                    labelColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                    selectedContainerColor = MaterialTheme.colorScheme.primary,
+                    selectedLabelColor = MaterialTheme.colorScheme.onPrimary,
+                ),
+                border = FilterChipDefaults.filterChipBorder(
+                    enabled = true,
+                    selected = isSelected,
+                    borderColor = MaterialTheme.colorScheme.outlineVariant,
+                    selectedBorderColor = MaterialTheme.colorScheme.primary,
+                ),
             )
         }
-        FilterPill(
-            label = "BLOCKED ($blockedCount)",
-            isSelected = selectedFilter == AppListFilter.BLOCKED,
-            onClick = { onSelectFilter(AppListFilter.BLOCKED) },
-        )
-        FilterPill(
-            label = "GUARDED ($guardedCount)",
-            isSelected = selectedFilter == AppListFilter.GUARDED,
-            onClick = { onSelectFilter(AppListFilter.GUARDED) },
-        )
-        FilterPill(
-            label = "ALLOW ($allowCount)",
-            isSelected = selectedFilter == AppListFilter.ALLOW,
-            onClick = { onSelectFilter(AppListFilter.ALLOW) },
-        )
-    }
-}
-
-@Composable
-private fun FilterPill(label: String, isSelected: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
-    val interactionSource = remember { MutableInteractionSource() }
-    val shape = RoundedCornerShape(2.dp)
-
-    Box(
-        modifier = modifier
-            .height(30.dp)
-            .clip(shape)
-            .background(if (isSelected) PureWhite else CharcoalGray)
-            .border(1.dp, if (isSelected) PureWhite else HairlineBorder, shape)
-            .clickable(
-                interactionSource = interactionSource,
-                indication = null,
-                role = Role.Tab,
-                onClick = onClick,
-            )
-            .padding(horizontal = 10.dp),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(
-            text = label,
-            color = if (isSelected) AmoledBlack else SubtleGray,
-            fontSize = 11.sp,
-            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-            letterSpacing = 0.5.sp,
-        )
     }
 }
 
 /**
  * Single app row in the unified alphabetical list.
+ *
+ * In Base Profile mode (`isCustomProfile == false`), renders a single-row layout with the app name on the
+ * start and the 3-state [ThresholdMultiStateToggle] on the end.
+ *
+ * In Custom Profile mode (`isCustomProfile == true`), stacks the full-width app name above the 4-state
+ * [ThresholdProfileOverrideToggle] so app names are never crushed or truncated on narrow displays.
  */
 @Composable
 private fun UnifiedAppRow(
@@ -446,6 +404,18 @@ private fun UnifiedAppRow(
         else -> BaseToggleState.ALLOW
     }
 
+    val guardedSubtitle = if (assignment is AppAssignment.Guarded) {
+        val effectiveFriction = assignment.frictionOverride ?: defaultFriction
+        val overrideText = if (assignment.frictionOverride != null) {
+            "${effectiveFriction.name.lowercase().replace('_', ' ')} (override)"
+        } else {
+            "default (${defaultFriction.name.lowercase().replace('_', ' ')})"
+        }
+        "GUARD · $overrideText"
+    } else {
+        null
+    }
+
     Column(
         modifier = modifier
             .fillMaxWidth()
@@ -454,45 +424,42 @@ private fun UnifiedAppRow(
                 onClick = onToggleExpand,
             ),
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 10.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween,
-        ) {
+        if (isCustomProfile) {
             Column(
                 modifier = Modifier
-                    .weight(1f)
-                    .padding(end = 12.dp),
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
             ) {
-                Text(
-                    text = app.label,
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = if (currentToggleState == BaseToggleState.BLOCK) SubtleGray else PureWhite,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-
-                if (assignment is AppAssignment.Guarded) {
-                    val effectiveFriction = assignment.frictionOverride ?: defaultFriction
-                    val overrideSubtitle = if (assignment.frictionOverride != null) {
-                        "${effectiveFriction.name.lowercase().replace('_', ' ')} (override)"
-                    } else {
-                        "default (${defaultFriction.name.lowercase().replace('_', ' ')})"
-                    }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
                     Text(
-                        text = "GUARD · $overrideSubtitle",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = Color(0xFFAAAAAA),
-                        fontSize = 11.sp,
-                        letterSpacing = 0.3.sp,
+                        text = app.label,
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = if (currentToggleState == BaseToggleState.BLOCK) {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        } else {
+                            MaterialTheme.colorScheme.onSurface
+                        },
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f),
                     )
-                }
-            }
 
-            // Precision Multi-State Toggle (Base or Profile Override)
-            if (isCustomProfile) {
+                    if (guardedSubtitle != null) {
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = guardedSubtitle,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
                 ThresholdProfileOverrideToggle(
                     overrideState = when (assignment) {
                         is AppAssignment.Standard -> BaseToggleState.ALLOW
@@ -501,19 +468,46 @@ private fun UnifiedAppRow(
                         null -> null
                     },
                     onOverrideChange = onSelectOverrideToggle,
+                    modifier = Modifier.fillMaxWidth(),
                     hapticEngine = hapticEngine,
-                )
-            } else {
-                ThresholdMultiStateToggle(
-                    options = BaseToggleState.entries,
-                    selected = currentToggleState,
-                    onSelect = onSelectToggle,
-                    label = { it.label },
-                    modifier = Modifier.width(200.dp),
-                    hapticEngine = hapticEngine,
-                    isResistanceState = { it == BaseToggleState.BLOCK },
                 )
             }
+        } else {
+            ListItem(
+                headlineContent = {
+                    Text(
+                        text = app.label,
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = if (currentToggleState == BaseToggleState.BLOCK) {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        } else {
+                            MaterialTheme.colorScheme.onSurface
+                        },
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                },
+                supportingContent = guardedSubtitle?.let { subtitle ->
+                    {
+                        Text(
+                            text = subtitle,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                },
+                trailingContent = {
+                    ThresholdMultiStateToggle(
+                        options = BaseToggleState.entries,
+                        selected = currentToggleState,
+                        onSelect = onSelectToggle,
+                        label = { it.label },
+                        modifier = Modifier.width(168.dp),
+                        hapticEngine = hapticEngine,
+                        isResistanceState = { it == BaseToggleState.BLOCK },
+                    )
+                },
+            )
         }
 
         // Expandable Friction Override Section for Guarded Apps
@@ -530,81 +524,92 @@ private fun UnifiedAppRow(
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .background(Color(0xFF141414))
-                        .padding(horizontal = 24.dp, vertical = 10.dp),
+                        .background(MaterialTheme.colorScheme.surfaceContainerLow)
+                        .padding(vertical = 4.dp),
                 ) {
                     val hasOverride = assignment.frictionOverride != null
-                    Row(
+                    ListItem(
+                        headlineContent = {
+                            Text(
+                                text = stringResource(R.string.setting_override_friction),
+                                style = MaterialTheme.typography.bodyMedium,
+                            )
+                        },
+                        trailingContent = {
+                            Switch(
+                                checked = hasOverride,
+                                onCheckedChange = null,
+                            )
+                        },
+                        colors = ListItemDefaults.colors(
+                            containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+                        ),
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(vertical = 4.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Text(
-                            text = stringResource(R.string.setting_override_friction),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = PureWhite,
-                        )
-                        Switch(
-                            checked = hasOverride,
-                            onCheckedChange = { checked ->
-                                if (checked) {
-                                    onUpdateGuardedAssignment(assignment.copy(frictionOverride = defaultFriction))
-                                } else {
-                                    onUpdateGuardedAssignment(assignment.copy(frictionOverride = null))
-                                }
-                            },
-                            colors = SwitchDefaults.colors(
-                                checkedThumbColor = PureWhite,
-                                checkedTrackColor = Color(0xFF444444),
-                                uncheckedThumbColor = SubtleGray,
-                                uncheckedTrackColor = Color(0xFF222222),
+                            .toggleable(
+                                value = hasOverride,
+                                role = Role.Switch,
+                                onValueChange = { checked ->
+                                    if (checked) {
+                                        onUpdateGuardedAssignment(assignment.copy(frictionOverride = defaultFriction))
+                                    } else {
+                                        onUpdateGuardedAssignment(assignment.copy(frictionOverride = null))
+                                    }
+                                },
                             ),
-                        )
-                    }
+                    )
 
                     if (hasOverride) {
                         val activeChoice = assignment.frictionOverride ?: defaultFriction
-                        FrictionRadioOption(
-                            title = stringResource(R.string.friction_typed_intention),
-                            selected = activeChoice == FrictionChoice.TYPED_INTENTION,
-                            onSelect = {
-                                onUpdateGuardedAssignment(
-                                    assignment.copy(frictionOverride = FrictionChoice.TYPED_INTENTION),
-                                )
-                            },
-                        )
-                        FrictionRadioOption(
-                            title = stringResource(R.string.friction_drag_sort),
-                            selected = activeChoice == FrictionChoice.DRAG_SORT,
-                            onSelect = {
-                                onUpdateGuardedAssignment(assignment.copy(frictionOverride = FrictionChoice.DRAG_SORT))
-                            },
-                        )
-                        FrictionRadioOption(
-                            title = stringResource(R.string.friction_caret_tracing),
-                            selected = activeChoice == FrictionChoice.CARET_TRACING,
-                            onSelect = {
-                                onUpdateGuardedAssignment(
-                                    assignment.copy(frictionOverride = FrictionChoice.CARET_TRACING),
-                                )
-                            },
-                        )
-                        FrictionRadioOption(
-                            title = stringResource(R.string.friction_random),
-                            selected = activeChoice == FrictionChoice.RANDOM,
-                            onSelect = {
-                                onUpdateGuardedAssignment(assignment.copy(frictionOverride = FrictionChoice.RANDOM))
-                            },
-                        )
+                        Column(modifier = Modifier.selectableGroup()) {
+                            FrictionRadioOption(
+                                title = stringResource(R.string.friction_typed_intention),
+                                selected = activeChoice == FrictionChoice.TYPED_INTENTION,
+                                onSelect = {
+                                    onUpdateGuardedAssignment(
+                                        assignment.copy(frictionOverride = FrictionChoice.TYPED_INTENTION),
+                                    )
+                                },
+                                containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+                            )
+                            FrictionRadioOption(
+                                title = stringResource(R.string.friction_drag_sort),
+                                selected = activeChoice == FrictionChoice.DRAG_SORT,
+                                onSelect = {
+                                    onUpdateGuardedAssignment(
+                                        assignment.copy(frictionOverride = FrictionChoice.DRAG_SORT),
+                                    )
+                                },
+                                containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+                            )
+                            FrictionRadioOption(
+                                title = stringResource(R.string.friction_caret_tracing),
+                                selected = activeChoice == FrictionChoice.CARET_TRACING,
+                                onSelect = {
+                                    onUpdateGuardedAssignment(
+                                        assignment.copy(frictionOverride = FrictionChoice.CARET_TRACING),
+                                    )
+                                },
+                                containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+                            )
+                            FrictionRadioOption(
+                                title = stringResource(R.string.friction_random),
+                                selected = activeChoice == FrictionChoice.RANDOM,
+                                onSelect = {
+                                    onUpdateGuardedAssignment(
+                                        assignment.copy(frictionOverride = FrictionChoice.RANDOM),
+                                    )
+                                },
+                                containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+                            )
+                        }
                     }
                 }
             }
         }
 
         HorizontalDivider(
-            color = HairlineBorder,
+            color = MaterialTheme.colorScheme.outlineVariant,
             thickness = 0.5.dp,
             modifier = Modifier.padding(horizontal = 16.dp),
         )
@@ -617,27 +622,33 @@ internal fun FrictionRadioOption(
     selected: Boolean,
     onSelect: () -> Unit,
     modifier: Modifier = Modifier,
+    containerColor: androidx.compose.ui.graphics.Color = MaterialTheme.colorScheme.surface,
 ) {
-    Row(
+    ListItem(
+        leadingContent = {
+            RadioButton(
+                selected = selected,
+                onClick = null,
+            )
+        },
+        headlineContent = {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.bodyMedium,
+                color = if (selected) {
+                    MaterialTheme.colorScheme.onSurface
+                } else {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                },
+            )
+        },
+        colors = ListItemDefaults.colors(containerColor = containerColor),
         modifier = modifier
             .fillMaxWidth()
-            .clickable(onClick = onSelect)
-            .padding(vertical = 6.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        RadioButton(
-            selected = selected,
-            onClick = onSelect,
-            colors = RadioButtonDefaults.colors(
-                selectedColor = PureWhite,
-                unselectedColor = Color(0xFF666666),
+            .selectable(
+                selected = selected,
+                role = Role.RadioButton,
+                onClick = onSelect,
             ),
-        )
-        Spacer(modifier = Modifier.width(10.dp))
-        Text(
-            text = title,
-            style = MaterialTheme.typography.bodyMedium,
-            color = if (selected) PureWhite else Color(0xFFAAAAAA),
-        )
-    }
+    )
 }
