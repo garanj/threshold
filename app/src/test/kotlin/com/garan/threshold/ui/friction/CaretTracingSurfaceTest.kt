@@ -66,7 +66,7 @@ class CaretTracingSurfaceTest {
                     onConfirmOpen = { confirmed = true },
                     onDismiss = { dismissed = true },
                     hapticEngine = haptic,
-                    totalDurationMs = 600L, // 100ms per half-pass
+                    totalDurationMs = 1000L, // 100ms per half-pass across 5 passes (200ms per pass)
                 )
             }
         }
@@ -99,6 +99,23 @@ class CaretTracingSurfaceTest {
         assertThat(haptic.rotaryDetentCount).isEqualTo(3)
 
         // Pass 3: Complete at 600ms (playTime = 608ms)
+        composeTestRule.mainClock.advanceTimeBy(96L)
+        assertThat(haptic.targetSnapCount).isEqualTo(3)
+
+        // Pass 4: Apex at 700ms (playTime = 704ms)
+        composeTestRule.mainClock.advanceTimeBy(96L)
+        assertThat(haptic.rotaryDetentCount).isEqualTo(4)
+
+        // Pass 4: Complete at 800ms (playTime = 800ms)
+        composeTestRule.mainClock.advanceTimeBy(96L)
+        assertThat(haptic.targetSnapCount).isEqualTo(4)
+
+        // Pass 5: Apex at 900ms (playTime = 912ms)
+        composeTestRule.mainClock.advanceTimeBy(112L)
+        assertThat(haptic.rotaryDetentCount).isEqualTo(5)
+        assertThat(haptic.relaySnapCount).isEqualTo(0)
+
+        // Pass 5: Complete at 1000ms (playTime = 1008ms)
         composeTestRule.mainClock.advanceTimeBy(96L)
         assertThat(haptic.relaySnapCount).isEqualTo(1)
 

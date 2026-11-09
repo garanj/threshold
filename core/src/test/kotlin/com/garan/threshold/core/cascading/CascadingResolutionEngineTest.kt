@@ -273,7 +273,9 @@ class CascadingResolutionEngineTest {
             currentTime = TimeOfDay(10, 0),
             isDefaultDialer = false,
         )
-        assertThat(social).isEqualTo(AppAccessState.Guarded(FrictionPolicy.TimedDelay(seconds = 10)))
+        assertThat(social).isEqualTo(
+            AppAccessState.Guarded(FrictionPolicy.TimedDelay(seconds = FrictionChoice.CARET_DEFAULT_SECONDS)),
+        )
 
         val work = engine.resolveAppAccess(
             component = workComponent,

@@ -16,6 +16,13 @@ val SurfaceContainerHigh = Color(0xFF1A1A1A)
 val SurfaceContainerHighest = Color(0xFF242424)
 val OutlineGray = Color(0xFF444444)
 
+// 5-Step Monochrome Luminance Ramp for Caret Tracing Checkpoint
+val CaretPass1Gray = Color(0xFF2B2B2B)
+val CaretPass2Gray = Color(0xFF555555)
+val CaretPass3Gray = Color(0xFF888888)
+val CaretPass4Gray = Color(0xFFBFBFBF)
+val CaretPass5White = PureWhite
+
 // Profile Accent Palette (blended at low alpha over surface containers for dark/light adaptability)
 val ProfileAmber = Color(0xFFD97706)
 val ProfileEmerald = Color(0xFF059669)

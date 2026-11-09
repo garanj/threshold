@@ -254,7 +254,7 @@ fun TypedIntentionSurface(
             keyboardOptions = KeyboardOptions(
                 capitalization = KeyboardCapitalization.None,
                 autoCorrectEnabled = false,
-                keyboardType = KeyboardType.Ascii,
+                keyboardType = KeyboardType.Password,
                 imeAction = if (isComplete) ImeAction.Go else ImeAction.None,
             ),
             keyboardActions = KeyboardActions(
