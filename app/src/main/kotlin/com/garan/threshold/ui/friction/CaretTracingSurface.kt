@@ -49,17 +49,22 @@ import com.garan.threshold.core.port.HapticEngine
 import com.garan.threshold.core.port.NoOpHapticEngine
 import com.garan.threshold.ui.motion.ThresholdMotion
 import com.garan.threshold.ui.theme.AmoledBlack
-import com.garan.threshold.ui.theme.OutlineGray
+import com.garan.threshold.ui.theme.CaretPass1Gray
+import com.garan.threshold.ui.theme.CaretPass2Gray
+import com.garan.threshold.ui.theme.CaretPass3Gray
+import com.garan.threshold.ui.theme.CaretPass4Gray
+import com.garan.threshold.ui.theme.CaretPass5White
 import com.garan.threshold.ui.theme.PureWhite
 import com.garan.threshold.ui.theme.SubtleGray
 import kotlinx.coroutines.withContext
 
 private const val CARET_ASPECT_RATIO = 1.515f
+private const val CARET_PASS_COUNT = 5f
 
 /**
  * Enforces a 1.0x time scale for intentional friction delays so that system-level
  * `animator_duration_scale = 0.0` (e.g. Battery Saver or Accessibility "Remove animations")
- * cannot bypass or fast-forward the 10-second checkpoint gate.
+ * cannot bypass or fast-forward the checkpoint gate.
  */
 private object UnscaledMotionDurationScale : MotionDurationScale {
     override val scaleFactor: Float get() = 1f
@@ -68,20 +73,22 @@ private object UnscaledMotionDurationScale : MotionDurationScale {
 /**
  * Full-screen meditative Caret Tracing friction checkpoint.
  *
- * Imposes an intentional ~10-second mechanical delay gate before launching guarded applications:
- * - Pass 1 (0 to ~3.33s): Forward trace (left to right) in dark grey.
- * - Pass 2 (~3.33s to ~6.66s): Reverse trace (right to left) in mid grey.
- * - Pass 3 (~6.66s to 10s): Forward trace (left to right) in pure white.
+ * Imposes an intentional 5-pass (~17-second) mechanical delay gate before launching guarded applications:
+ * - Pass 1 (0 to 1): Forward trace (left to right) in darkest grey ([CaretPass1Gray]).
+ * - Pass 2 (1 to 2): Reverse trace (right to left) in deep grey ([CaretPass2Gray]).
+ * - Pass 3 (2 to 3): Forward trace (left to right) in mid grey ([CaretPass3Gray]).
+ * - Pass 4 (3 to 4): Reverse trace (right to left) in light grey ([CaretPass4Gray]).
+ * - Pass 5 (4 to 5): Forward trace (left to right) in pure white ([CaretPass5White]).
  *
  * Tactile micro-haptics fire at each apex notch ([HapticEngine.rotaryDetent]),
  * pass completion ([HapticEngine.targetSnap]), and full completion ([HapticEngine.relaySnap]).
  *
  * Back-swipe or tapping "Go back" immediately aborts the gate and resets progress.
  *
- * @param onConfirmOpen Dispatched when all 3 passes finish and user taps "Open".
+ * @param onConfirmOpen Dispatched when all 5 passes finish and user taps "Open".
  * @param onDismiss Dispatched when the user abandons the checkpoint.
  * @param hapticEngine Tactile feedback provider.
- * @param totalDurationMs Total time for the full 3-pass sequence (default 10,000ms).
+ * @param totalDurationMs Total time for the full 5-pass sequence (default 17,000ms).
  */
 @Composable
 fun CaretTracingSurface(
@@ -89,13 +96,13 @@ fun CaretTracingSurface(
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
     hapticEngine: HapticEngine = NoOpHapticEngine,
-    totalDurationMs: Long = 10_000L,
+    totalDurationMs: Long = 17_000L,
 ) {
     BackHandler(onBack = onDismiss)
 
     val currentHapticEngine by rememberUpdatedState(hapticEngine)
 
-    // Continuous progress from 0f to 3f across the 3 passes (0..1 = Pass 1, 1..2 = Pass 2, 2..3 = Pass 3)
+    // Continuous progress from 0f to 5f across the 5 passes
     val totalProgress = remember { Animatable(0f) }
 
     var isComplete by remember { mutableStateOf(false) }
@@ -110,6 +117,8 @@ fun CaretTracingSurface(
     val pass1Path = remember { Path() }
     val pass2Path = remember { Path() }
     val pass3Path = remember { Path() }
+    val pass4Path = remember { Path() }
+    val pass5Path = remember { Path() }
 
     LaunchedEffect(totalDurationMs) {
         withContext(UnscaledMotionDurationScale) {
@@ -121,9 +130,13 @@ fun CaretTracingSurface(
             var firedPass2Apex = false
             var firedPass2End = false
             var firedPass3Apex = false
+            var firedPass3End = false
+            var firedPass4Apex = false
+            var firedPass4End = false
+            var firedPass5Apex = false
 
             totalProgress.animateTo(
-                targetValue = 3f,
+                targetValue = CARET_PASS_COUNT,
                 animationSpec = tween(durationMillis = totalDurationMs.toInt(), easing = LinearEasing),
             ) {
                 val v = value
@@ -145,6 +158,22 @@ fun CaretTracingSurface(
                 }
                 if (!firedPass3Apex && v >= 2.5f) {
                     firedPass3Apex = true
+                    currentHapticEngine.rotaryDetent()
+                }
+                if (!firedPass3End && v >= 3.0f) {
+                    firedPass3End = true
+                    currentHapticEngine.targetSnap()
+                }
+                if (!firedPass4Apex && v >= 3.5f) {
+                    firedPass4Apex = true
+                    currentHapticEngine.rotaryDetent()
+                }
+                if (!firedPass4End && v >= 4.0f) {
+                    firedPass4End = true
+                    currentHapticEngine.targetSnap()
+                }
+                if (!firedPass5Apex && v >= 4.5f) {
+                    firedPass5Apex = true
                     currentHapticEngine.rotaryDetent()
                 }
             }
@@ -177,6 +206,8 @@ fun CaretTracingSurface(
                 val p1 = progress.coerceIn(0f, 1f)
                 val p2 = (progress - 1f).coerceIn(0f, 1f)
                 val p3 = (progress - 2f).coerceIn(0f, 1f)
+                val p4 = (progress - 3f).coerceIn(0f, 1f)
+                val p5 = (progress - 4f).coerceIn(0f, 1f)
 
                 val centerX = size.width / 2f
                 val centerY = size.height / 2f
@@ -215,19 +246,29 @@ fun CaretTracingSurface(
                     drawPath(targetPath, color = color, style = stroke)
                 }
 
-                // Pass 1: Dark Grey
+                // Pass 1: Forward (left to right)
                 if (p1 > 0f) {
-                    drawSegment(pass1Path, 0f, p1, OutlineGray)
+                    drawSegment(pass1Path, 0f, p1, CaretPass1Gray)
                 }
 
-                // Pass 2: Mid Grey (Additive reverse: right-to-left covering (1 - p2) to 1)
+                // Pass 2: Reverse (right to left)
                 if (p2 > 0f) {
-                    drawSegment(pass2Path, 1f - p2, 1f, SubtleGray)
+                    drawSegment(pass2Path, 1f - p2, 1f, CaretPass2Gray)
                 }
 
-                // Pass 3: Pure White (Additive forward: 0 to p3)
+                // Pass 3: Forward (left to right)
                 if (p3 > 0f) {
-                    drawSegment(pass3Path, 0f, p3, PureWhite)
+                    drawSegment(pass3Path, 0f, p3, CaretPass3Gray)
+                }
+
+                // Pass 4: Reverse (right to left)
+                if (p4 > 0f) {
+                    drawSegment(pass4Path, 1f - p4, 1f, CaretPass4Gray)
+                }
+
+                // Pass 5: Forward (left to right)
+                if (p5 > 0f) {
+                    drawSegment(pass5Path, 0f, p5, CaretPass5White)
                 }
             }
         }

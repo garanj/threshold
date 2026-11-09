@@ -10,7 +10,8 @@ class FrictionChoiceTest {
     fun `resolvePolicy maps explicit choices to correct policies`() {
         assertThat(FrictionChoice.TYPED_INTENTION.resolvePolicy()).isEqualTo(FrictionPolicy.TypedIntention)
         assertThat(FrictionChoice.DRAG_SORT.resolvePolicy()).isEqualTo(FrictionPolicy.DragSort(pairCount = 6))
-        assertThat(FrictionChoice.CARET_TRACING.resolvePolicy()).isEqualTo(FrictionPolicy.TimedDelay(seconds = 10))
+        assertThat(FrictionChoice.CARET_TRACING.resolvePolicy())
+            .isEqualTo(FrictionPolicy.TimedDelay(seconds = FrictionChoice.CARET_DEFAULT_SECONDS))
     }
 
     @Test
@@ -27,6 +28,6 @@ class FrictionChoiceTest {
 
         assertThat(policy0).isEqualTo(FrictionPolicy.TypedIntention)
         assertThat(policy1).isEqualTo(FrictionPolicy.DragSort(pairCount = 6))
-        assertThat(policy2).isEqualTo(FrictionPolicy.TimedDelay(seconds = 10))
+        assertThat(policy2).isEqualTo(FrictionPolicy.TimedDelay(seconds = FrictionChoice.CARET_DEFAULT_SECONDS))
     }
 }

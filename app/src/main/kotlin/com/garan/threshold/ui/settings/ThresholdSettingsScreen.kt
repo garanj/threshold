@@ -44,6 +44,7 @@ import com.garan.threshold.core.model.AppAssignment
 import com.garan.threshold.core.model.BaseProfileSettings
 import com.garan.threshold.core.model.ComponentKey
 import com.garan.threshold.core.model.FrictionChoice
+import com.garan.threshold.ui.search.SearchKeyboardOptions
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -365,6 +366,7 @@ fun ThresholdSettingsScreen(
                     onValueChange = { searchQuery = it },
                     placeholder = { Text(stringResource(R.string.search_placeholder)) },
                     singleLine = true,
+                    keyboardOptions = SearchKeyboardOptions,
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp, vertical = 8.dp),

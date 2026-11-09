@@ -1,26 +1,19 @@
-# Current Task: Custom Profile Models, Schedule Triggers, and Cascading Resolution Engine (#56)
+# Current Task: Keyboard & Caret Tracing Refinements (#58)
 
 ## Active Issue
-- **Issue**: `#56` - feat(core): custom profile models, schedule triggers, and cascading resolution engine
-- **Branch**: `feat/56-custom-profiles-cascading-engine`
+- **Issue**: `#58` - feat(ui): disable search IME suggestions, capitalize profile names, and expand caret tracing to 5 passes
+- **Branch**: `feat/58-keyboard-and-caret-refinements`
 
 ## Checklist
-- [x] **`:core` Domain Models (Zero `android.*` imports)**:
-  - [x] `DayOfWeek`, `TimeOfDay`, `TimeWindow`, and `ScheduleTrigger` (uniform daily or per-day `dailyWindows`, overnight spillover support).
-  - [x] `ProfileTrigger.Schedule` sealed interface and `ProfileCapability` / `ProfileCapabilityChecker` port.
-  - [x] `CustomProfile` domain model (`id`, `name`, `enabled`, `priority`, `trigger`, `appAssignments`, `frictionOverride`, `colorIndex`, `initialLetter`).
-- [x] **`:core` Cascading Resolution Engine & Horizon Calculator**:
-  - [x] `CascadingResolutionEngine` (`resolveAppAccess`, `resolveWorkingSet`) and `ScheduleHorizonCalculator` (`findNextTransition`).
-  - [x] Unit tests (`ScheduleTriggerTest`, `CustomProfileTest`, `CascadingResolutionEngineTest`, `ScheduleHorizonCalculatorTest`).
-- [x] **`:data` Persistence & Profile Repository (`:data`)**:
-  - [x] Extend `SettingsRepository` / `AndroidSettingsRepository` to persist `List<CustomProfile>` (`dailyWindows`, `sameScheduleEveryDay`, `colorIndex`) in DataStore.
-  - [x] Unit tests in `AndroidSettingsRepositoryTest`.
-- [x] **`:app` End-to-End Scheduling, UI, and On-Screen Indicators**:
-  - [x] Material 3 & Jetpack Navigation 3 refactor across all `:app` screens + `compose-m3-ui` skill.
-  - [x] `AndroidScheduleAlarmScheduler`, `ScheduleAlarmReceiver`, and `AndroidProfileCapabilityChecker`.
-  - [x] Square active profile `[X]` badges and `[!]` capability fault badge + bottom sheet on `ThresholdHomeCanvas` / `ThresholdHomeScreen`.
-  - [x] Unit, Robolectric, Roborazzi screenshot, and on-device `ThresholdScheduleProfileInstrumentedTest` verification.
+- [x] **Disable IME Auto-Suggestions in Search (`ThresholdSearchSurface`, `ThresholdSettingsScreen`, `TypedIntentionSurface`)**:
+  - [x] Set `autoCorrectEnabled = false`, `capitalization = KeyboardCapitalization.None`, `keyboardType = KeyboardType.Password` on search inputs.
+- [x] **Capitalize Profile Name Input (`ScheduleEditorDialog.kt`)**:
+  - [x] Set `KeyboardOptions(capitalization = KeyboardCapitalization.Words, imeAction = ImeAction.Done)` on profile name `OutlinedTextField`.
+- [x] **5-Pass Caret Tracing (`FrictionChoice.kt`, `Color.kt`, `CaretTracingSurface.kt`)**:
+  - [x] Update `FrictionChoice.CARET_TRACING` / `RANDOM` to `FrictionPolicy.TimedDelay(seconds = 17)`.
+  - [x] Define 5-step monochrome luminance ramp (`CaretPass1Gray`..`CaretPass5White`) in `Color.kt`.
+  - [x] Update `CaretTracingSurface` to animate 5 alternating passes (`0f..5f`, default `17_000L`) with 5 apex `rotaryDetent()`s, 4 pass-end `targetSnap()`s, and final `relaySnap()`.
+  - [x] Update unit tests (`CaretTracingSurfaceTest`, `BaseProfileSettingsTest`, `CascadingResolutionEngineTest`).
 - [x] **Verification**:
-  - [x] `./gradlew test` passes 100% across `:core`, `:data`, and `:app`.
-  - [x] Zero `android.*` imports in `:core`.
-  - [x] Spotless check passes (`./gradlew spotlessCheck`).
+  - [x] `./gradlew spotlessApply test spotlessCheck` passes 100%.
+  - [x] Install updated debug APK on connected Pixel 9a.

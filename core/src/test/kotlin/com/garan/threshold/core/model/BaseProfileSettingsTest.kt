@@ -73,7 +73,9 @@ class BaseProfileSettingsTest {
             ),
         )
         assertThat(settings.resolveAccess(browserComponent, isDefaultDialer = false))
-            .isEqualTo(AppAccessState.Guarded(FrictionPolicy.TimedDelay(seconds = 10)))
+            .isEqualTo(
+                AppAccessState.Guarded(FrictionPolicy.TimedDelay(seconds = FrictionChoice.CARET_DEFAULT_SECONDS)),
+            )
     }
 
     @Test
