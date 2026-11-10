@@ -185,12 +185,26 @@ class ProfilesScreenTest {
             }
         }
 
+        // Schedule profile type icons are displayed on both profile cards
+        assertThat(composeTestRule.onAllNodesWithContentDescription("Schedule profile").fetchSemanticsNodes())
+            .hasSize(2)
+
         // Click "Move profile down" on the first profile card
         composeTestRule.onAllNodesWithContentDescription("Move profile down")[0].performClick()
         assertThat(reorderedList?.map { it.id }).containsExactly("p2", "p1").inOrder()
 
-        // Click "Delete Profile" on the first profile card
+        // Click "Delete Profile" on the first profile card -> opens confirmation AlertDialog
         composeTestRule.onAllNodesWithContentDescription("Delete Profile")[0].performClick()
+        composeTestRule.onNodeWithText("Delete profile?").assertIsDisplayed()
+        assertThat(deletedId).isNull()
+
+        // Clicking "Cancel" dismisses the dialog without deleting
+        composeTestRule.onNodeWithText("Cancel").performClick()
+        assertThat(deletedId).isNull()
+
+        // Click "Delete Profile" again and confirm "Delete"
+        composeTestRule.onAllNodesWithContentDescription("Delete Profile")[0].performClick()
+        composeTestRule.onNodeWithText("Delete").performClick()
         assertThat(deletedId).isEqualTo("p1")
     }
 }

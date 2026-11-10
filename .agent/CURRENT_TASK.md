@@ -1,19 +1,14 @@
-# Current Task: Keyboard & Caret Tracing Refinements (#58)
+# Current Task: Profile Card Type Icon & Delete Confirmation Dialog (#60)
 
 ## Active Issue
-- **Issue**: `#58` - feat(ui): disable search IME suggestions, capitalize profile names, and expand caret tracing to 5 passes
-- **Branch**: `feat/58-keyboard-and-caret-refinements`
+- **Issue**: `#60` - feat(profiles): add profile type icon on card and Material 3 delete confirmation dialog
+- **Branch**: `feat/60-profile-card-icon-and-delete-confirmation`
 
 ## Checklist
-- [x] **Disable IME Auto-Suggestions in Search (`ThresholdSearchSurface`, `ThresholdSettingsScreen`, `TypedIntentionSurface`)**:
-  - [x] Set `autoCorrectEnabled = false`, `capitalization = KeyboardCapitalization.None`, `keyboardType = KeyboardType.Password` on search inputs.
-- [x] **Capitalize Profile Name Input (`ScheduleEditorDialog.kt`)**:
-  - [x] Set `KeyboardOptions(capitalization = KeyboardCapitalization.Words, imeAction = ImeAction.Done)` on profile name `OutlinedTextField`.
-- [x] **5-Pass Caret Tracing (`FrictionChoice.kt`, `Color.kt`, `CaretTracingSurface.kt`)**:
-  - [x] Update `FrictionChoice.CARET_TRACING` / `RANDOM` to `FrictionPolicy.TimedDelay(seconds = 17)`.
-  - [x] Define 5-step monochrome luminance ramp (`CaretPass1Gray`..`CaretPass5White`) in `Color.kt`.
-  - [x] Update `CaretTracingSurface` to animate 5 alternating passes (`0f..5f`, default `17_000L`) with 5 apex `rotaryDetent()`s, 4 pass-end `targetSnap()`s, and final `relaySnap()`.
-  - [x] Update unit tests (`CaretTracingSurfaceTest`, `BaseProfileSettingsTest`, `CascadingResolutionEngineTest`).
-- [x] **Verification**:
-  - [x] `./gradlew spotlessApply test spotlessCheck` passes 100%.
-  - [x] Install updated debug APK on connected Pixel 9a.
+- [x] **Profile Type Icon in `ProfileCard` (`ProfilesScreen.kt`)**:
+  - [x] Display `ThresholdIcons.Schedule` clock icon in the leading area of `ProfileCard` to represent the profile's trigger type (and only show up/down reorder arrows when `totalProfiles > 1`).
+- [x] **Delete Confirmation `AlertDialog` (`ProfilesScreen.kt`)**:
+  - [x] Tapping the Delete icon sets `profilePendingDeletion`, presenting a Material 3 `AlertDialog` ("Delete profile?") with "Cancel" and "Delete" buttons.
+- [x] **Tests & Snapshots (`ProfilesScreenTest.kt`, `profiles_screen.png`)**:
+  - [x] Update `ProfilesScreenTest` to verify the delete confirmation dialog ("Cancel" aborts, "Delete" confirms) and schedule icon presence.
+  - [x] Record updated Roborazzi screenshot for `profiles_screen.png` and verify all tests pass.

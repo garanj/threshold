@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -85,6 +86,7 @@ fun ProfilesScreen(
     var editingProfile by remember { mutableStateOf<CustomProfile?>(null) }
     var isCreatingNewProfile by remember { mutableStateOf(false) }
     var showExactAlarmPermissionSheet by remember { mutableStateOf(false) }
+    var profilePendingDeletion by remember { mutableStateOf<CustomProfile?>(null) }
 
     Scaffold(
         modifier = modifier
@@ -209,7 +211,7 @@ fun ProfilesScreen(
                         onConfigureApps = { onConfigureProfileApps(profile.id) },
                         onDelete = {
                             hapticEngine.rotaryDetent()
-                            onDeleteProfile(profile.id)
+                            profilePendingDeletion = profile
                         },
                     )
                 }
@@ -349,6 +351,44 @@ fun ProfilesScreen(
             }
         }
     }
+
+    profilePendingDeletion?.let { targetProfile ->
+        AlertDialog(
+            onDismissRequest = { profilePendingDeletion = null },
+            title = {
+                Text(
+                    text = "Delete profile?",
+                    style = MaterialTheme.typography.titleLarge,
+                )
+            },
+            text = {
+                Text(
+                    text = "“${targetProfile.name}” and its app rules will be permanently removed.",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        hapticEngine.rotaryDetent()
+                        onDeleteProfile(targetProfile.id)
+                        profilePendingDeletion = null
+                    },
+                ) {
+                    Text(
+                        text = "Delete",
+                        color = MaterialTheme.colorScheme.error,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { profilePendingDeletion = null }) {
+                    Text("Cancel")
+                }
+            },
+        )
+    }
 }
 
 /**
@@ -399,41 +439,61 @@ private fun ProfileCard(
         Column(modifier = Modifier.fillMaxWidth()) {
             ListItem(
                 leadingContent = {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Center,
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(2.dp),
                     ) {
-                        IconButton(
-                            onClick = onMoveUp,
-                            enabled = index > 0,
-                            modifier = Modifier.size(28.dp),
-                        ) {
-                            Icon(
-                                imageVector = ThresholdIcons.KeyboardArrowUp,
-                                contentDescription = "Move profile up",
-                                modifier = Modifier.size(20.dp),
-                                tint = if (index > 0) {
-                                    MaterialTheme.colorScheme.onSurface
-                                } else {
-                                    MaterialTheme.colorScheme.outlineVariant
-                                },
-                            )
-                        }
-                        IconButton(
-                            onClick = onMoveDown,
-                            enabled = index < totalProfiles - 1,
-                            modifier = Modifier.size(28.dp),
-                        ) {
-                            Icon(
-                                imageVector = ThresholdIcons.KeyboardArrowDown,
-                                contentDescription = "Move profile down",
-                                modifier = Modifier.size(20.dp),
-                                tint = if (index < totalProfiles - 1) {
-                                    MaterialTheme.colorScheme.onSurface
-                                } else {
-                                    MaterialTheme.colorScheme.outlineVariant
-                                },
-                            )
+                        Icon(
+                            imageVector = when (profile.trigger) {
+                                is ProfileTrigger.Schedule -> ThresholdIcons.Schedule
+                            },
+                            contentDescription = "Schedule profile",
+                            modifier = Modifier.size(22.dp),
+                            tint = if (profile.enabled) {
+                                MaterialTheme.colorScheme.onSurface
+                            } else {
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            },
+                        )
+
+                        if (totalProfiles > 1) {
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.Center,
+                            ) {
+                                IconButton(
+                                    onClick = onMoveUp,
+                                    enabled = index > 0,
+                                    modifier = Modifier.size(28.dp),
+                                ) {
+                                    Icon(
+                                        imageVector = ThresholdIcons.KeyboardArrowUp,
+                                        contentDescription = "Move profile up",
+                                        modifier = Modifier.size(20.dp),
+                                        tint = if (index > 0) {
+                                            MaterialTheme.colorScheme.onSurface
+                                        } else {
+                                            MaterialTheme.colorScheme.outlineVariant
+                                        },
+                                    )
+                                }
+                                IconButton(
+                                    onClick = onMoveDown,
+                                    enabled = index < totalProfiles - 1,
+                                    modifier = Modifier.size(28.dp),
+                                ) {
+                                    Icon(
+                                        imageVector = ThresholdIcons.KeyboardArrowDown,
+                                        contentDescription = "Move profile down",
+                                        modifier = Modifier.size(20.dp),
+                                        tint = if (index < totalProfiles - 1) {
+                                            MaterialTheme.colorScheme.onSurface
+                                        } else {
+                                            MaterialTheme.colorScheme.outlineVariant
+                                        },
+                                    )
+                                }
+                            }
                         }
                     }
                 },
