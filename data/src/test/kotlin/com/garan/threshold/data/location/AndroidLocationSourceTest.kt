@@ -94,4 +94,38 @@ class AndroidLocationSourceTest {
             assertThat(source.refreshLocation()).isNull()
             assertThat(source.currentLocation.value).isNull()
         }
+
+    @Test
+    fun refreshLocation_whenLastKnownFixIsOlderThan30Seconds_triggersFreshCurrentLocationUpdate() = runTest {
+        val nowNanos = SystemClock.elapsedRealtimeNanos()
+        val staleHomeFix = buildLocation(
+            provider = LocationManager.GPS_PROVIDER,
+            lat = 51.5000,
+            lon = -0.1200,
+            elapsedNanos = (nowNanos - 60_000_000_000L).coerceAtLeast(1L), // 60s old (> 30s threshold)
+        ).apply {
+            time = System.currentTimeMillis() - 60_000L
+        }
+        shadowOf(locationManager).setLastKnownLocation(LocationManager.GPS_PROVIDER, staleHomeFix)
+        shadowOf(locationManager).setProviderEnabled(LocationManager.GPS_PROVIDER, true)
+
+        val source = AndroidLocationSource(context)
+
+        // 1. Immediately returns the cached fix so UI never blocks, while firing async getCurrentLocation
+        val initialResult = source.refreshLocation()
+        assertThat(initialResult).isEqualTo(LocationFix(51.5000, -0.1200))
+
+        // 2. Simulate OS delivering the fresh location fix for the in-flight getCurrentLocation request
+        val freshAwayFix = buildLocation(
+            provider = LocationManager.GPS_PROVIDER,
+            lat = 51.5200,
+            lon = -0.1400,
+            elapsedNanos = SystemClock.elapsedRealtimeNanos(),
+        )
+        shadowOf(locationManager).simulateLocation(freshAwayFix)
+        shadowOf(android.os.Looper.getMainLooper()).idle()
+
+        // currentLocation StateFlow automatically updates to the fresh fix
+        assertThat(source.currentLocation.value).isEqualTo(LocationFix(51.5200, -0.1400))
+    }
 }

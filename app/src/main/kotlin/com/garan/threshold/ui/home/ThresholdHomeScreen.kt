@@ -141,7 +141,9 @@ fun ThresholdHomeScreen(
     DisposableEffect(lifecycleOwner, viewModel) {
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
-                Lifecycle.Event.ON_RESUME -> {
+                Lifecycle.Event.ON_START,
+                Lifecycle.Event.ON_RESUME,
+                -> {
                     viewModel.refreshScheduleEvaluation()
                 }
                 Lifecycle.Event.ON_STOP -> {
