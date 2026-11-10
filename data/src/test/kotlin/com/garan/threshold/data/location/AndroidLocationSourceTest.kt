@@ -5,6 +5,7 @@ import android.app.Application
 import android.content.Context
 import android.location.Location
 import android.location.LocationManager
+import android.os.Looper
 import android.os.SystemClock
 import androidx.test.core.app.ApplicationProvider
 import com.garan.threshold.core.model.LocationFix
@@ -17,6 +18,7 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
+import java.time.Duration
 
 @Suppress("DEPRECATION")
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -29,11 +31,18 @@ class AndroidLocationSourceTest {
 
     @Before
     fun setUp() {
+        context.getSharedPreferences("threshold_location_telemetry", Context.MODE_PRIVATE)
+            .edit()
+            .clear()
+            .commit()
         shadowOf(context).grantPermissions(
             Manifest.permission.ACCESS_FINE_LOCATION,
             Manifest.permission.ACCESS_COARSE_LOCATION,
         )
         shadowOf(locationManager).setLocationEnabled(true)
+        shadowOf(locationManager).setProviderEnabled(LocationManager.FUSED_PROVIDER, false)
+        shadowOf(locationManager).setProviderEnabled(LocationManager.NETWORK_PROVIDER, false)
+        shadowOf(locationManager).setProviderEnabled(LocationManager.GPS_PROVIDER, false)
     }
 
     private fun buildLocation(
@@ -41,16 +50,17 @@ class AndroidLocationSourceTest {
         lat: Double,
         lon: Double,
         elapsedNanos: Long = SystemClock.elapsedRealtimeNanos(),
+        wallClockMs: Long = System.currentTimeMillis(),
     ): Location = Location(provider).apply {
         latitude = lat
         longitude = lon
         accuracy = 10f
-        time = System.currentTimeMillis()
+        time = wallClockMs
         elapsedRealtimeNanos = elapsedNanos
     }
 
     @Test
-    fun refreshLocation_readsMostRecentLastKnownLocationWhenPermittedAndEnabled() = runTest {
+    fun refreshLocation_readsMostRecentLastKnownLocationWhenPermittedAndEnabled_andRecordsCacheHit() = runTest {
         val olderGps = buildLocation(LocationManager.GPS_PROVIDER, 51.5000, -0.1200, elapsedNanos = 1_000L)
         val newerNetwork = buildLocation(LocationManager.NETWORK_PROVIDER, 51.5074, -0.1278, elapsedNanos = 5_000L)
         shadowOf(locationManager).setLastKnownLocation(LocationManager.GPS_PROVIDER, olderGps)
@@ -61,6 +71,9 @@ class AndroidLocationSourceTest {
 
         assertThat(fix).isEqualTo(LocationFix(51.5074, -0.1278))
         assertThat(source.currentLocation.value).isEqualTo(LocationFix(51.5074, -0.1278))
+        assertThat(source.telemetry.value.cacheHitsLastHour).isEqualTo(1)
+        assertThat(source.telemetry.value.cacheHitsLast24h).isEqualTo(1)
+        assertThat(source.telemetry.value.activeChecksLastHour).isEqualTo(0)
     }
 
     @Test
@@ -102,10 +115,9 @@ class AndroidLocationSourceTest {
             provider = LocationManager.GPS_PROVIDER,
             lat = 51.5000,
             lon = -0.1200,
-            elapsedNanos = (nowNanos - 60_000_000_000L).coerceAtLeast(1L), // 60s old (> 30s threshold)
-        ).apply {
-            time = System.currentTimeMillis() - 60_000L
-        }
+            elapsedNanos = (nowNanos - 60_000_000_000L).coerceAtLeast(1L),
+            wallClockMs = System.currentTimeMillis() - 60_000L,
+        )
         shadowOf(locationManager).setLastKnownLocation(LocationManager.GPS_PROVIDER, staleHomeFix)
         shadowOf(locationManager).setProviderEnabled(LocationManager.GPS_PROVIDER, true)
 
@@ -114,6 +126,7 @@ class AndroidLocationSourceTest {
         // 1. Immediately returns the cached fix so UI never blocks, while firing async getCurrentLocation
         val initialResult = source.refreshLocation()
         assertThat(initialResult).isEqualTo(LocationFix(51.5000, -0.1200))
+        assertThat(source.telemetry.value.activeChecksLastHour).isEqualTo(1)
 
         // 2. Simulate OS delivering the fresh location fix for the in-flight getCurrentLocation request
         val freshAwayFix = buildLocation(
@@ -123,9 +136,126 @@ class AndroidLocationSourceTest {
             elapsedNanos = SystemClock.elapsedRealtimeNanos(),
         )
         shadowOf(locationManager).simulateLocation(freshAwayFix)
-        shadowOf(android.os.Looper.getMainLooper()).idle()
+        shadowOf(Looper.getMainLooper()).idle()
 
-        // currentLocation StateFlow automatically updates to the fresh fix
+        // currentLocation StateFlow automatically updates to the fresh fix and cleans up listeners
         assertThat(source.currentLocation.value).isEqualTo(LocationFix(51.5200, -0.1400))
+        assertThat(source.activeListenerCountForTesting).isEqualTo(0)
+    }
+
+    @Test
+    fun selectPreferredProvider_prioritizesFusedThenNetworkAndAvoidsGpsWhenLowPowerAvailable() {
+        val source = AndroidLocationSource(context)
+
+        shadowOf(locationManager).setProviderEnabled(LocationManager.FUSED_PROVIDER, true)
+        shadowOf(locationManager).setProviderEnabled(LocationManager.NETWORK_PROVIDER, true)
+        shadowOf(locationManager).setProviderEnabled(LocationManager.GPS_PROVIDER, true)
+        assertThat(source.selectPreferredProvider(locationManager)).isEqualTo(LocationManager.FUSED_PROVIDER)
+
+        shadowOf(locationManager).setProviderEnabled(LocationManager.FUSED_PROVIDER, false)
+        assertThat(source.selectPreferredProvider(locationManager)).isEqualTo(LocationManager.NETWORK_PROVIDER)
+
+        shadowOf(locationManager).setProviderEnabled(LocationManager.NETWORK_PROVIDER, false)
+        assertThat(source.selectPreferredProvider(locationManager)).isEqualTo(LocationManager.GPS_PROVIDER)
+    }
+
+    @Test
+    fun refreshLocation_throttlesRapidRepeatedCallsWithinCooldownWindow_preventingOverUse() = runTest {
+        var fakeClockMs = 1_000_000L
+        val staleHomeFix = buildLocation(
+            provider = LocationManager.NETWORK_PROVIDER,
+            lat = 51.5000,
+            lon = -0.1200,
+            elapsedNanos = 1L,
+            wallClockMs = fakeClockMs - 120_000L, // 2 minutes old
+        )
+        shadowOf(locationManager).setLastKnownLocation(LocationManager.NETWORK_PROVIDER, staleHomeFix)
+        shadowOf(locationManager).setProviderEnabled(LocationManager.NETWORK_PROVIDER, true)
+
+        val source = AndroidLocationSource(context, clockMs = { fakeClockMs })
+
+        // Simulate ON_START + ON_RESUME + 8 rapid home screen visits within 15 seconds (10 total calls)
+        repeat(10) { step ->
+            fakeClockMs += (step * 1_000L)
+            source.refreshLocation()
+        }
+
+        val telemetry = source.telemetry.value
+        assertThat(telemetry.activeChecksLastHour).isEqualTo(1)
+        assertThat(telemetry.activeChecksLast24h).isEqualTo(1)
+        assertThat(telemetry.throttledSkipsLastHour).isEqualTo(9)
+        assertThat(telemetry.lastProviderUsed).isEqualTo(LocationManager.NETWORK_PROVIDER)
+    }
+
+    @Test
+    fun refreshLocation_cleansUpActiveListenerAndRecordsTimeoutAfter5Seconds() = runTest {
+        val fakeClockMs = 1_000_000L
+        val staleFix = buildLocation(
+            provider = LocationManager.NETWORK_PROVIDER,
+            lat = 51.5000,
+            lon = -0.1200,
+            elapsedNanos = 1L,
+            wallClockMs = fakeClockMs - 120_000L,
+        )
+        shadowOf(locationManager).setLastKnownLocation(LocationManager.NETWORK_PROVIDER, staleFix)
+        shadowOf(locationManager).setProviderEnabled(LocationManager.NETWORK_PROVIDER, true)
+
+        val source = AndroidLocationSource(context, clockMs = { fakeClockMs })
+        source.refreshLocation()
+
+        assertThat(source.activeListenerCountForTesting).isEqualTo(1)
+        assertThat(source.telemetry.value.timeoutsLast24h).isEqualTo(0)
+
+        // Advance main looper by 5 seconds without delivering a location fix
+        shadowOf(Looper.getMainLooper()).idleFor(
+            Duration.ofMillis(
+                AndroidLocationSource.ACTIVE_REQUEST_TIMEOUT_MS + 100L,
+            ),
+        )
+
+        assertThat(source.activeListenerCountForTesting).isEqualTo(0)
+        assertThat(source.telemetry.value.timeoutsLast24h).isEqualTo(1)
+    }
+
+    @Test
+    fun telemetry_agesOut1hAnd24hWindowsAndPersistsAcrossRestarts() = runTest {
+        var fakeClockMs = 100_000_000L
+        val staleFix = buildLocation(
+            provider = LocationManager.NETWORK_PROVIDER,
+            lat = 51.5000,
+            lon = -0.1200,
+            elapsedNanos = 1L,
+            wallClockMs = 1_000L,
+        )
+        shadowOf(locationManager).setLastKnownLocation(LocationManager.NETWORK_PROVIDER, staleFix)
+        shadowOf(locationManager).setProviderEnabled(LocationManager.NETWORK_PROVIDER, true)
+
+        val source = AndroidLocationSource(context, clockMs = { fakeClockMs })
+
+        // First active check at T = 0
+        source.refreshLocation()
+        shadowOf(Looper.getMainLooper()).idleFor(
+            Duration.ofMillis(
+                AndroidLocationSource.ACTIVE_REQUEST_TIMEOUT_MS + 100L,
+            ),
+        )
+        assertThat(source.telemetry.value.activeChecksLastHour).isEqualTo(1)
+        assertThat(source.telemetry.value.activeChecksLast24h).isEqualTo(1)
+
+        // Advance 2 hours -> first check ages out of 1h window, remains in 24h window; trigger second check
+        fakeClockMs += 2 * 60 * 60 * 1_000L
+        source.refreshLocation()
+        shadowOf(Looper.getMainLooper()).idleFor(
+            Duration.ofMillis(
+                AndroidLocationSource.ACTIVE_REQUEST_TIMEOUT_MS + 100L,
+            ),
+        )
+        assertThat(source.telemetry.value.activeChecksLastHour).isEqualTo(1)
+        assertThat(source.telemetry.value.activeChecksLast24h).isEqualTo(2)
+
+        // Recreate AndroidLocationSource (simulating process restart) -> 24h history is preserved
+        val restartedSource = AndroidLocationSource(context, clockMs = { fakeClockMs })
+        assertThat(restartedSource.telemetry.value.activeChecksLastHour).isEqualTo(1)
+        assertThat(restartedSource.telemetry.value.activeChecksLast24h).isEqualTo(2)
     }
 }

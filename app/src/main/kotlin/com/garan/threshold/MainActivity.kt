@@ -283,6 +283,7 @@ class MainActivity : ComponentActivity() {
                 val resetTrigger by homeIntentResetCounter
                 val settingsUiState by settingsViewModel.uiState.collectAsState()
                 val currentLocation by locationSource.currentLocation.collectAsState()
+                val locationTelemetry by locationSource.telemetry.collectAsState()
 
                 LaunchedEffect(resetTrigger) {
                     if (resetTrigger > 0) {
@@ -401,6 +402,7 @@ class MainActivity : ComponentActivity() {
                                 canScheduleExactAlarms = scheduleAlarmScheduler::canScheduleExactAlarms,
                                 onRequestExactAlarmPermission = scheduleAlarmScheduler::requestExactAlarmPermission,
                                 currentLocation = currentLocation,
+                                locationTelemetry = locationTelemetry,
                                 onUseCurrentLocation = { onResolved ->
                                     requestLocationOrRefresh(onResolved)
                                 },

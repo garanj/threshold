@@ -16,6 +16,7 @@ import com.garan.threshold.core.model.ProfileTrigger
 import com.garan.threshold.core.model.ScheduleTrigger
 import com.garan.threshold.core.model.TimeOfDay
 import com.garan.threshold.core.model.TimeWindow
+import com.garan.threshold.core.port.LocationTelemetry
 import com.garan.threshold.ui.theme.ThresholdTheme
 import com.google.common.truth.Truth.assertThat
 import org.junit.Rule
@@ -231,11 +232,21 @@ class ProfilesScreenTest {
             ),
         )
 
+        val telemetry = LocationTelemetry(
+            activeChecksLastHour = 2,
+            activeChecksLast24h = 9,
+            cacheHitsLastHour = 8,
+            cacheHitsLast24h = 34,
+            lastProviderUsed = "fused",
+            lastFixLatencyMs = 95L,
+        )
+
         composeTestRule.setContent {
             ThresholdTheme {
                 ProfilesScreen(
                     profiles = listOf(geoProfile),
                     currentLocation = nearby40m,
+                    locationTelemetry = telemetry,
                     onSaveProfile = {},
                     onDeleteProfile = {},
                     onReorderProfiles = {},
@@ -245,11 +256,13 @@ class ProfilesScreenTest {
             }
         }
 
-        // Verify Geo profile pin icon, live summary, and "Location" action button
+        // Verify Geo profile pin icon, live summary, "Location" action button, and telemetry footer
         assertThat(composeTestRule.onAllNodesWithContentDescription("Geo profile").fetchSemanticsNodes())
             .hasSize(1)
         composeTestRule.onNodeWithText("Inside 250m · Currently inside (40m away)").assertIsDisplayed()
         composeTestRule.onNodeWithText("Location").assertIsDisplayed()
+        composeTestRule.onNodeWithText("Location checks: 2/hr · 9/24h (34 cached) · fused (95ms)")
+            .assertIsDisplayed()
     }
 
     @Test

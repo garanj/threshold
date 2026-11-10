@@ -61,6 +61,7 @@ import com.garan.threshold.core.model.ProfileTrigger
 import com.garan.threshold.core.model.ScheduleTrigger
 import com.garan.threshold.core.model.TimeOfDay
 import com.garan.threshold.core.port.HapticEngine
+import com.garan.threshold.core.port.LocationTelemetry
 import com.garan.threshold.core.port.NoOpHapticEngine
 import com.garan.threshold.ui.theme.profileBaseColor
 import java.util.UUID
@@ -83,6 +84,7 @@ fun ProfilesScreen(
     canScheduleExactAlarms: () -> Boolean = { true },
     onRequestExactAlarmPermission: () -> Unit = {},
     currentLocation: LocationFix? = null,
+    locationTelemetry: LocationTelemetry? = null,
     onUseCurrentLocation: ((onLocationResolved: (LocationFix) -> Unit) -> Unit)? = null,
     onOpenMapApp: (LocationFix?) -> Unit = {},
     onEnsureLocationPermissionForProfile: () -> Unit = {},
@@ -256,6 +258,20 @@ fun ProfilesScreen(
                         text = "Add Profile",
                         style = MaterialTheme.typography.labelLarge,
                         fontWeight = FontWeight.SemiBold,
+                    )
+                }
+            }
+
+            if (locationTelemetry != null && profiles.any { it.trigger is ProfileTrigger.Geo }) {
+                item(key = "location_telemetry_footer") {
+                    Text(
+                        text = formatLocationTelemetryFooter(locationTelemetry),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 4.dp),
                     )
                 }
             }
@@ -669,6 +685,18 @@ internal fun formatGeoSummary(geo: GeoTrigger, currentLocation: LocationFix?): S
         "$prefix · Currently inside ($distanceLabel away)"
     } else {
         "$prefix · $distanceLabel away"
+    }
+}
+
+internal fun formatLocationTelemetryFooter(telemetry: LocationTelemetry): String {
+    val base = "Location checks: ${telemetry.activeChecksLastHour}/hr · " +
+        "${telemetry.activeChecksLast24h}/24h (${telemetry.cacheHitsLast24h} cached)"
+    val provider = telemetry.lastProviderUsed ?: return base
+    val latency = telemetry.lastFixLatencyMs
+    return if (latency != null) {
+        "$base · $provider (${latency}ms)"
+    } else {
+        "$base · $provider"
     }
 }
 
