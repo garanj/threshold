@@ -8,6 +8,9 @@ import com.garan.threshold.core.model.CustomProfile
 import com.garan.threshold.core.model.DayOfWeek
 import com.garan.threshold.core.model.FrictionChoice
 import com.garan.threshold.core.model.FrictionPolicy
+import com.garan.threshold.core.model.GeoTrigger
+import com.garan.threshold.core.model.GeoTriggerMode
+import com.garan.threshold.core.model.LocationFix
 import com.garan.threshold.core.model.ProfileTrigger
 import com.garan.threshold.core.model.ScheduleTrigger
 import com.garan.threshold.core.model.TimeOfDay
@@ -325,5 +328,94 @@ class CascadingResolutionEngineTest {
             .isEqualTo(AppAccessState.Guarded(FrictionPolicy.TypedIntention))
         assertThat(workingSet.effectiveProfile.appRules[dialerComponent]).isEqualTo(AppAccessState.Direct)
         assertThat(workingSet.blockedComponents).containsExactly(socialComponent)
+    }
+
+    @Test
+    fun geoProfile_activatesWithLocationAndPreservesHysteresisOnBoundaryDrift() {
+        val officeCenter = LocationFix(latitude = 51.5074, longitude = -0.1278)
+        val officeGeoProfile = CustomProfile(
+            id = "office",
+            name = "Office",
+            priority = 0,
+            enabled = true,
+            trigger = ProfileTrigger.Geo(
+                GeoTrigger(
+                    latitude = officeCenter.latitude,
+                    longitude = officeCenter.longitude,
+                    radiusMeters = 250,
+                    mode = GeoTriggerMode.INSIDE,
+                ),
+            ),
+            appAssignments = mapOf(socialComponent to AppAssignment.Blocked),
+        )
+        val base = BaseProfileSettings(
+            appAssignments = mapOf(socialComponent to AppAssignment.Standard),
+        )
+
+        // 1. Inside 100m -> active
+        val insideFix =
+            LocationFix(latitude = officeCenter.latitude + (100.0 / 111_194.9266), longitude = officeCenter.longitude)
+        val ws1 = engine.resolveWorkingSet(
+            baseProfile = base,
+            customProfiles = listOf(officeGeoProfile),
+            currentDay = DayOfWeek.MONDAY,
+            currentTime = TimeOfDay(10, 0),
+            defaultDialerPackage = dialerComponent.packageName,
+            currentLocation = insideFix,
+            previouslyActiveProfileIds = emptySet(),
+        )
+        assertThat(ws1.activeProfiles).containsExactly(officeGeoProfile)
+        assertThat(ws1.blockedComponents).containsExactly(socialComponent)
+
+        // 2. Drifts to 265m (within +25m exit hysteresis buffer) -> stays active when previously active
+        val boundaryFix =
+            LocationFix(latitude = officeCenter.latitude + (265.0 / 111_194.9266), longitude = officeCenter.longitude)
+        val ws2 = engine.resolveWorkingSet(
+            baseProfile = base,
+            customProfiles = listOf(officeGeoProfile),
+            currentDay = DayOfWeek.MONDAY,
+            currentTime = TimeOfDay(10, 1),
+            defaultDialerPackage = dialerComponent.packageName,
+            currentLocation = boundaryFix,
+            previouslyActiveProfileIds = setOf("office"),
+        )
+        assertThat(ws2.activeProfiles).containsExactly(officeGeoProfile)
+
+        // 3. Moves to 300m (beyond 275m buffer) -> deactivates
+        val outsideFix =
+            LocationFix(latitude = officeCenter.latitude + (300.0 / 111_194.9266), longitude = officeCenter.longitude)
+        val ws3 = engine.resolveWorkingSet(
+            baseProfile = base,
+            customProfiles = listOf(officeGeoProfile),
+            currentDay = DayOfWeek.MONDAY,
+            currentTime = TimeOfDay(10, 2),
+            defaultDialerPackage = dialerComponent.packageName,
+            currentLocation = outsideFix,
+            previouslyActiveProfileIds = setOf("office"),
+        )
+        assertThat(ws3.activeProfiles).isEmpty()
+
+        // 4. Null location (Location Services off / permission missing) -> fails safe to inactive even for OUTSIDE mode
+        val awayGeoProfile = officeGeoProfile.copy(
+            id = "away",
+            trigger = ProfileTrigger.Geo(
+                GeoTrigger(
+                    latitude = officeCenter.latitude,
+                    longitude = officeCenter.longitude,
+                    radiusMeters = 250,
+                    mode = GeoTriggerMode.OUTSIDE,
+                ),
+            ),
+        )
+        val wsNull = engine.resolveWorkingSet(
+            baseProfile = base,
+            customProfiles = listOf(officeGeoProfile, awayGeoProfile),
+            currentDay = DayOfWeek.MONDAY,
+            currentTime = TimeOfDay(10, 3),
+            defaultDialerPackage = dialerComponent.packageName,
+            currentLocation = null,
+            previouslyActiveProfileIds = setOf("office", "away"),
+        )
+        assertThat(wsNull.activeProfiles).isEmpty()
     }
 }

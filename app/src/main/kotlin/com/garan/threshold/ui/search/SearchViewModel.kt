@@ -11,10 +11,12 @@ import com.garan.threshold.core.model.FrictionPolicy
 import com.garan.threshold.core.model.GeneralSettings
 import com.garan.threshold.core.model.Profile
 import com.garan.threshold.core.model.ProfileCapabilityIssue
+import com.garan.threshold.core.model.ProfileTrigger
 import com.garan.threshold.core.model.ThresholdSettings
 import com.garan.threshold.core.port.ClockSource
 import com.garan.threshold.core.port.HapticEngine
 import com.garan.threshold.core.port.LaunchResult
+import com.garan.threshold.core.port.LocationSource
 import com.garan.threshold.core.port.NoOpHapticEngine
 import com.garan.threshold.core.port.NoOpScheduleAlarmScheduler
 import com.garan.threshold.core.port.PackageChangeEvent
@@ -89,6 +91,7 @@ class SearchViewModel(
     private val clockSource: ClockSource = SystemClockSource,
     private val scheduleAlarmScheduler: ScheduleAlarmScheduler = NoOpScheduleAlarmScheduler,
     private val capabilityChecker: ProfileCapabilityChecker = ProfileCapabilityChecker { true },
+    private val locationSource: LocationSource? = null,
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
     private val random: Random = Random.Default,
 ) : ViewModel() {
@@ -105,6 +108,9 @@ class SearchViewModel(
     @Volatile
     private var lastObservedSettings: ThresholdSettings? = null
 
+    @Volatile
+    private var previouslyActiveProfileIds: Set<String> = emptySet()
+
     init {
         if (settingsRepository != null) {
             viewModelScope.launch(ioDispatcher) {
@@ -114,8 +120,20 @@ class SearchViewModel(
             }
             viewModelScope.launch(ioDispatcher) {
                 ScheduleTransitionNotifier.events.collect {
+                    if (hasEnabledGeoProfiles(lastObservedSettings)) {
+                        locationSource?.refreshLocation()
+                    }
                     reconcileMutex.withLock {
                         lastObservedSettings?.let { reconcileWorkingSetLocked(it) }
+                    }
+                }
+            }
+            if (locationSource != null) {
+                viewModelScope.launch(ioDispatcher) {
+                    locationSource.currentLocation.collect {
+                        reconcileMutex.withLock {
+                            lastObservedSettings?.let { reconcileWorkingSetLocked(it) }
+                        }
                     }
                 }
             }
@@ -178,10 +196,13 @@ class SearchViewModel(
 
     /**
      * Re-evaluates the working set of active custom profiles and effective app rules against
-     * the current day and time (called on minute ticks, activity resume, or alarm boundaries).
+     * the current day, time, and location (called on minute ticks, activity resume, or alarm boundaries).
      */
     fun refreshScheduleEvaluation() {
         viewModelScope.launch(ioDispatcher) {
+            if (hasEnabledGeoProfiles(lastObservedSettings)) {
+                locationSource?.refreshLocation()
+            }
             reconcileMutex.withLock {
                 lastObservedSettings?.let { reconcileWorkingSetLocked(it) }
             }
@@ -196,13 +217,19 @@ class SearchViewModel(
                 candidates = apps.map { AppSearchCandidate(it.component, it.label) }
             }
         }
+        val effective = settings ?: lastObservedSettings ?: settingsRepository?.getSettings() ?: return
+        if (hasEnabledGeoProfiles(effective)) {
+            locationSource?.refreshLocation()
+        }
         reconcileMutex.withLock {
-            val effective = settings ?: lastObservedSettings ?: settingsRepository?.getSettings() ?: return
             lastObservedSettings = effective
             scheduleAlarmScheduler.syncNextScheduleAlarm(effective.customProfiles)
             reconcileWorkingSetLocked(effective)
         }
     }
+
+    private fun hasEnabledGeoProfiles(settings: ThresholdSettings?): Boolean =
+        settings?.customProfiles?.any { it.enabled && it.trigger is ProfileTrigger.Geo } == true
 
     fun activateSearch() {
         ensureIndexLoaded()
@@ -256,6 +283,8 @@ class SearchViewModel(
                 currentDay = now.dayOfWeek,
                 currentTime = now.timeOfDay,
                 isDefaultDialer = isDefaultDialer,
+                currentLocation = locationSource?.currentLocation?.value,
+                previouslyActiveProfileIds = previouslyActiveProfileIds,
                 random = random,
             )
         } else {
@@ -283,6 +312,9 @@ class SearchViewModel(
     }
 
     private suspend fun onSettingsChanged(settings: ThresholdSettings) {
+        if (hasEnabledGeoProfiles(settings) && locationSource?.currentLocation?.value == null) {
+            locationSource?.refreshLocation()
+        }
         reconcileMutex.withLock {
             lastObservedSettings = settings
             scheduleAlarmScheduler.syncNextScheduleAlarm(settings.customProfiles)
@@ -292,6 +324,7 @@ class SearchViewModel(
 
     private suspend fun reconcileWorkingSetLocked(settings: ThresholdSettings) {
         val now = clockSource.now()
+        val currentLocation = locationSource?.currentLocation?.value
         val workingSet = cascadingEngine.resolveWorkingSet(
             baseProfile = settings.baseProfile,
             customProfiles = settings.customProfiles,
@@ -299,9 +332,12 @@ class SearchViewModel(
             currentTime = now.timeOfDay,
             defaultDialerPackage = resolvedDialerPackage,
             additionalComponents = settings.baseProfile.quickActions,
+            currentLocation = currentLocation,
+            previouslyActiveProfileIds = previouslyActiveProfileIds,
             random = random,
         )
         activeProfile = workingSet.effectiveProfile
+        previouslyActiveProfileIds = workingSet.activeProfiles.map { it.id }.toSet()
 
         val quickKeys = settings.baseProfile.quickActions
         val quickItems = quickKeys.mapIndexedNotNull { index, comp ->
@@ -316,6 +352,8 @@ class SearchViewModel(
                     currentDay = now.dayOfWeek,
                     currentTime = now.timeOfDay,
                     isDefaultDialer = (comp.packageName == resolvedDialerPackage),
+                    currentLocation = currentLocation,
+                    previouslyActiveProfileIds = previouslyActiveProfileIds,
                     random = random,
                 )
             QuickActionUiItem(

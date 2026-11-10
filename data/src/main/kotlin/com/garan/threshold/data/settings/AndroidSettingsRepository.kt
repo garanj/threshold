@@ -15,6 +15,8 @@ import com.garan.threshold.core.model.CustomProfile
 import com.garan.threshold.core.model.DayOfWeek
 import com.garan.threshold.core.model.FrictionChoice
 import com.garan.threshold.core.model.GeneralSettings
+import com.garan.threshold.core.model.GeoTrigger
+import com.garan.threshold.core.model.GeoTriggerMode
 import com.garan.threshold.core.model.ProfileTrigger
 import com.garan.threshold.core.model.ScheduleTrigger
 import com.garan.threshold.core.model.ThresholdSettings
@@ -297,6 +299,14 @@ class AndroidSettingsRepository(
                     triggerObj.put("endHour", schedule.endTime.hour)
                     triggerObj.put("endMinute", schedule.endTime.minute)
                 }
+                is ProfileTrigger.Geo -> {
+                    val geo = trigger.geo
+                    triggerObj.put("type", "GEO")
+                    triggerObj.put("latitude", geo.latitude)
+                    triggerObj.put("longitude", geo.longitude)
+                    triggerObj.put("radiusMeters", geo.radiusMeters)
+                    triggerObj.put("mode", geo.mode.name)
+                }
             }
             obj.put("trigger", triggerObj)
             obj.put("appAssignments", serializeAppAssignments(profile.appAssignments))
@@ -374,6 +384,22 @@ class AndroidSettingsRepository(
                             ),
                         )
                     }
+                } else if (triggerObj != null && triggerObj.optString("type") == "GEO") {
+                    val latitude = triggerObj.optDouble("latitude", 0.0).coerceIn(-90.0, 90.0)
+                    val longitude = triggerObj.optDouble("longitude", 0.0).coerceIn(-180.0, 180.0)
+                    val radiusMeters = triggerObj.optInt("radiusMeters", GeoTrigger.DEFAULT_RADIUS_METERS)
+                        .coerceAtLeast(1)
+                    val mode = runCatching {
+                        GeoTriggerMode.valueOf(triggerObj.optString("mode", GeoTriggerMode.INSIDE.name))
+                    }.getOrDefault(GeoTriggerMode.INSIDE)
+                    ProfileTrigger.Geo(
+                        GeoTrigger(
+                            latitude = latitude,
+                            longitude = longitude,
+                            radiusMeters = radiusMeters,
+                            mode = mode,
+                        ),
+                    )
                 } else {
                     ProfileTrigger.Schedule()
                 }

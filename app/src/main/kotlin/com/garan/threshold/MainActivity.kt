@@ -1,10 +1,14 @@
 package com.garan.threshold
 
+import android.Manifest
 import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
+import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
@@ -14,6 +18,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.lifecycleScope
 import androidx.navigation3.runtime.NavKey
 import androidx.navigation3.runtime.entryProvider
 import androidx.navigation3.runtime.rememberNavBackStack
@@ -21,6 +26,7 @@ import androidx.navigation3.ui.NavDisplay
 import com.garan.threshold.core.model.BaseProfileSettings
 import com.garan.threshold.core.model.CustomProfile
 import com.garan.threshold.core.model.DayOfWeek
+import com.garan.threshold.core.model.LocationFix
 import com.garan.threshold.core.model.ProfileCapability
 import com.garan.threshold.core.model.TimeOfDay
 import com.garan.threshold.core.port.ClockSource
@@ -29,6 +35,7 @@ import com.garan.threshold.core.port.SystemClockSource
 import com.garan.threshold.core.search.ActionCandidate
 import com.garan.threshold.data.antimetrics.AndroidAntiMetricsRepository
 import com.garan.threshold.data.haptics.AndroidHapticEngine
+import com.garan.threshold.data.location.AndroidLocationSource
 import com.garan.threshold.data.packageindex.AndroidPackageIndexSource
 import com.garan.threshold.data.settings.AndroidSettingsRepository
 import com.garan.threshold.schedule.AndroidProfileCapabilityChecker
@@ -46,6 +53,7 @@ import com.garan.threshold.ui.settings.SettingsViewModel
 import com.garan.threshold.ui.settings.ThresholdSettingsScreen
 import com.garan.threshold.ui.theme.ThresholdTheme
 import com.garan.threshold.ui.util.ImeUtils
+import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
 
 @Serializable
@@ -69,6 +77,30 @@ class MainActivity : ComponentActivity() {
     private val appLauncher by lazy { AndroidAppLauncher(this) }
     private val hapticEngine by lazy { AndroidHapticEngine(applicationContext ?: this) }
     private val settingsRepository by lazy { AndroidSettingsRepository(applicationContext ?: this) }
+    internal val locationSource by lazy { AndroidLocationSource(applicationContext ?: this) }
+
+    @Volatile
+    private var pendingLocationResolvedCallback: ((LocationFix) -> Unit)? = null
+
+    private val locationPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions(),
+    ) { grants ->
+        val granted = grants[Manifest.permission.ACCESS_FINE_LOCATION] == true ||
+            grants[Manifest.permission.ACCESS_COARSE_LOCATION] == true
+        if (granted) {
+            lifecycleScope.launch {
+                val fix = locationSource.refreshLocation()
+                if (fix != null) {
+                    pendingLocationResolvedCallback?.invoke(fix)
+                }
+                pendingLocationResolvedCallback = null
+                ScheduleTransitionNotifier.notifyTransition()
+            }
+        } else {
+            pendingLocationResolvedCallback = null
+            ScheduleTransitionNotifier.notifyTransition()
+        }
+    }
 
     @Volatile
     private var clockOverrideForTesting: ClockSource? = null
@@ -154,6 +186,47 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    @androidx.annotation.VisibleForTesting
+    fun refreshLocationAndReconcileForTesting() {
+        kotlinx.coroutines.runBlocking {
+            locationSource.refreshLocation()
+            if (::searchViewModel.isInitialized) {
+                searchViewModel.reconcileForTesting()
+            }
+        }
+    }
+
+    private fun requestLocationOrRefresh(onLocationResolved: ((LocationFix) -> Unit)? = null) {
+        if (locationSource.hasLocationPermission()) {
+            lifecycleScope.launch {
+                val fix = locationSource.refreshLocation()
+                if (fix != null) {
+                    onLocationResolved?.invoke(fix)
+                }
+            }
+        } else {
+            pendingLocationResolvedCallback = onLocationResolved
+            locationPermissionLauncher.launch(
+                arrayOf(
+                    Manifest.permission.ACCESS_FINE_LOCATION,
+                    Manifest.permission.ACCESS_COARSE_LOCATION,
+                ),
+            )
+        }
+    }
+
+    private fun openExternalMapApp(center: LocationFix?) {
+        val uriString = if (center != null) {
+            "geo:${center.latitude},${center.longitude}?q=${center.latitude},${center.longitude}"
+        } else {
+            "geo:0,0"
+        }
+        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(uriString)).apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        runCatching { startActivity(intent) }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -179,6 +252,7 @@ class MainActivity : ComponentActivity() {
                     clockSource = activeClockSource,
                     scheduleAlarmScheduler = scheduleAlarmScheduler,
                     capabilityChecker = capabilityChecker,
+                    locationSource = locationSource,
                 ) as T
             },
         )[SearchViewModel::class.java]
@@ -208,6 +282,7 @@ class MainActivity : ComponentActivity() {
                 val backStack = rememberNavBackStack(ThresholdRoute.Home)
                 val resetTrigger by homeIntentResetCounter
                 val settingsUiState by settingsViewModel.uiState.collectAsState()
+                val currentLocation by locationSource.currentLocation.collectAsState()
 
                 LaunchedEffect(resetTrigger) {
                     if (resetTrigger > 0) {
@@ -263,9 +338,17 @@ class MainActivity : ComponentActivity() {
                                         ProfileCapability.EXACT_ALARM -> {
                                             scheduleAlarmScheduler.requestExactAlarmPermission()
                                         }
-                                        ProfileCapability.BACKGROUND_LOCATION,
-                                        ProfileCapability.NFC_HARDWARE_ENABLED,
-                                        -> {
+                                        ProfileCapability.BACKGROUND_LOCATION -> {
+                                            if (!locationSource.hasLocationPermission()) {
+                                                requestLocationOrRefresh()
+                                            } else if (!locationSource.isLocationServicesEnabled()) {
+                                                val intent = Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS).apply {
+                                                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                                }
+                                                runCatching { startActivity(intent) }
+                                            }
+                                        }
+                                        ProfileCapability.NFC_HARDWARE_ENABLED -> {
                                             if (backStack.lastOrNull() != ThresholdRoute.Profiles) {
                                                 backStack.add(ThresholdRoute.Profiles)
                                             }
@@ -317,6 +400,14 @@ class MainActivity : ComponentActivity() {
                                 hapticEngine = hapticEngine,
                                 canScheduleExactAlarms = scheduleAlarmScheduler::canScheduleExactAlarms,
                                 onRequestExactAlarmPermission = scheduleAlarmScheduler::requestExactAlarmPermission,
+                                currentLocation = currentLocation,
+                                onUseCurrentLocation = { onResolved ->
+                                    requestLocationOrRefresh(onResolved)
+                                },
+                                onOpenMapApp = ::openExternalMapApp,
+                                onEnsureLocationPermissionForProfile = {
+                                    requestLocationOrRefresh()
+                                },
                             )
                         }
 

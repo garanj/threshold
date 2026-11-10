@@ -43,8 +43,12 @@ data class CustomProfile(
     /**
      * Determines whether this profile is currently active based on its enabled state and trigger condition.
      */
-    fun isActive(currentDay: DayOfWeek, currentTime: TimeOfDay): Boolean =
-        enabled && trigger.isActive(currentDay, currentTime)
+    fun isActive(
+        currentDay: DayOfWeek,
+        currentTime: TimeOfDay,
+        currentLocation: LocationFix? = null,
+        wasPreviouslyActive: Boolean = false,
+    ): Boolean = enabled && trigger.isActive(currentDay, currentTime, currentLocation, wasPreviouslyActive)
 
     companion object {
         const val PALETTE_SIZE = 6

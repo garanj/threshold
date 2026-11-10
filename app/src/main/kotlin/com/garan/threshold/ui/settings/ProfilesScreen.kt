@@ -54,6 +54,9 @@ import androidx.compose.ui.unit.dp
 import com.garan.threshold.core.model.AppAssignment
 import com.garan.threshold.core.model.CustomProfile
 import com.garan.threshold.core.model.DayOfWeek
+import com.garan.threshold.core.model.GeoTrigger
+import com.garan.threshold.core.model.GeoTriggerMode
+import com.garan.threshold.core.model.LocationFix
 import com.garan.threshold.core.model.ProfileTrigger
 import com.garan.threshold.core.model.ScheduleTrigger
 import com.garan.threshold.core.model.TimeOfDay
@@ -64,7 +67,7 @@ import java.util.UUID
 
 /**
  * Screen displaying the user-ordered list of custom profiles with priority reordering,
- * schedule configuration via [ProfileEditorSheet], and app overrides.
+ * schedule/geo configuration via [ProfileEditorSheet], and app overrides.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -79,6 +82,10 @@ fun ProfilesScreen(
     hapticEngine: HapticEngine = NoOpHapticEngine,
     canScheduleExactAlarms: () -> Boolean = { true },
     onRequestExactAlarmPermission: () -> Unit = {},
+    currentLocation: LocationFix? = null,
+    onUseCurrentLocation: ((onLocationResolved: (LocationFix) -> Unit) -> Unit)? = null,
+    onOpenMapApp: (LocationFix?) -> Unit = {},
+    onEnsureLocationPermissionForProfile: () -> Unit = {},
 ) {
     BackHandler(onBack = onBack)
 
@@ -180,6 +187,7 @@ fun ProfilesScreen(
                         profile = profile,
                         index = index,
                         totalProfiles = profiles.size,
+                        currentLocation = currentLocation,
                         onMoveUp = {
                             if (index > 0) {
                                 hapticEngine.rotaryDetent()
@@ -203,8 +211,17 @@ fun ProfilesScreen(
                         onToggleEnabled = { enabled ->
                             hapticEngine.rotaryDetent()
                             onSaveProfile(profile.copy(enabled = enabled))
-                            if (enabled && profile.trigger is ProfileTrigger.Schedule && !canScheduleExactAlarms()) {
-                                showExactAlarmPermissionSheet = true
+                            if (enabled) {
+                                when (profile.trigger) {
+                                    is ProfileTrigger.Schedule -> {
+                                        if (!canScheduleExactAlarms()) {
+                                            showExactAlarmPermissionSheet = true
+                                        }
+                                    }
+                                    is ProfileTrigger.Geo -> {
+                                        onEnsureLocationPermissionForProfile()
+                                    }
+                                }
                             }
                         },
                         onEditProfile = { editingProfile = profile },
@@ -247,20 +264,33 @@ fun ProfilesScreen(
 
     // Edit Existing Profile Sheet
     editingProfile?.let { profile ->
-        val trigger = (profile.trigger as? ProfileTrigger.Schedule)?.schedule ?: ScheduleTrigger()
+        val scheduleFallback = (profile.trigger as? ProfileTrigger.Schedule)?.schedule ?: ScheduleTrigger()
         ProfileEditorSheet(
             initialName = profile.name,
-            initialSchedule = trigger,
+            initialSchedule = scheduleFallback,
+            initialTrigger = profile.trigger,
             isNewProfile = false,
-            onSave = { updatedName, updatedSchedule ->
+            currentLocation = currentLocation,
+            onUseCurrentLocation = onUseCurrentLocation,
+            onOpenMapApp = onOpenMapApp,
+            onSaveTrigger = { updatedName, updatedTrigger ->
                 onSaveProfile(
                     profile.copy(
                         name = updatedName,
-                        trigger = ProfileTrigger.Schedule(updatedSchedule),
+                        trigger = updatedTrigger,
                     ),
                 )
-                if (profile.enabled && !canScheduleExactAlarms()) {
-                    showExactAlarmPermissionSheet = true
+                if (profile.enabled) {
+                    when (updatedTrigger) {
+                        is ProfileTrigger.Schedule -> {
+                            if (!canScheduleExactAlarms()) {
+                                showExactAlarmPermissionSheet = true
+                            }
+                        }
+                        is ProfileTrigger.Geo -> {
+                            onEnsureLocationPermissionForProfile()
+                        }
+                    }
                 }
             },
             onDismiss = { editingProfile = null },
@@ -284,18 +314,29 @@ fun ProfilesScreen(
         ProfileEditorSheet(
             initialName = "",
             initialSchedule = defaultSchedule,
+            initialTrigger = ProfileTrigger.Schedule(defaultSchedule),
             isNewProfile = true,
-            onSave = { name, schedule ->
+            currentLocation = currentLocation,
+            onUseCurrentLocation = onUseCurrentLocation,
+            onOpenMapApp = onOpenMapApp,
+            onSaveTrigger = { name, trigger ->
                 val newProfile = CustomProfile(
                     id = UUID.randomUUID().toString(),
                     name = name,
                     priority = profiles.size,
-                    trigger = ProfileTrigger.Schedule(schedule),
+                    trigger = trigger,
                     colorIndex = CustomProfile.nextColorIndex(profiles),
                 )
                 onSaveProfile(newProfile)
-                if (!canScheduleExactAlarms()) {
-                    showExactAlarmPermissionSheet = true
+                when (trigger) {
+                    is ProfileTrigger.Schedule -> {
+                        if (!canScheduleExactAlarms()) {
+                            showExactAlarmPermissionSheet = true
+                        }
+                    }
+                    is ProfileTrigger.Geo -> {
+                        onEnsureLocationPermissionForProfile()
+                    }
                 }
             },
             onDismiss = { isCreatingNewProfile = false },
@@ -392,13 +433,14 @@ fun ProfilesScreen(
 }
 
 /**
- * Material 3 profile container with accessible vector reorder controls, schedule summary, and action buttons.
+ * Material 3 profile container with accessible vector reorder controls, trigger summary, and action buttons.
  */
 @Composable
 private fun ProfileCard(
     profile: CustomProfile,
     index: Int,
     totalProfiles: Int,
+    currentLocation: LocationFix?,
     onMoveUp: () -> Unit,
     onMoveDown: () -> Unit,
     onToggleEnabled: (Boolean) -> Unit,
@@ -407,11 +449,14 @@ private fun ProfileCard(
     onDelete: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val schedule = (profile.trigger as? ProfileTrigger.Schedule)?.schedule
-    val scheduleSummary = if (schedule != null) {
-        formatScheduleSummary(schedule)
-    } else {
-        "No schedule set"
+    val triggerSummary = when (val trigger = profile.trigger) {
+        is ProfileTrigger.Schedule -> formatScheduleSummary(trigger.schedule)
+        is ProfileTrigger.Geo -> formatGeoSummary(trigger.geo, currentLocation)
+    }
+
+    val editButtonLabel = when (profile.trigger) {
+        is ProfileTrigger.Schedule -> "Schedule"
+        is ProfileTrigger.Geo -> "Location"
     }
 
     val blockedCount = profile.appAssignments.count { it.value is AppAssignment.Blocked }
@@ -446,8 +491,12 @@ private fun ProfileCard(
                         Icon(
                             imageVector = when (profile.trigger) {
                                 is ProfileTrigger.Schedule -> ThresholdIcons.Schedule
+                                is ProfileTrigger.Geo -> ThresholdIcons.LocationOn
                             },
-                            contentDescription = "Schedule profile",
+                            contentDescription = when (profile.trigger) {
+                                is ProfileTrigger.Schedule -> "Schedule profile"
+                                is ProfileTrigger.Geo -> "Geo profile"
+                            },
                             modifier = Modifier.size(22.dp),
                             tint = if (profile.enabled) {
                                 MaterialTheme.colorScheme.onSurface
@@ -520,7 +569,7 @@ private fun ProfileCard(
                 supportingContent = {
                     Column(modifier = Modifier.padding(top = 2.dp)) {
                         Text(
-                            text = scheduleSummary,
+                            text = triggerSummary,
                             style = MaterialTheme.typography.bodySmall,
                             color = if (profile.enabled) {
                                 MaterialTheme.colorScheme.onSurface
@@ -570,7 +619,7 @@ private fun ProfileCard(
                     contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp),
                 ) {
                     Text(
-                        text = "Schedule",
+                        text = editButtonLabel,
                         style = MaterialTheme.typography.labelMedium,
                         maxLines = 1,
                     )
@@ -599,6 +648,27 @@ private fun ProfileCard(
                 }
             }
         }
+    }
+}
+
+internal fun formatGeoSummary(geo: GeoTrigger, currentLocation: LocationFix?): String {
+    val modeLabel = when (geo.mode) {
+        GeoTriggerMode.INSIDE -> "Inside"
+        GeoTriggerMode.OUTSIDE -> "Outside"
+    }
+    val radiusLabel = GeoTrigger.formatRadius(geo.radiusMeters)
+    val prefix = "$modeLabel $radiusLabel"
+
+    if (currentLocation == null) {
+        return "$prefix · ${geo.center.formattedCoordinates()}"
+    }
+
+    val distanceMeters = geo.distanceMetersFrom(currentLocation)
+    val distanceLabel = GeoTrigger.formatDistance(distanceMeters)
+    return if (distanceMeters <= geo.radiusMeters) {
+        "$prefix · Currently inside ($distanceLabel away)"
+    } else {
+        "$prefix · $distanceLabel away"
     }
 }
 

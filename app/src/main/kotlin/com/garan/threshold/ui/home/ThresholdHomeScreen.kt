@@ -407,6 +407,6 @@ internal fun CapabilityFaultBottomSheet(
 
 private fun capabilityLabel(capability: ProfileCapability): String = when (capability) {
     ProfileCapability.EXACT_ALARM -> "Exact schedule alarms permission required"
-    ProfileCapability.BACKGROUND_LOCATION -> "Background location permission required"
+    ProfileCapability.BACKGROUND_LOCATION -> "Location permission & Location Services required"
     ProfileCapability.NFC_HARDWARE_ENABLED -> "NFC must be enabled in system settings"
 }

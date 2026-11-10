@@ -4,6 +4,7 @@ import android.app.AlarmManager
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.location.LocationManager
 import com.garan.threshold.data.settings.AndroidSettingsRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -47,6 +48,8 @@ class ScheduleAlarmReceiver : BroadcastReceiver() {
             Intent.ACTION_BOOT_COMPLETED,
             Intent.ACTION_TIME_CHANGED,
             Intent.ACTION_TIMEZONE_CHANGED,
+            LocationManager.PROVIDERS_CHANGED_ACTION,
+            LocationManager.MODE_CHANGED_ACTION,
         )
     }
 }

@@ -252,4 +252,38 @@ class AndroidSettingsRepositoryTest {
         assertThat(prunedProfile.appAssignments).isEmpty()
         assertThat(prunedProfile.enabled).isFalse() // Auto-disable invariant verified
     }
+
+    @Test
+    fun customProfiles_geoTriggerPersistedAndRetrievedCorrectly() = runTest(testDispatcher) {
+        val geoProfile = com.garan.threshold.core.model.CustomProfile(
+            id = "away-home",
+            name = "Away from Home",
+            enabled = true,
+            priority = 0,
+            colorIndex = 3,
+            trigger = com.garan.threshold.core.model.ProfileTrigger.Geo(
+                com.garan.threshold.core.model.GeoTrigger(
+                    latitude = 51.5074,
+                    longitude = -0.1278,
+                    radiusMeters = 500,
+                    mode = com.garan.threshold.core.model.GeoTriggerMode.OUTSIDE,
+                ),
+            ),
+            appAssignments = mapOf(socialKey to AppAssignment.Blocked),
+        )
+
+        repository.saveCustomProfile(geoProfile)
+
+        val latest = repository.getSettings()
+        assertThat(latest.customProfiles).hasSize(1)
+        val loaded = latest.customProfiles.first()
+        assertThat(loaded.id).isEqualTo("away-home")
+        assertThat(loaded.name).isEqualTo("Away from Home")
+        assertThat(loaded.colorIndex).isEqualTo(3)
+        val geo = (loaded.trigger as com.garan.threshold.core.model.ProfileTrigger.Geo).geo
+        assertThat(geo.latitude).isWithin(0.00001).of(51.5074)
+        assertThat(geo.longitude).isWithin(0.00001).of(-0.1278)
+        assertThat(geo.radiusMeters).isEqualTo(500)
+        assertThat(geo.mode).isEqualTo(com.garan.threshold.core.model.GeoTriggerMode.OUTSIDE)
+    }
 }
