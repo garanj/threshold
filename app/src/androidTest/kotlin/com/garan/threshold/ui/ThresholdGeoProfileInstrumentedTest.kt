@@ -45,16 +45,11 @@ class ThresholdGeoProfileInstrumentedTest {
         device = UiDevice.getInstance(instrumentation)
         locationManager = targetContext.getSystemService(Context.LOCATION_SERVICE) as LocationManager
 
-        instrumentation.uiAutomation.adoptShellPermissionIdentity(
-            "android.permission.QUERY_ALL_PACKAGES",
-            "android.permission.ACCESS_FINE_LOCATION",
-            "android.permission.ACCESS_COARSE_LOCATION",
-        )
-
         val pkg = targetContext.packageName
         device.executeShellCommand("pm grant $pkg android.permission.ACCESS_FINE_LOCATION")
         device.executeShellCommand("pm grant $pkg android.permission.ACCESS_COARSE_LOCATION")
         device.executeShellCommand("appops set $pkg android:mock_location allow")
+        device.executeShellCommand("cmd location set-location-enabled true")
 
         runCatching { locationManager.removeTestProvider(TEST_PROVIDER) }
         locationManager.addTestProvider(
@@ -227,7 +222,17 @@ class ThresholdGeoProfileInstrumentedTest {
         device.waitForIdle()
 
         // Beyond hysteresis buffer: Office profile deactivates and target app reappears
-        assertThat(device.wait(Until.findObject(By.text(targetLabel)), 5000L)).isNotNull()
+        var debugState = ""
+        scenario?.onActivity { activity ->
+            val st = activity.searchViewModel.uiState.value
+            val loc = activity.locationSource.currentLocation.value
+            debugState = "targetLabel=$targetLabel, query='${st.query}', isSearching=${st.isSearching}, " +
+                "activeProfiles=${st.activeProfiles.map { it.name }}, " +
+                "results=${st.results.map { it.item.label }}, loc=$loc"
+        }
+        com.google.common.truth.Truth.assertWithMessage(debugState)
+            .that(device.wait(Until.findObject(By.text(targetLabel)), 5000L))
+            .isNotNull()
         assertThat(device.wait(Until.gone(By.desc("Active profile: Office")), 5000L)).isTrue()
     }
 

@@ -217,7 +217,7 @@ class SearchViewModel(
                 candidates = apps.map { AppSearchCandidate(it.component, it.label) }
             }
         }
-        val effective = settings ?: lastObservedSettings ?: settingsRepository?.getSettings() ?: return
+        val effective = settings ?: settingsRepository?.getSettings() ?: lastObservedSettings ?: return
         if (hasEnabledGeoProfiles(effective)) {
             locationSource?.refreshLocation()
         }
@@ -368,18 +368,35 @@ class SearchViewModel(
             .findCapabilityIssues(settings.customProfiles)
             .toImmutableList()
 
-        _uiState.update {
-            it.copy(
-                generalSettings = settings.general,
-                quickActions = quickItems,
-                activeProfiles = workingSet.activeProfiles.toImmutableList(),
-                capabilityIssues = capabilityIssues,
-            )
-        }
-
-        val currentQuery = _uiState.value.query
-        if (currentQuery.isNotBlank()) {
-            performSearch(currentQuery)
+        val snapshotCandidates = candidates
+        _uiState.update { current ->
+            val currentQuery = current.query
+            if (currentQuery.isNotBlank()) {
+                val response = searchEngine.searchWithAutoLaunch(
+                    query = currentQuery,
+                    candidates = snapshotCandidates,
+                    actions = actions,
+                    profile = workingSet.effectiveProfile,
+                    defaultDialerPackage = resolvedDialerPackage,
+                )
+                current.copy(
+                    generalSettings = settings.general,
+                    quickActions = quickItems,
+                    activeProfiles = workingSet.activeProfiles.toImmutableList(),
+                    capabilityIssues = capabilityIssues,
+                    results = response.results.toImmutableList(),
+                    autoLaunchCandidate = response.autoLaunchCandidate,
+                )
+            } else {
+                current.copy(
+                    generalSettings = settings.general,
+                    quickActions = quickItems,
+                    activeProfiles = workingSet.activeProfiles.toImmutableList(),
+                    capabilityIssues = capabilityIssues,
+                    results = persistentListOf(),
+                    autoLaunchCandidate = null,
+                )
+            }
         }
     }
 

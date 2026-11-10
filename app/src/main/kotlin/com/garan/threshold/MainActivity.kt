@@ -40,7 +40,6 @@ import com.garan.threshold.data.packageindex.AndroidPackageIndexSource
 import com.garan.threshold.data.settings.AndroidSettingsRepository
 import com.garan.threshold.schedule.AndroidProfileCapabilityChecker
 import com.garan.threshold.schedule.AndroidScheduleAlarmScheduler
-import com.garan.threshold.schedule.ScheduleAlarmReceiver
 import com.garan.threshold.schedule.ScheduleTransitionNotifier
 import com.garan.threshold.ui.home.ThresholdHomeScreen
 import com.garan.threshold.ui.launcher.AndroidAppLauncher
@@ -163,11 +162,7 @@ class MainActivity : ComponentActivity() {
     @androidx.annotation.VisibleForTesting
     fun setClockAndTriggerAlarmForTesting(dayOfWeek: DayOfWeek, timeOfDay: TimeOfDay) {
         clockOverrideForTesting = ClockSource { LocalDayTime(dayOfWeek, timeOfDay) }
-        val alarmIntent = Intent(this, ScheduleAlarmReceiver::class.java).apply {
-            action = AndroidScheduleAlarmScheduler.ACTION_SCHEDULE_TRANSITION_ALARM
-            setPackage(packageName)
-        }
-        ScheduleAlarmReceiver().onReceive(this, alarmIntent)
+        ScheduleTransitionNotifier.notifyTransition()
         if (::searchViewModel.isInitialized) {
             kotlinx.coroutines.runBlocking {
                 searchViewModel.reconcileForTesting()
