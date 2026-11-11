@@ -20,7 +20,7 @@ import androidx.test.uiautomator.UiObject2
  */
 private const val POLL_INTERVAL_MS = 100L
 
-private fun pollFresh(timeoutMs: Long, condition: () -> Boolean): Boolean {
+internal fun pollFresh(timeoutMs: Long, condition: () -> Boolean): Boolean {
     val uiAutomation = InstrumentationRegistry.getInstrumentation().uiAutomation
     val deadline = SystemClock.uptimeMillis() + timeoutMs
     while (true) {

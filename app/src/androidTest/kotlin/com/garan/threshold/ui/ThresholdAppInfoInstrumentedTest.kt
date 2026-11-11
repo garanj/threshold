@@ -1,5 +1,6 @@
 package com.garan.threshold.ui
 
+import android.app.KeyguardManager
 import android.content.Context
 import android.content.Intent
 import android.content.pm.LauncherApps
@@ -29,7 +30,7 @@ class ThresholdAppInfoInstrumentedTest {
         device = UiDevice.getInstance(instrumentation)
         instrumentation.uiAutomation.adoptShellPermissionIdentity("android.permission.QUERY_ALL_PACKAGES")
 
-        // Ensure device is awake, keyguard dismissed, and no stale Settings task is left from a prior run
+        // Ensure device is awake, keyguard dismissed (if insecure), and no stale Settings task is left
         device.wakeUp()
         device.executeShellCommand("wm dismiss-keyguard")
         device.executeShellCommand("am force-stop com.android.settings")
@@ -49,6 +50,7 @@ class ThresholdAppInfoInstrumentedTest {
     fun longPressAppSearchResult_opensSystemAppInfoAndDismissesSearch() {
         val targetContext = InstrumentationRegistry.getInstrumentation().targetContext
         val launcherApps = targetContext.getSystemService(Context.LAUNCHER_APPS_SERVICE) as LauncherApps
+        val keyguardManager = targetContext.getSystemService(Context.KEYGUARD_SERVICE) as KeyguardManager
         val myUser = Process.myUserHandle()
 
         // Locate an installed launcher app (prefer third-party/non-settings app to avoid action collision)
@@ -88,17 +90,34 @@ class ThresholdAppInfoInstrumentedTest {
         assertThat(resultRow).isNotNull()
         checkNotNull(resultRow).longClick()
 
-        // 3. Verify that Android App Info / Settings screen is launched
+        // 3. Verify that Android App Info / Settings screen is launched.
+        // On a device with a secure PIN/biometric lock screen, MainActivity occludes the keyguard via
+        // setShowWhenLocked(true), but com.android.settings/.spa.SpaActivity does not set showWhenLocked.
+        // WindowManager therefore unoccludes the keyguard (setOccluded(false)) and hides SpaActivity's
+        // window behind com.android.systemui while SpaActivity is the top resumed activity in ActivityTaskManager.
         val settingsPattern = Pattern.compile("com\\.android\\.settings|com\\.google\\.android\\.settings.*")
-        val appDetailsAppeared = device.waitForFresh(
-            By.pkg(settingsPattern),
-            15000L,
-        ) != null ||
-            settingsPattern.matcher(device.currentPackageName ?: "").matches()
+        val topActivityPattern = Pattern.compile(
+            "(?:ResumedActivity|topResumedActivity).*?(com\\.android\\.settings|com\\.google\\.android\\.settings[^/\\s]*)/",
+        )
+        val appDetailsAppeared = pollFresh(15000L) {
+            device.findObject(By.pkg(settingsPattern)) != null ||
+                settingsPattern.matcher(device.currentPackageName ?: "").matches() ||
+                (
+                    keyguardManager.isKeyguardLocked &&
+                        topActivityPattern.matcher(
+                            device.executeShellCommand("dumpsys activity activities"),
+                        ).find()
+                    )
+        }
         assertThat(appDetailsAppeared).isTrue()
 
-        // 4. Navigate back to Threshold and verify search state was dismissed
+        // 4. Navigate back to Threshold and verify search state was dismissed.
+        // If the keyguard unoccluded over Settings, pressBack() goes to the lockscreen bouncer, so also
+        // stop Settings to let MainActivity (setShowWhenLocked(true)) re-occlude the keyguard.
         device.pressBack()
+        if (keyguardManager.isKeyguardLocked) {
+            device.executeShellCommand("am force-stop com.android.settings")
+        }
         val restoredPlaceholder = device.waitForFresh(By.text("Type to launch..."), 5000L)
         assertThat(restoredPlaceholder).isNotNull()
     }
