@@ -24,14 +24,12 @@ import com.garan.threshold.core.model.GeoTrigger
 import com.garan.threshold.core.model.GeoTriggerMode
 import com.garan.threshold.core.model.ProfileTrigger
 import com.garan.threshold.ui.launcher.DialerPackageResolver
-import com.garan.threshold.ui.util.ImeUtils
-import com.google.common.truth.Truth.assertWithMessage
+import com.google.common.truth.Truth.assertThat
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
-import kotlin.math.abs
 
 @RunWith(AndroidJUnit4::class)
 class ThresholdGeoProfileInstrumentedTest {
@@ -103,29 +101,6 @@ class ThresholdGeoProfileInstrumentedTest {
             this.elapsedRealtimeNanos = SystemClock.elapsedRealtimeNanos()
         }
         locationManager.setTestProviderLocation(TEST_PROVIDER, mockLocation)
-        val deadline = SystemClock.uptimeMillis() + 1_000L
-        while (SystemClock.uptimeMillis() < deadline) {
-            val last = runCatching { locationManager.getLastKnownLocation(TEST_PROVIDER) }.getOrNull()
-            if (last != null &&
-                abs(last.latitude - latitude) < 1e-5 &&
-                abs(last.longitude - longitude) < 1e-5
-            ) {
-                break
-            }
-            SystemClock.sleep(15L)
-        }
-    }
-
-    private fun dumpUiState(targetLabel: String): String {
-        var dump = "targetLabel=$targetLabel"
-        scenario?.onActivity { activity ->
-            val st = activity.searchViewModel.uiState.value
-            val loc = activity.locationSource.currentLocation.value
-            dump = "targetLabel=$targetLabel, query='${st.query}', isSearching=${st.isSearching}, " +
-                "activeProfiles=${st.activeProfiles.map { it.name }}, " +
-                "results=${st.results.map { it.item.label }}, loc=$loc"
-        }
-        return dump
     }
 
     @Test
@@ -201,19 +176,12 @@ class ThresholdGeoProfileInstrumentedTest {
             activity.refreshLocationAndReconcileForTesting()
             activity.searchViewModel.activateSearch()
             activity.searchViewModel.onQueryChanged(searchPrefix)
-            ImeUtils.dismissIme(activity)
         }
         device.waitForIdle()
 
-        val appSelector = By.pkg(targetContext.packageName).text(targetLabel)
-
         // Outside zone: target app IS visible in search results, and Office badge is absent
-        assertWithMessage(dumpUiState(targetLabel))
-            .that(device.wait(Until.findObject(appSelector), 5000L))
-            .isNotNull()
-        assertWithMessage(dumpUiState(targetLabel))
-            .that(device.findObject(By.desc("Active profile: Office")))
-            .isNull()
+        assertThat(device.wait(Until.findObject(By.text(targetLabel)), 5000L)).isNotNull()
+        assertThat(device.findObject(By.desc("Active profile: Office"))).isNull()
 
         // 2. Teleport inside the Office zone (50m from center)
         pushMockLocation(
@@ -226,12 +194,8 @@ class ThresholdGeoProfileInstrumentedTest {
         device.waitForIdle()
 
         // Inside zone: Office badge is visible, and target app disappears from search results
-        assertWithMessage(dumpUiState(targetLabel))
-            .that(device.wait(Until.findObject(By.desc("Active profile: Office")), 5000L))
-            .isNotNull()
-        assertWithMessage(dumpUiState(targetLabel))
-            .that(device.wait(Until.gone(appSelector), 5000L))
-            .isTrue()
+        assertThat(device.wait(Until.findObject(By.desc("Active profile: Office")), 5000L)).isNotNull()
+        assertThat(device.wait(Until.gone(By.text(targetLabel)), 5000L)).isTrue()
 
         // 3. Teleport to 265m from center (inside the 250m + 25m hysteresis exit buffer)
         pushMockLocation(
@@ -244,12 +208,8 @@ class ThresholdGeoProfileInstrumentedTest {
         device.waitForIdle()
 
         // Hysteresis buffer keeps Office active and target app blocked
-        assertWithMessage(dumpUiState(targetLabel))
-            .that(device.wait(Until.findObject(By.desc("Active profile: Office")), 5000L))
-            .isNotNull()
-        assertWithMessage(dumpUiState(targetLabel))
-            .that(device.findObject(appSelector))
-            .isNull()
+        assertThat(device.wait(Until.findObject(By.desc("Active profile: Office")), 5000L)).isNotNull()
+        assertThat(device.findObject(By.text(targetLabel))).isNull()
 
         // 4. Teleport to 350m from center (outside the 275m hysteresis buffer)
         pushMockLocation(
@@ -262,12 +222,18 @@ class ThresholdGeoProfileInstrumentedTest {
         device.waitForIdle()
 
         // Beyond hysteresis buffer: Office profile deactivates and target app reappears
-        assertWithMessage(dumpUiState(targetLabel))
-            .that(device.wait(Until.findObject(appSelector), 5000L))
+        var debugState = ""
+        scenario?.onActivity { activity ->
+            val st = activity.searchViewModel.uiState.value
+            val loc = activity.locationSource.currentLocation.value
+            debugState = "targetLabel=$targetLabel, query='${st.query}', isSearching=${st.isSearching}, " +
+                "activeProfiles=${st.activeProfiles.map { it.name }}, " +
+                "results=${st.results.map { it.item.label }}, loc=$loc"
+        }
+        com.google.common.truth.Truth.assertWithMessage(debugState)
+            .that(device.wait(Until.findObject(By.text(targetLabel)), 5000L))
             .isNotNull()
-        assertWithMessage(dumpUiState(targetLabel))
-            .that(device.wait(Until.gone(By.desc("Active profile: Office")), 5000L))
-            .isTrue()
+        assertThat(device.wait(Until.gone(By.desc("Active profile: Office")), 5000L)).isTrue()
     }
 
     companion object {

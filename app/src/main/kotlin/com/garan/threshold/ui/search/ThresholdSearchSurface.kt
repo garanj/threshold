@@ -260,13 +260,8 @@ fun ThresholdSearchSurface(
                     )
                 } else {
                     val topResultKey = results.firstOrNull()?.item?.key
-                    LaunchedEffect(query) {
+                    LaunchedEffect(query, topResultKey) {
                         listState.scrollToItem(0)
-                    }
-                    LaunchedEffect(topResultKey) {
-                        if (listState.firstVisibleItemIndex != 0 || listState.firstVisibleItemScrollOffset != 0) {
-                            listState.scrollToItem(0)
-                        }
                     }
 
                     LaunchedEffect(listState) {
@@ -298,6 +293,17 @@ fun ThresholdSearchSurface(
                                 } else {
                                     null
                                 },
+                                modifier = Modifier.animateItem(
+                                    fadeInSpec = ThresholdMotion.opticalTween(
+                                        ThresholdMotion.RESULT_REVEAL_DURATION_MS,
+                                    ),
+                                    fadeOutSpec = ThresholdMotion.opticalTween(
+                                        ThresholdMotion.SHUTTER_CLOSE_DURATION_MS,
+                                    ),
+                                    placementSpec = ThresholdMotion.opticalTween(
+                                        ThresholdMotion.RESULT_REVEAL_DURATION_MS,
+                                    ),
+                                ),
                             )
                         }
                     }
