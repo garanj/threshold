@@ -217,7 +217,7 @@ class SearchViewModel(
                 candidates = apps.map { AppSearchCandidate(it.component, it.label) }
             }
         }
-        val effective = settings ?: settingsRepository?.getSettings() ?: lastObservedSettings ?: return
+        val effective = settings ?: lastObservedSettings ?: settingsRepository?.getSettings() ?: return
         if (hasEnabledGeoProfiles(effective)) {
             locationSource?.refreshLocation()
         }
@@ -476,30 +476,32 @@ class SearchViewModel(
             return
         }
 
-        val snapshotCandidates = candidates
-        val response = searchEngine.searchWithAutoLaunch(
-            query = query,
-            candidates = snapshotCandidates,
-            actions = actions,
-            profile = activeProfile,
-            defaultDialerPackage = resolvedDialerPackage,
-        )
+        var response: com.garan.threshold.core.search.SearchResponse? = null
+        _uiState.update { current ->
+            val snapshotCandidates = candidates
+            val computed = searchEngine.searchWithAutoLaunch(
+                query = query,
+                candidates = snapshotCandidates,
+                actions = actions,
+                profile = activeProfile,
+                defaultDialerPackage = resolvedDialerPackage,
+            )
+            response = computed
+            current.copy(
+                results = computed.results.toImmutableList(),
+                autoLaunchCandidate = computed.autoLaunchCandidate,
+            )
+        }
 
+        val resolved = response ?: return
         val trimmed = query.trim()
-        val decisiveCandidate = response.autoLaunchCandidate
-            ?: if (response.results.size == 1 && trimmed.length >= 2) response.results.first().item else null
+        val decisiveCandidate = resolved.autoLaunchCandidate
+            ?: if (resolved.results.size == 1 && trimmed.length >= 2) resolved.results.first().item else null
         val newDecisiveCandidateKey = decisiveCandidate?.key
 
         if (newDecisiveCandidateKey != null && newDecisiveCandidateKey != lastDecisiveCandidateKey) {
             hapticEngine.targetSnap()
         }
         lastDecisiveCandidateKey = newDecisiveCandidateKey
-
-        _uiState.update {
-            it.copy(
-                results = response.results.toImmutableList(),
-                autoLaunchCandidate = response.autoLaunchCandidate,
-            )
-        }
     }
 }

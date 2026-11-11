@@ -466,6 +466,11 @@ class AndroidLocationSource(context: Context, private val clockMs: () -> Long = 
     }
 
     private fun isNewer(candidate: Location, currentBest: Location): Boolean {
+        val candidateMock = isMockLocation(candidate)
+        val bestMock = isMockLocation(currentBest)
+        if (candidateMock != bestMock) {
+            return candidateMock
+        }
         val candidateNanos = candidate.elapsedRealtimeNanos
         val bestNanos = currentBest.elapsedRealtimeNanos
         return if (candidateNanos > 0L && bestNanos > 0L) {
@@ -473,6 +478,13 @@ class AndroidLocationSource(context: Context, private val clockMs: () -> Long = 
         } else {
             candidate.time >= currentBest.time
         }
+    }
+
+    @Suppress("DEPRECATION")
+    private fun isMockLocation(location: Location): Boolean = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+        location.isMock
+    } else {
+        location.isFromMockProvider
     }
 
     companion object {

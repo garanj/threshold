@@ -162,22 +162,24 @@ class MainActivity : ComponentActivity() {
     @androidx.annotation.VisibleForTesting
     fun setClockAndTriggerAlarmForTesting(dayOfWeek: DayOfWeek, timeOfDay: TimeOfDay) {
         clockOverrideForTesting = ClockSource { LocalDayTime(dayOfWeek, timeOfDay) }
-        ScheduleTransitionNotifier.notifyTransition()
         if (::searchViewModel.isInitialized) {
             kotlinx.coroutines.runBlocking {
                 searchViewModel.reconcileForTesting()
             }
+        } else {
+            ScheduleTransitionNotifier.notifyTransition()
         }
     }
 
     @androidx.annotation.VisibleForTesting
     fun setExactAlarmPermissionForTesting(granted: Boolean?) {
         exactAlarmOverrideForTesting = granted
-        ScheduleTransitionNotifier.notifyTransition()
         if (::searchViewModel.isInitialized) {
             kotlinx.coroutines.runBlocking {
                 searchViewModel.reconcileForTesting()
             }
+        } else {
+            ScheduleTransitionNotifier.notifyTransition()
         }
     }
 

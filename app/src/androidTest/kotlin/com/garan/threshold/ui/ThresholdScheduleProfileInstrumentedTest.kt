@@ -22,7 +22,9 @@ import com.garan.threshold.core.model.ScheduleTrigger
 import com.garan.threshold.core.model.TimeOfDay
 import com.garan.threshold.core.model.TimeWindow
 import com.garan.threshold.ui.launcher.DialerPackageResolver
+import com.garan.threshold.ui.util.ImeUtils
 import com.google.common.truth.Truth.assertThat
+import com.google.common.truth.Truth.assertWithMessage
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Before
@@ -135,14 +137,27 @@ class ThresholdScheduleProfileInstrumentedTest {
             }
             activity.searchViewModel.activateSearch()
             activity.searchViewModel.onQueryChanged(searchPrefix)
+            ImeUtils.dismissIme(activity)
         }
         device.waitForIdle()
 
+        val appSelector = By.pkg(targetContext.packageName).text(targetLabel)
+        fun dumpUiState(): String {
+            var dump = "targetLabel=$targetLabel"
+            scenario?.onActivity { activity ->
+                val st = activity.searchViewModel.uiState.value
+                dump = "targetLabel=$targetLabel, query='${st.query}', isSearching=${st.isSearching}, " +
+                    "activeProfiles=${st.activeProfiles.map { it.name }}, " +
+                    "results=${st.results.map { it.item.label }}"
+            }
+            return dump
+        }
+
         // At Monday 18:30: target app IS visible in search results, and active indicator is absent
-        val visibleBeforeWindow = device.wait(Until.findObject(By.text(targetLabel)), 5000L)
-        assertThat(visibleBeforeWindow).isNotNull()
+        val visibleBeforeWindow = device.wait(Until.findObject(appSelector), 5000L)
+        assertWithMessage(dumpUiState()).that(visibleBeforeWindow).isNotNull()
         val badgeBeforeWindow = device.findObject(By.desc("Active profile: Deep Work"))
-        assertThat(badgeBeforeWindow).isNull()
+        assertWithMessage(dumpUiState()).that(badgeBeforeWindow).isNull()
 
         // 2. Advance clock to Tuesday 02:00 (inside Monday's 19:00-06:00 overnight spillover)
         scenario?.onActivity { activity ->
@@ -155,9 +170,9 @@ class ThresholdScheduleProfileInstrumentedTest {
             Until.findObject(By.desc("Active profile: Deep Work")),
             5000L,
         )
-        assertThat(badgeDuringOvernight).isNotNull()
-        val goneDuringOvernight = device.wait(Until.gone(By.text(targetLabel)), 5000L)
-        assertThat(goneDuringOvernight).isTrue()
+        assertWithMessage(dumpUiState()).that(badgeDuringOvernight).isNotNull()
+        val goneDuringOvernight = device.wait(Until.gone(appSelector), 5000L)
+        assertWithMessage(dumpUiState()).that(goneDuringOvernight).isTrue()
 
         // 3. Advance clock to Tuesday 07:00 (after overnight window ends, before Tuesday 10:00 window)
         scenario?.onActivity { activity ->
@@ -166,13 +181,13 @@ class ThresholdScheduleProfileInstrumentedTest {
         device.waitForIdle()
 
         // At Tuesday 07:00: target app reappears in search results and active indicator clears
-        val visibleBetweenWindows = device.wait(Until.findObject(By.text(targetLabel)), 5000L)
-        assertThat(visibleBetweenWindows).isNotNull()
+        val visibleBetweenWindows = device.wait(Until.findObject(appSelector), 5000L)
+        assertWithMessage(dumpUiState()).that(visibleBetweenWindows).isNotNull()
         val badgeGoneBetweenWindows = device.wait(
             Until.gone(By.desc("Active profile: Deep Work")),
             5000L,
         )
-        assertThat(badgeGoneBetweenWindows).isTrue()
+        assertWithMessage(dumpUiState()).that(badgeGoneBetweenWindows).isTrue()
 
         // 4. Advance clock to Tuesday 10:30 (inside Tuesday's 10:00-11:00 daytime window)
         scenario?.onActivity { activity ->
@@ -185,9 +200,9 @@ class ThresholdScheduleProfileInstrumentedTest {
             Until.findObject(By.desc("Active profile: Deep Work")),
             5000L,
         )
-        assertThat(badgeDuringTuesdaySlot).isNotNull()
-        val goneDuringTuesdaySlot = device.wait(Until.gone(By.text(targetLabel)), 5000L)
-        assertThat(goneDuringTuesdaySlot).isTrue()
+        assertWithMessage(dumpUiState()).that(badgeDuringTuesdaySlot).isNotNull()
+        val goneDuringTuesdaySlot = device.wait(Until.gone(appSelector), 5000L)
+        assertWithMessage(dumpUiState()).that(goneDuringTuesdaySlot).isTrue()
 
         // 5. Simulate missing exact alarm permission -> [!] fault badge appears, then clears when granted
         scenario?.onActivity { activity ->
