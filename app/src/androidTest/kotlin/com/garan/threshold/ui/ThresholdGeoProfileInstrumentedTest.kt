@@ -229,8 +229,27 @@ class ThresholdGeoProfileInstrumentedTest {
         assertWithMessage(dumpUiState(targetLabel))
             .that(device.wait(Until.findObject(By.desc("Active profile: Office")), 5000L))
             .isNotNull()
-        assertWithMessage(dumpUiState(targetLabel))
-            .that(device.wait(Until.gone(appSelector), 5000L))
+        val goneInside = device.wait(Until.gone(appSelector), 5000L)
+        var debugDump = ""
+        if (!goneInside) {
+            // TEMP DEBUG (#62): capture on-screen Threshold nodes + activity records for CI diagnosis
+            val out = java.io.ByteArrayOutputStream()
+            device.dumpWindowHierarchy(out)
+            val nodes = out.toString().lines()
+                .filter { it.contains("package=\"${targetContext.packageName}\"") }
+                .filter { !it.contains("text=\"\" ") || !it.contains("content-desc=\"\"") }
+                .joinToString("\n") { line ->
+                    Regex("(index|text|class|content-desc|bounds)=\"[^\"]*\"")
+                        .findAll(line).joinToString(" ") { it.value }
+                }
+            val acts = device.executeShellCommand("dumpsys activity activities")
+                .lines()
+                .filter { it.contains("threshold") && (it.contains("ActivityRecord") || it.contains("Task{")) }
+                .joinToString("\n") { it.trim() }
+            debugDump = "\n--- NODES ---\n$nodes\n--- ACTIVITIES ---\n$acts"
+        }
+        assertWithMessage(dumpUiState(targetLabel) + debugDump)
+            .that(goneInside)
             .isTrue()
 
         // 3. Teleport to 265m from center (inside the 250m + 25m hysteresis exit buffer)
