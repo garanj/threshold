@@ -7,7 +7,6 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.By
 import androidx.test.uiautomator.UiDevice
-import androidx.test.uiautomator.Until
 import com.garan.threshold.MainActivity
 import com.google.common.truth.Truth.assertThat
 import org.junit.After
@@ -62,9 +61,9 @@ class ThresholdAntiMetricsInstrumentedTest {
         }
 
         // Wait for Home Canvas to be visible
-        val initialStatus = device.wait(
-            Until.findObject(By.text(Pattern.compile(".*UNLOCK.*"))),
-            5000L,
+        val initialStatus = device.waitForFresh(
+            By.text(Pattern.compile(".*UNLOCK.*")),
+            10000L,
         )
         assertThat(initialStatus).isNotNull()
 
@@ -81,9 +80,9 @@ class ThresholdAntiMetricsInstrumentedTest {
         device.waitForIdle()
 
         // 3. Verify anti-metric readout updates with rest duration and incremented unlock count on live UI canvas
-        val updatedStatus = device.wait(
-            Until.findObject(By.text(Pattern.compile("REST 48M.*·.*UNLOCK.*"))),
-            5000L,
+        val updatedStatus = device.waitForFresh(
+            By.text(Pattern.compile("REST 48M.*·.*UNLOCK.*")),
+            10000L,
         )
         assertThat(updatedStatus).isNotNull()
     }

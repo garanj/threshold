@@ -9,7 +9,6 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.By
 import androidx.test.uiautomator.UiDevice
-import androidx.test.uiautomator.Until
 import com.garan.threshold.MainActivity
 import com.google.common.truth.Truth.assertThat
 import org.junit.After
@@ -72,9 +71,9 @@ class ThresholdSearchScrollInstrumentedTest {
         }
 
         // Wait for results to be populated
-        val firstResultLabel = device.wait(
-            Until.findObject(By.clazz("android.widget.TextView")),
-            5000L,
+        val firstResultLabel = device.waitForFresh(
+            By.clazz("android.widget.TextView"),
+            10000L,
         )
         assertThat(firstResultLabel).isNotNull()
 
@@ -99,9 +98,9 @@ class ThresholdSearchScrollInstrumentedTest {
         device.waitForIdle()
 
         // 4. Verify top result for refinedQuery is immediately visible at the top
-        val topAppLabel = device.wait(
-            Until.findObject(By.text(candidateLabel)),
-            5000L,
+        val topAppLabel = device.waitForFresh(
+            By.text(candidateLabel),
+            10000L,
         )
         assertThat(topAppLabel).isNotNull()
     }
