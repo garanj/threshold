@@ -1,5 +1,19 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.library)
+}
+
+val robolectricSdk34 by configurations.creating {
+    isCanBeConsumed = false
+    isCanBeResolved = true
+    isTransitive = false
+}
+
+val robolectricSdk35 by configurations.creating {
+    isCanBeConsumed = false
+    isCanBeResolved = true
+    isTransitive = false
 }
 
 android {
@@ -27,6 +41,25 @@ android {
     testOptions {
         unitTests.isIncludeAndroidResources = true
         unitTests.isReturnDefaultValues = true
+        unitTests.all {
+            it.inputs.files(robolectricSdk34, robolectricSdk35)
+            val depsPropsFile = layout.buildDirectory.file("robolectric/${it.name}-deps.properties")
+            it.jvmArgumentProviders.add(
+                CommandLineArgumentProvider {
+                    val file = depsPropsFile.get().asFile
+                    file.parentFile.mkdirs()
+                    val props = Properties()
+                    listOf(robolectricSdk34, robolectricSdk35)
+                        .flatMap { cfg -> cfg.resolvedConfiguration.resolvedArtifacts }
+                        .forEach { artifact ->
+                            val id = artifact.moduleVersion.id
+                            props.setProperty("${id.group}:${id.name}:${id.version}", artifact.file.absolutePath)
+                        }
+                    file.outputStream().use { out -> props.store(out, null) }
+                    listOf("-Drobolectric-deps.properties=${file.absolutePath}")
+                },
+            )
+        }
     }
 }
 
@@ -90,6 +123,8 @@ dependencies {
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.androidx.junit)
     testImplementation(libs.robolectric)
+    robolectricSdk34(libs.robolectric.android.all.sdk34)
+    robolectricSdk35(libs.robolectric.android.all.sdk35)
 
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.test.runner)

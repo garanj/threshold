@@ -6,6 +6,7 @@ import com.garan.threshold.core.model.BaseProfileSettings
 import com.garan.threshold.core.model.ComponentKey
 import com.garan.threshold.core.model.CustomProfile
 import com.garan.threshold.core.model.DayOfWeek
+import com.garan.threshold.core.model.LocationFix
 import com.garan.threshold.core.model.Profile
 import com.garan.threshold.core.model.TimeOfDay
 import kotlin.random.Random
@@ -41,8 +42,17 @@ class CascadingResolutionEngine {
         customProfiles: List<CustomProfile>,
         currentDay: DayOfWeek,
         currentTime: TimeOfDay,
+        currentLocation: LocationFix? = null,
+        previouslyActiveProfileIds: Set<String> = emptySet(),
     ): List<CustomProfile> = customProfiles
-        .filter { it.isActive(currentDay, currentTime) }
+        .filter {
+            it.isActive(
+                currentDay = currentDay,
+                currentTime = currentTime,
+                currentLocation = currentLocation,
+                wasPreviouslyActive = it.id in previouslyActiveProfileIds,
+            )
+        }
         .sortedBy { it.priority }
 
     /**
@@ -54,6 +64,8 @@ class CascadingResolutionEngine {
      * @param currentDay Current day of the week.
      * @param currentTime Current 24-hour time of day.
      * @param isDefaultDialer Whether this component is the system dialer role holder.
+     * @param currentLocation Optional current geographic location fix.
+     * @param previouslyActiveProfileIds Set of profile IDs that were active in the prior evaluation (for hysteresis).
      * @param random Deterministic random source for random friction evaluation.
      */
     fun resolveAppAccess(
@@ -63,6 +75,8 @@ class CascadingResolutionEngine {
         currentDay: DayOfWeek,
         currentTime: TimeOfDay,
         isDefaultDialer: Boolean,
+        currentLocation: LocationFix? = null,
+        previouslyActiveProfileIds: Set<String> = emptySet(),
         random: Random = Random.Default,
     ): AppAccessState {
         // Prime Invariant 2: Universal Dialer Safety Invariant
@@ -70,7 +84,13 @@ class CascadingResolutionEngine {
             return AppAccessState.Direct
         }
 
-        val activeProfiles = getActiveProfiles(customProfiles, currentDay, currentTime)
+        val activeProfiles = getActiveProfiles(
+            customProfiles = customProfiles,
+            currentDay = currentDay,
+            currentTime = currentTime,
+            currentLocation = currentLocation,
+            previouslyActiveProfileIds = previouslyActiveProfileIds,
+        )
 
         for (profile in activeProfiles) {
             val assignment = profile.appAssignments[component]
@@ -107,9 +127,17 @@ class CascadingResolutionEngine {
         currentTime: TimeOfDay,
         defaultDialerPackage: String,
         additionalComponents: Collection<ComponentKey> = emptyList(),
+        currentLocation: LocationFix? = null,
+        previouslyActiveProfileIds: Set<String> = emptySet(),
         random: Random = Random.Default,
     ): ResolvedWorkingSet {
-        val activeProfiles = getActiveProfiles(customProfiles, currentDay, currentTime)
+        val activeProfiles = getActiveProfiles(
+            customProfiles = customProfiles,
+            currentDay = currentDay,
+            currentTime = currentTime,
+            currentLocation = currentLocation,
+            previouslyActiveProfileIds = previouslyActiveProfileIds,
+        )
 
         val candidateComponents = buildSet {
             addAll(baseProfile.appAssignments.keys)

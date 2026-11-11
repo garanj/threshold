@@ -651,6 +651,86 @@ class SearchViewModelTest {
         assertThat(vm.uiState.value.capabilityIssues).isEmpty()
     }
 
+    @Test
+    fun customGeoProfile_reconcilesAcrossLocationUpdatesAndPreservesBoundaryHysteresis() = runTest(testDispatcher) {
+        val center = com.garan.threshold.core.model.LocationFix(51.5074, -0.1278)
+        val officeProfile = com.garan.threshold.core.model.CustomProfile(
+            id = "office",
+            name = "Office",
+            enabled = true,
+            priority = 0,
+            trigger = com.garan.threshold.core.model.ProfileTrigger.Geo(
+                com.garan.threshold.core.model.GeoTrigger(
+                    latitude = center.latitude,
+                    longitude = center.longitude,
+                    radiusMeters = 250,
+                    mode = com.garan.threshold.core.model.GeoTriggerMode.INSIDE,
+                ),
+            ),
+            appAssignments = mapOf(
+                socialComponent to com.garan.threshold.core.model.AppAssignment.Blocked,
+            ),
+        )
+
+        val fakeRepo = com.garan.threshold.ui.settings.FakeSettingsRepository(
+            com.garan.threshold.core.model.ThresholdSettings(
+                baseProfile = com.garan.threshold.core.model.BaseProfileSettings(
+                    quickActions = listOf(socialComponent),
+                    appAssignments = mapOf(
+                        socialComponent to com.garan.threshold.core.model.AppAssignment.Standard,
+                    ),
+                ),
+                customProfiles = listOf(officeProfile),
+            ),
+        )
+
+        val locationFlow = kotlinx.coroutines.flow.MutableStateFlow<com.garan.threshold.core.model.LocationFix?>(null)
+        val fakeLocationSource = object : com.garan.threshold.core.port.LocationSource {
+            override val currentLocation = locationFlow
+            override suspend fun refreshLocation() = locationFlow.value
+        }
+
+        val vm = SearchViewModel(
+            packageIndexSource = fakePackageIndexSource,
+            settingsRepository = fakeRepo,
+            locationSource = fakeLocationSource,
+            ioDispatcher = testDispatcher,
+        ).apply {
+            ensureIndexLoaded()
+        }
+        advanceUntilIdle()
+
+        // 1. Null location -> inactive
+        assertThat(vm.uiState.value.activeProfiles).isEmpty()
+        assertThat(vm.uiState.value.quickActions.first().accessState).isEqualTo(AppAccessState.Direct)
+
+        // 2. Move inside zone (100m away) -> Office activates, social is Blocked
+        locationFlow.value = com.garan.threshold.core.model.LocationFix(
+            latitude = center.latitude + (100.0 / 111_194.9266),
+            longitude = center.longitude,
+        )
+        advanceUntilIdle()
+        assertThat(vm.uiState.value.activeProfiles).containsExactly(officeProfile)
+        assertThat(vm.uiState.value.quickActions.first().accessState).isEqualTo(AppAccessState.Blocked)
+
+        // 3. Drift to 265m (within 250m + 25m hysteresis buffer) -> stays active
+        locationFlow.value = com.garan.threshold.core.model.LocationFix(
+            latitude = center.latitude + (265.0 / 111_194.9266),
+            longitude = center.longitude,
+        )
+        advanceUntilIdle()
+        assertThat(vm.uiState.value.activeProfiles).containsExactly(officeProfile)
+
+        // 4. Move to 300m (beyond 275m buffer) -> deactivates
+        locationFlow.value = com.garan.threshold.core.model.LocationFix(
+            latitude = center.latitude + (300.0 / 111_194.9266),
+            longitude = center.longitude,
+        )
+        advanceUntilIdle()
+        assertThat(vm.uiState.value.activeProfiles).isEmpty()
+        assertThat(vm.uiState.value.quickActions.first().accessState).isEqualTo(AppAccessState.Direct)
+    }
+
     private class TestHapticEngine : HapticEngine {
         var rotaryDetentCount = 0
             private set

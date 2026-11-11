@@ -347,4 +347,126 @@ object ThresholdIcons {
             }
         }.build()
     }
+
+    /**
+     * Canonical Material location pin outline icon representing Geo profiles.
+     */
+    val LocationOn: ImageVector by lazy {
+        ImageVector.Builder(
+            name = "LocationOn",
+            defaultWidth = 24.dp,
+            defaultHeight = 24.dp,
+            viewportWidth = 24f,
+            viewportHeight = 24f,
+        ).apply {
+            path(fill = SolidColor(Color.White)) {
+                moveTo(12f, 2f)
+                curveTo(8.13f, 2f, 5f, 5.13f, 5f, 9f)
+                curveTo(5f, 14.25f, 12f, 22f, 12f, 22f)
+                curveTo(12f, 22f, 19f, 14.25f, 19f, 9f)
+                curveTo(19f, 5.13f, 15.87f, 2f, 12f, 2f)
+                close()
+                moveTo(7f, 9f)
+                curveTo(7f, 6.24f, 9.24f, 4f, 12f, 4f)
+                curveTo(14.76f, 4f, 17f, 6.24f, 17f, 9f)
+                curveTo(17f, 11.88f, 14.12f, 16.19f, 12f, 18.88f)
+                curveTo(9.92f, 16.21f, 7f, 11.85f, 7f, 9f)
+                close()
+                moveTo(12f, 6.5f)
+                curveTo(10.62f, 6.5f, 9.5f, 7.62f, 9.5f, 9f)
+                curveTo(9.5f, 10.38f, 10.62f, 11.5f, 12f, 11.5f)
+                curveTo(13.38f, 11.5f, 14.5f, 10.38f, 14.5f, 9f)
+                curveTo(14.5f, 7.62f, 13.38f, 6.5f, 12f, 6.5f)
+                close()
+            }
+        }.build()
+    }
+
+    /**
+     * Crosshair GPS fix icon for "Use Current Location".
+     */
+    val MyLocation: ImageVector by lazy {
+        ImageVector.Builder(
+            name = "MyLocation",
+            defaultWidth = 24.dp,
+            defaultHeight = 24.dp,
+            viewportWidth = 24f,
+            viewportHeight = 24f,
+        ).apply {
+            path(fill = SolidColor(Color.White)) {
+                moveTo(12f, 8f)
+                curveTo(9.79f, 8f, 8f, 9.79f, 8f, 12f)
+                curveTo(8f, 14.21f, 9.79f, 16f, 12f, 16f)
+                curveTo(14.21f, 16f, 16f, 14.21f, 16f, 12f)
+                curveTo(16f, 9.79f, 14.21f, 8f, 12f, 8f)
+                close()
+                moveTo(20.94f, 11f)
+                curveTo(20.48f, 6.83f, 17.17f, 3.52f, 13f, 3.06f)
+                verticalLineTo(1f)
+                horizontalLineTo(11f)
+                verticalLineTo(3.06f)
+                curveTo(6.83f, 3.52f, 3.52f, 6.83f, 3.06f, 11f)
+                horizontalLineTo(1f)
+                verticalLineTo(13f)
+                horizontalLineTo(3.06f)
+                curveTo(3.52f, 17.17f, 6.83f, 20.48f, 11f, 20.94f)
+                verticalLineTo(23f)
+                horizontalLineTo(13f)
+                verticalLineTo(20.94f)
+                curveTo(17.17f, 20.48f, 20.48f, 17.17f, 20.94f, 13f)
+                horizontalLineTo(23f)
+                verticalLineTo(11f)
+                horizontalLineTo(20.94f)
+                close()
+                moveTo(12f, 19f)
+                curveTo(8.13f, 19f, 5f, 15.87f, 5f, 12f)
+                curveTo(5f, 8.13f, 8.13f, 5f, 12f, 5f)
+                curveTo(15.87f, 5f, 19f, 8.13f, 19f, 12f)
+                curveTo(19f, 15.87f, 15.87f, 19f, 12f, 19f)
+                close()
+            }
+        }.build()
+    }
+
+    /**
+     * External launch icon for "Open Map App".
+     */
+    val OpenInNew: ImageVector by lazy {
+        ImageVector.Builder(
+            name = "OpenInNew",
+            defaultWidth = 24.dp,
+            defaultHeight = 24.dp,
+            viewportWidth = 24f,
+            viewportHeight = 24f,
+        ).apply {
+            path(fill = SolidColor(Color.White)) {
+                moveTo(19f, 19f)
+                horizontalLineTo(5f)
+                verticalLineTo(5f)
+                horizontalLineTo(12f)
+                verticalLineTo(3f)
+                horizontalLineTo(5f)
+                curveTo(3.89f, 3f, 3f, 3.9f, 3f, 5f)
+                verticalLineTo(19f)
+                curveTo(3f, 20.1f, 3.89f, 21f, 5f, 21f)
+                horizontalLineTo(19f)
+                curveTo(20.1f, 21f, 21f, 20.1f, 21f, 19f)
+                verticalLineTo(12f)
+                horizontalLineTo(19f)
+                verticalLineTo(19f)
+                close()
+                moveTo(14f, 3f)
+                verticalLineTo(5f)
+                horizontalLineTo(17.59f)
+                lineTo(7.76f, 14.83f)
+                lineTo(9.17f, 16.24f)
+                lineTo(19f, 6.41f)
+                verticalLineTo(10f)
+                horizontalLineTo(21f)
+                verticalLineTo(3f)
+                horizontalLineTo(14f)
+                close()
+            }
+        }.build()
+    }
 }

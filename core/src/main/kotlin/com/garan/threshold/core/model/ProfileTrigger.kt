@@ -3,7 +3,7 @@ package com.garan.threshold.core.model
 /**
  * Trigger criteria governing when a custom profile activates.
  *
- * Designed to be extended in future milestones (e.g. NFC physical relay, Geofencing, Manual toggle).
+ * Designed to be extended across temporal schedules, geographic zones, and physical NFC relays.
  */
 sealed interface ProfileTrigger {
 
@@ -14,8 +14,27 @@ sealed interface ProfileTrigger {
         override val requiredCapabilities: Set<ProfileCapability>
             get() = setOf(ProfileCapability.EXACT_ALARM)
 
-        override fun isActive(currentDay: DayOfWeek, currentTime: TimeOfDay): Boolean =
-            schedule.isActive(currentDay, currentTime)
+        override fun isActive(
+            currentDay: DayOfWeek,
+            currentTime: TimeOfDay,
+            currentLocation: LocationFix?,
+            wasPreviouslyActive: Boolean,
+        ): Boolean = schedule.isActive(currentDay, currentTime)
+    }
+
+    /**
+     * Spatial trigger evaluated against a circular geographic zone with boundary hysteresis.
+     */
+    data class Geo(val geo: GeoTrigger = GeoTrigger()) : ProfileTrigger {
+        override val requiredCapabilities: Set<ProfileCapability>
+            get() = setOf(ProfileCapability.BACKGROUND_LOCATION)
+
+        override fun isActive(
+            currentDay: DayOfWeek,
+            currentTime: TimeOfDay,
+            currentLocation: LocationFix?,
+            wasPreviouslyActive: Boolean,
+        ): Boolean = geo.isActive(currentLocation, wasPreviouslyActive)
     }
 
     /**
@@ -24,7 +43,12 @@ sealed interface ProfileTrigger {
     val requiredCapabilities: Set<ProfileCapability>
 
     /**
-     * Evaluates whether this trigger is currently active given temporal context.
+     * Evaluates whether this trigger is currently active given temporal and spatial context.
      */
-    fun isActive(currentDay: DayOfWeek, currentTime: TimeOfDay): Boolean
+    fun isActive(
+        currentDay: DayOfWeek,
+        currentTime: TimeOfDay,
+        currentLocation: LocationFix? = null,
+        wasPreviouslyActive: Boolean = false,
+    ): Boolean
 }

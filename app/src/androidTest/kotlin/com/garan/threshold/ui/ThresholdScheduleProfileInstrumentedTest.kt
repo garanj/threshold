@@ -10,7 +10,6 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.By
 import androidx.test.uiautomator.UiDevice
-import androidx.test.uiautomator.Until
 import com.garan.threshold.MainActivity
 import com.garan.threshold.core.model.AppAssignment
 import com.garan.threshold.core.model.BaseProfileSettings
@@ -139,10 +138,10 @@ class ThresholdScheduleProfileInstrumentedTest {
         device.waitForIdle()
 
         // At Monday 18:30: target app IS visible in search results, and active indicator is absent
-        val visibleBeforeWindow = device.wait(Until.findObject(By.text(targetLabel)), 5000L)
+        val visibleBeforeWindow = device.waitForFresh(By.text(targetLabel), 5000L)
         assertThat(visibleBeforeWindow).isNotNull()
-        val badgeBeforeWindow = device.findObject(By.desc("Active profile: Deep Work"))
-        assertThat(badgeBeforeWindow).isNull()
+        val badgeAbsentBeforeWindow = device.waitUntilGoneFresh(By.desc("Active profile: Deep Work"), 0L)
+        assertThat(badgeAbsentBeforeWindow).isTrue()
 
         // 2. Advance clock to Tuesday 02:00 (inside Monday's 19:00-06:00 overnight spillover)
         scenario?.onActivity { activity ->
@@ -151,12 +150,9 @@ class ThresholdScheduleProfileInstrumentedTest {
         device.waitForIdle()
 
         // At Tuesday 02:00: square active profile indicator ("D") IS visible, and target app disappears
-        val badgeDuringOvernight = device.wait(
-            Until.findObject(By.desc("Active profile: Deep Work")),
-            5000L,
-        )
+        val badgeDuringOvernight = device.waitForFresh(By.desc("Active profile: Deep Work"), 5000L)
         assertThat(badgeDuringOvernight).isNotNull()
-        val goneDuringOvernight = device.wait(Until.gone(By.text(targetLabel)), 5000L)
+        val goneDuringOvernight = device.waitUntilGoneFresh(By.text(targetLabel), 5000L)
         assertThat(goneDuringOvernight).isTrue()
 
         // 3. Advance clock to Tuesday 07:00 (after overnight window ends, before Tuesday 10:00 window)
@@ -166,12 +162,9 @@ class ThresholdScheduleProfileInstrumentedTest {
         device.waitForIdle()
 
         // At Tuesday 07:00: target app reappears in search results and active indicator clears
-        val visibleBetweenWindows = device.wait(Until.findObject(By.text(targetLabel)), 5000L)
+        val visibleBetweenWindows = device.waitForFresh(By.text(targetLabel), 5000L)
         assertThat(visibleBetweenWindows).isNotNull()
-        val badgeGoneBetweenWindows = device.wait(
-            Until.gone(By.desc("Active profile: Deep Work")),
-            5000L,
-        )
+        val badgeGoneBetweenWindows = device.waitUntilGoneFresh(By.desc("Active profile: Deep Work"), 5000L)
         assertThat(badgeGoneBetweenWindows).isTrue()
 
         // 4. Advance clock to Tuesday 10:30 (inside Tuesday's 10:00-11:00 daytime window)
@@ -181,12 +174,9 @@ class ThresholdScheduleProfileInstrumentedTest {
         device.waitForIdle()
 
         // At Tuesday 10:30: square active profile indicator is back, and target app is blocked again
-        val badgeDuringTuesdaySlot = device.wait(
-            Until.findObject(By.desc("Active profile: Deep Work")),
-            5000L,
-        )
+        val badgeDuringTuesdaySlot = device.waitForFresh(By.desc("Active profile: Deep Work"), 5000L)
         assertThat(badgeDuringTuesdaySlot).isNotNull()
-        val goneDuringTuesdaySlot = device.wait(Until.gone(By.text(targetLabel)), 5000L)
+        val goneDuringTuesdaySlot = device.waitUntilGoneFresh(By.text(targetLabel), 5000L)
         assertThat(goneDuringTuesdaySlot).isTrue()
 
         // 5. Simulate missing exact alarm permission -> [!] fault badge appears, then clears when granted
@@ -195,10 +185,7 @@ class ThresholdScheduleProfileInstrumentedTest {
         }
         device.waitForIdle()
 
-        val faultBadge = device.wait(
-            Until.findObject(By.desc("Missing profile permissions")),
-            5000L,
-        )
+        val faultBadge = device.waitForFresh(By.desc("Missing profile permissions"), 5000L)
         assertThat(faultBadge).isNotNull()
 
         scenario?.onActivity { activity ->
@@ -206,10 +193,7 @@ class ThresholdScheduleProfileInstrumentedTest {
         }
         device.waitForIdle()
 
-        val faultBadgeCleared = device.wait(
-            Until.gone(By.desc("Missing profile permissions")),
-            5000L,
-        )
+        val faultBadgeCleared = device.waitUntilGoneFresh(By.desc("Missing profile permissions"), 5000L)
         assertThat(faultBadgeCleared).isTrue()
     }
 }

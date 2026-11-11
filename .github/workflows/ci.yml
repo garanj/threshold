@@ -130,6 +130,9 @@ jobs:
           api-level: 34
           target: google_apis
           arch: x86_64
+          # Phone-sized display (1080x2400 @ 420dpi). Without a profile, avdmanager defaults to a
+          # 320x480dp HVGA skin where the soft keyboard leaves zero height for search results.
+          profile: pixel_6
           force-avd-creation: false
           disk-size: 4096M
           emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -no-metrics

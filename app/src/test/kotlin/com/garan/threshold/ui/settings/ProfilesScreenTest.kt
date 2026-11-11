@@ -9,9 +9,14 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performSemanticsAction
 import com.garan.threshold.core.model.CustomProfile
 import com.garan.threshold.core.model.DayOfWeek
+import com.garan.threshold.core.model.GeoTrigger
+import com.garan.threshold.core.model.GeoTriggerMode
+import com.garan.threshold.core.model.LocationFix
+import com.garan.threshold.core.model.ProfileTrigger
 import com.garan.threshold.core.model.ScheduleTrigger
 import com.garan.threshold.core.model.TimeOfDay
 import com.garan.threshold.core.model.TimeWindow
+import com.garan.threshold.core.port.LocationTelemetry
 import com.garan.threshold.ui.theme.ThresholdTheme
 import com.google.common.truth.Truth.assertThat
 import org.junit.Rule
@@ -206,5 +211,115 @@ class ProfilesScreenTest {
         composeTestRule.onAllNodesWithContentDescription("Delete Profile")[0].performClick()
         composeTestRule.onNodeWithText("Delete").performClick()
         assertThat(deletedId).isEqualTo("p1")
+    }
+
+    @Test
+    fun profilesScreen_displaysGeoProfileCardWithLocationIconAndLiveProximitySummary() {
+        val center = LocationFix(51.5074, -0.1278)
+        val nearby40m = LocationFix(51.5074 + (40.0 / 111_194.9266), -0.1278)
+        val geoProfile = CustomProfile(
+            id = "office",
+            name = "Office",
+            priority = 0,
+            enabled = true,
+            trigger = ProfileTrigger.Geo(
+                GeoTrigger(
+                    latitude = center.latitude,
+                    longitude = center.longitude,
+                    radiusMeters = 250,
+                    mode = GeoTriggerMode.INSIDE,
+                ),
+            ),
+        )
+
+        val telemetry = LocationTelemetry(
+            activeChecksLastHour = 2,
+            activeChecksLast24h = 9,
+            cacheHitsLastHour = 8,
+            cacheHitsLast24h = 34,
+            lastProviderUsed = "fused",
+            lastFixLatencyMs = 95L,
+        )
+
+        composeTestRule.setContent {
+            ThresholdTheme {
+                ProfilesScreen(
+                    profiles = listOf(geoProfile),
+                    currentLocation = nearby40m,
+                    locationTelemetry = telemetry,
+                    onSaveProfile = {},
+                    onDeleteProfile = {},
+                    onReorderProfiles = {},
+                    onConfigureProfileApps = {},
+                    onBack = {},
+                )
+            }
+        }
+
+        // Verify Geo profile pin icon, live summary, "Location" action button, and telemetry footer
+        assertThat(composeTestRule.onAllNodesWithContentDescription("Geo profile").fetchSemanticsNodes())
+            .hasSize(1)
+        composeTestRule.onNodeWithText("Inside 250m · Currently inside (40m away)").assertIsDisplayed()
+        composeTestRule.onNodeWithText("Location").assertIsDisplayed()
+        composeTestRule.onNodeWithText("Location checks: 2/hr · 9/24h (34 cached) · fused (95ms)")
+            .assertIsDisplayed()
+    }
+
+    @Test
+    fun profilesScreen_creatingGeoProfileViaSegmentedTypeSelector_savesGeoTrigger() {
+        val savedProfiles = mutableListOf<CustomProfile>()
+        val mockedFix = LocationFix(51.5074, -0.1278)
+        var locationPermissionEnsured = false
+
+        composeTestRule.setContent {
+            ThresholdTheme {
+                ProfilesScreen(
+                    profiles = emptyList(),
+                    onSaveProfile = { savedProfiles.add(it) },
+                    onDeleteProfile = {},
+                    onReorderProfiles = {},
+                    onConfigureProfileApps = {},
+                    onBack = {},
+                    onUseCurrentLocation = { callback -> callback(mockedFix) },
+                    onEnsureLocationPermissionForProfile = { locationPermissionEnsured = true },
+                )
+            }
+        }
+
+        // Open New Profile sheet
+        composeTestRule.onNodeWithText("Add Profile").performClick()
+
+        // Switch from Schedule to Geo via the segmented type selector
+        composeTestRule
+            .onNodeWithText("Geo")
+            .performSemanticsAction(SemanticsActions.OnClick)
+
+        // Select "Outside zone" and "500m" radius preset
+        composeTestRule
+            .onNodeWithText("Outside zone")
+            .performSemanticsAction(SemanticsActions.OnClick)
+        composeTestRule
+            .onNodeWithText("500m")
+            .performSemanticsAction(SemanticsActions.OnClick)
+
+        // Tap "Use Current Location" to populate coordinates
+        composeTestRule
+            .onNodeWithText("Use Current Location")
+            .performSemanticsAction(SemanticsActions.OnClick)
+
+        // Tap "Create"
+        composeTestRule
+            .onNodeWithText("Create")
+            .performSemanticsAction(SemanticsActions.OnClick)
+
+        assertThat(savedProfiles).hasSize(1)
+        val created = savedProfiles.first()
+        assertThat(created.name).isEqualTo("Geo Profile")
+        val geo = (created.trigger as ProfileTrigger.Geo).geo
+        assertThat(geo.latitude).isWithin(0.0001).of(51.5074)
+        assertThat(geo.longitude).isWithin(0.0001).of(-0.1278)
+        assertThat(geo.radiusMeters).isEqualTo(500)
+        assertThat(geo.mode).isEqualTo(GeoTriggerMode.OUTSIDE)
+        assertThat(locationPermissionEnsured).isTrue()
     }
 }

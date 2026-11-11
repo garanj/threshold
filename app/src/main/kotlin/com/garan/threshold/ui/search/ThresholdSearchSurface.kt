@@ -259,7 +259,8 @@ fun ThresholdSearchSurface(
                         modifier = Modifier.padding(vertical = 12.dp),
                     )
                 } else {
-                    LaunchedEffect(query) {
+                    val topResultKey = results.firstOrNull()?.item?.key
+                    LaunchedEffect(query, topResultKey) {
                         listState.scrollToItem(0)
                     }
 
