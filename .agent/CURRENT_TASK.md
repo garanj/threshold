@@ -1,24 +1,16 @@
-# Active Task: Issue #62 — Geo Profiles with Zero-Bloat Location Editor & Hysteresis
+# Active Task: Issue #65 — AppInfo Instrumented Test Failure on Android 17 (API 37)
 
-- **Issue:** [#62](https://github.com/garanj/threshold/issues/62)
-- **Branch:** `feat/62-geo-profiles`
-- **Status:** Ready for PR Review
+- **Issue:** [#65](https://github.com/garanj/threshold/issues/65)
+- **Branch:** `fix/65-app-info-instrumented-test`
+- **Status:** Completed
 
 ## Checklist
-- [x] **1. `:core` Domain Model, Math, Coordinate Parser & Unit Tests (TDD):**
-  - `LocationFix(latitude, longitude)` with Haversine `distanceMetersTo`.
-  - `GeoTrigger(latitude, longitude, radiusMeters, mode)` with `GeoTriggerMode.INSIDE` / `OUTSIDE`, preset radii (`100`, `250`, `500`, `1000`), and `+25m` hysteresis exit buffer (`HYSTERESIS_BUFFER_METERS = 25.0`).
-  - `GeoCoordinateParser` supporting decimal `lat, lng`, `geo:lat,lng`, and DMS coordinates.
-  - `ProfileTrigger.Geo(val geo: GeoTrigger)` and `LocationSource` port in `:core`.
-  - Updated `CustomProfile.isActive` and `CascadingResolutionEngine` to accept `currentLocation: LocationFix? = null` and `wasPreviouslyActive: Boolean = false` / `previouslyActiveProfileIds: Set<String> = emptySet()`.
-- [x] **2. `:data` Location Adapter, Capability Checker, Serialization & Robolectric Tests:**
-  - `AndroidLocationSource` backed by platform `LocationManager` (`FUSED_PROVIDER`, `GPS_PROVIDER`, `NETWORK_PROVIDER`).
-  - Updated `AndroidSettingsRepository` JSON serialization to persist `ProfileTrigger.Geo`.
-  - Updated `AndroidProfileCapabilityChecker` for Geo location capability (`ACCESS_FINE_LOCATION` / `ACCESS_COARSE_LOCATION` + `isLocationEnabled`).
-- [x] **3. `:app` UI, Editor Sheet, Capability Fault Sheet & Robolectric / Screenshot Tests:**
-  - Added `ThresholdIcons.LocationOn`, `ThresholdIcons.MyLocation`, and `ThresholdIcons.OpenInNew` vector icons.
-  - Updated `ScheduleEditorDialog.kt` (`ProfileEditorSheet`) with `[ Schedule | Geo ]` `SingleChoiceSegmentedButtonRow` on creation and dedicated `GeoEditorFields` when creating/editing Geo profiles.
-  - Updated `ProfilesScreen.kt` to render `ThresholdIcons.LocationOn`, live distance/status summary, and `"Location"` action button on Geo profile cards.
-  - Wired `LocationSource` into `SearchViewModel` and `MainActivity` (`onResume` refresh + inline permission request + capability fault action).
-- [x] **4. Real-Device Instrumented Test (`ThresholdGeoProfileInstrumentedTest`):**
-  - Mock GPS location via `LocationManager.addTestProvider` + `setTestProviderLocation` and verify inside, hysteresis buffer, and outside transitions.
+- [x] **1. Reproduce & Identify Root Cause on API 37:**
+  - Confirmed Hypothesis 1 (`AccessibilityCache` stale window/node hierarchy across the `Threshold` -> `InstalledAppDetails` -> `SpaActivity` transition when `UiAutomation.clearCache()` is not called before each poll).
+  - Ruled out Hypothesis 2 (`uiautomator dump` on API 37 confirms `com.android.settings/.spa.SpaActivity` exposes its full `ComposeView` semantics tree with `package="com.android.settings"`).
+- [x] **2. Fix `ThresholdAppInfoInstrumentedTest` & `FreshUiWait`:**
+  - Added `device.executeShellCommand("am force-stop com.android.settings")` in `setUp()` and `tearDown()` of `ThresholdAppInfoInstrumentedTest`.
+  - Replaced `device.wait(Until.findObject(...))` and `device.wait(Until.hasObject(...))` with `device.waitForFresh(...)` in `ThresholdAppInfoInstrumentedTest` so `uiAutomation.clearCache()` runs before each poll.
+- [x] **3. Verification:**
+  - Verified test passes 3x consecutively on API 37 (`ci37phone`) and passes on API 34 (`ci34phone`).
+  - Verified `./gradlew test spotlessCheck` passes.

@@ -8,12 +8,15 @@ import androidx.test.uiautomator.UiDevice
 import androidx.test.uiautomator.UiObject2
 
 /**
- * UiAutomator's `device.wait(Until.findObject(...))` / `Until.gone(...)` poll the process-wide
- * accessibility node cache. When Compose removes or inserts nodes in quick succession (e.g. a
- * profile activating and filtering a search result), that cache can keep serving stale nodes for
- * longer than the wait timeout, so assertions fail even though the on-screen UI is already correct.
+ * UiAutomator's `device.wait(Until.findObject(...))` / `Until.hasObject(...)` / `Until.gone(...)`
+ * poll the process-wide `AccessibilityCache` (both cached window lists and node trees). When
+ * Compose mutates semantics rapidly or an activity transition hops across windows (e.g. Threshold
+ * launching Settings' `InstalledAppDetails` trampoline into `SpaActivity`), `AccessibilityCache`
+ * can keep `mIsAllWindowsCached = true` and serve the stale window/node hierarchy for longer than
+ * the wait timeout, causing assertions to fail even though the on-screen UI is already updated.
  *
- * These helpers clear the cache before every poll so each check reads the live hierarchy.
+ * These helpers call `UiAutomation.clearCache()` before every poll so each check reads the live
+ * window and node hierarchy from `system_server`.
  */
 private const val POLL_INTERVAL_MS = 100L
 
