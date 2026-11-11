@@ -1,8 +1,22 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.baselineprofile)
+}
+
+val robolectricSdk34 by configurations.creating {
+    isCanBeConsumed = false
+    isCanBeResolved = true
+    isTransitive = false
+}
+
+val robolectricSdk35 by configurations.creating {
+    isCanBeConsumed = false
+    isCanBeResolved = true
+    isTransitive = false
 }
 
 android {
@@ -50,6 +64,23 @@ android {
         unitTests.isIncludeAndroidResources = true
         unitTests.isReturnDefaultValues = true
         unitTests.all {
+            it.inputs.files(robolectricSdk34, robolectricSdk35)
+            val depsPropsFile = layout.buildDirectory.file("robolectric/${it.name}-deps.properties")
+            it.jvmArgumentProviders.add(
+                CommandLineArgumentProvider {
+                    val file = depsPropsFile.get().asFile
+                    file.parentFile.mkdirs()
+                    val props = Properties()
+                    listOf(robolectricSdk34, robolectricSdk35)
+                        .flatMap { cfg -> cfg.resolvedConfiguration.resolvedArtifacts }
+                        .forEach { artifact ->
+                            val id = artifact.moduleVersion.id
+                            props.setProperty("${id.group}:${id.name}:${id.version}", artifact.file.absolutePath)
+                        }
+                    file.outputStream().use { out -> props.store(out, null) }
+                    listOf("-Drobolectric-deps.properties=${file.absolutePath}")
+                },
+            )
             val recordScreenshots = project.findProperty("roborazzi.test.record") == "true"
             if (recordScreenshots) {
                 it.systemProperty("roborazzi.test.record", "true")
@@ -109,6 +140,8 @@ dependencies {
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.androidx.compose.ui.test.junit4)
     testImplementation(libs.robolectric)
+    robolectricSdk34(libs.robolectric.android.all.sdk34)
+    robolectricSdk35(libs.robolectric.android.all.sdk35)
     testImplementation(libs.roborazzi)
     testImplementation(libs.roborazzi.compose)
     testImplementation(libs.roborazzi.junit.rule)
