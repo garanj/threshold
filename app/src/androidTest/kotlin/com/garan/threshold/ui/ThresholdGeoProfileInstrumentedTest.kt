@@ -14,7 +14,6 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.By
 import androidx.test.uiautomator.UiDevice
-import androidx.test.uiautomator.Until
 import com.garan.threshold.MainActivity
 import com.garan.threshold.core.model.AppAssignment
 import com.garan.threshold.core.model.BaseProfileSettings
@@ -180,8 +179,8 @@ class ThresholdGeoProfileInstrumentedTest {
         device.waitForIdle()
 
         // Outside zone: target app IS visible in search results, and Office badge is absent
-        assertThat(device.wait(Until.findObject(By.text(targetLabel)), 5000L)).isNotNull()
-        assertThat(device.findObject(By.desc("Active profile: Office"))).isNull()
+        assertThat(device.waitForFresh(By.text(targetLabel), 5000L)).isNotNull()
+        assertThat(device.waitUntilGoneFresh(By.desc("Active profile: Office"), 0L)).isTrue()
 
         // 2. Teleport inside the Office zone (50m from center)
         pushMockLocation(
@@ -194,8 +193,8 @@ class ThresholdGeoProfileInstrumentedTest {
         device.waitForIdle()
 
         // Inside zone: Office badge is visible, and target app disappears from search results
-        assertThat(device.wait(Until.findObject(By.desc("Active profile: Office")), 5000L)).isNotNull()
-        assertThat(device.wait(Until.gone(By.text(targetLabel)), 5000L)).isTrue()
+        assertThat(device.waitForFresh(By.desc("Active profile: Office"), 5000L)).isNotNull()
+        assertThat(device.waitUntilGoneFresh(By.text(targetLabel), 5000L)).isTrue()
 
         // 3. Teleport to 265m from center (inside the 250m + 25m hysteresis exit buffer)
         pushMockLocation(
@@ -208,8 +207,8 @@ class ThresholdGeoProfileInstrumentedTest {
         device.waitForIdle()
 
         // Hysteresis buffer keeps Office active and target app blocked
-        assertThat(device.wait(Until.findObject(By.desc("Active profile: Office")), 5000L)).isNotNull()
-        assertThat(device.findObject(By.text(targetLabel))).isNull()
+        assertThat(device.waitForFresh(By.desc("Active profile: Office"), 5000L)).isNotNull()
+        assertThat(device.waitUntilGoneFresh(By.text(targetLabel), 0L)).isTrue()
 
         // 4. Teleport to 350m from center (outside the 275m hysteresis buffer)
         pushMockLocation(
@@ -231,9 +230,9 @@ class ThresholdGeoProfileInstrumentedTest {
                 "results=${st.results.map { it.item.label }}, loc=$loc"
         }
         com.google.common.truth.Truth.assertWithMessage(debugState)
-            .that(device.wait(Until.findObject(By.text(targetLabel)), 5000L))
+            .that(device.waitForFresh(By.text(targetLabel), 5000L))
             .isNotNull()
-        assertThat(device.wait(Until.gone(By.desc("Active profile: Office")), 5000L)).isTrue()
+        assertThat(device.waitUntilGoneFresh(By.desc("Active profile: Office"), 5000L)).isTrue()
     }
 
     companion object {
