@@ -25,17 +25,21 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.platform.LocalViewConfiguration
+import androidx.compose.ui.platform.ViewConfiguration
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
@@ -62,6 +66,8 @@ import com.garan.threshold.ui.search.ThresholdSearchSurface
 import com.garan.threshold.ui.theme.SubtleGray
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.coroutines.delay
+
+internal const val SETTINGS_LONG_PRESS_TIMEOUT_MS = 3_000L
 
 /**
  * Top-level home screen for Threshold.
@@ -218,90 +224,105 @@ fun ThresholdHomeScreen(
             }
         }
     } else {
-        Box(modifier = modifier.fillMaxSize()) {
-            ThresholdHomeCanvas(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .pointerInput(Unit) {
-                        detectTapGestures(
-                            onLongPress = {
-                                if (!hasSeenFirstRunHint) {
-                                    viewModel.markFirstRunHintSeen()
-                                }
-                                onOpenSettings()
-                            },
-                        )
-                    },
-                statusText = effectiveStatusText,
-                activeProfiles = uiState.activeProfiles,
-                hasCapabilityIssues = uiState.capabilityIssues.isNotEmpty(),
-                onCapabilityFaultClick = { showCapabilityFaultSheet = true },
-                onTimeTick = {
-                    antiMetricsRepository?.refreshForCurrentDate()
-                    viewModel.refreshScheduleEvaluation()
-                },
-            ) {
-                Spacer(modifier = Modifier.height(24.dp))
+        val defaultViewConfig = LocalViewConfiguration.current
+        val settingsLongPressViewConfig = remember(defaultViewConfig) {
+            object : ViewConfiguration by defaultViewConfig {
+                override val longPressTimeoutMillis: Long = SETTINGS_LONG_PRESS_TIMEOUT_MS
+            }
+        }
+        val currentHasSeenFirstRunHint by rememberUpdatedState(hasSeenFirstRunHint)
+        val currentOnOpenSettings by rememberUpdatedState(onOpenSettings)
 
-                ThresholdSearchSurface(
-                    query = uiState.query,
-                    onQueryChange = viewModel::onQueryChanged,
-                    results = uiState.results,
-                    listState = searchListState,
-                    quickActions = uiState.quickActions,
-                    onQuickActionClick = { quickItem ->
-                        viewModel.launchQuickAction(quickItem) {
-                            val launched = appLauncher.launchApp(quickItem.component)
-                            if (launched) {
-                                resetSearchAndHideIme()
-                            }
-                        }
+        Box(modifier = modifier.fillMaxSize()) {
+            CompositionLocalProvider(LocalViewConfiguration provides settingsLongPressViewConfig) {
+                ThresholdHomeCanvas(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .pointerInput(Unit) {
+                            detectTapGestures(
+                                onLongPress = {
+                                    if (!currentHasSeenFirstRunHint) {
+                                        viewModel.markFirstRunHintSeen()
+                                    }
+                                    currentOnOpenSettings()
+                                },
+                            )
+                        },
+                    statusText = effectiveStatusText,
+                    activeProfiles = uiState.activeProfiles,
+                    hasCapabilityIssues = uiState.capabilityIssues.isNotEmpty(),
+                    onCapabilityFaultClick = { showCapabilityFaultSheet = true },
+                    onTimeTick = {
+                        antiMetricsRepository?.refreshForCurrentDate()
+                        viewModel.refreshScheduleEvaluation()
                     },
-                    onItemClick = { item ->
-                        when (item) {
-                            is SearchItem.App -> {
-                                when (val result = viewModel.evaluateLaunch(item)) {
-                                    is LaunchResult.Launched -> {
-                                        val launched = appLauncher.launchApp(item.component)
-                                        if (launched) {
+                ) {
+                    Spacer(modifier = Modifier.height(24.dp))
+
+                    // Restore default ViewConfiguration for children so search result long-press
+                    // (App Info) and text input handles retain the standard system timeout.
+                    CompositionLocalProvider(LocalViewConfiguration provides defaultViewConfig) {
+                        ThresholdSearchSurface(
+                            query = uiState.query,
+                            onQueryChange = viewModel::onQueryChanged,
+                            results = uiState.results,
+                            listState = searchListState,
+                            quickActions = uiState.quickActions,
+                            onQuickActionClick = { quickItem ->
+                                viewModel.launchQuickAction(quickItem) {
+                                    val launched = appLauncher.launchApp(quickItem.component)
+                                    if (launched) {
+                                        resetSearchAndHideIme()
+                                    }
+                                }
+                            },
+                            onItemClick = { item ->
+                                when (item) {
+                                    is SearchItem.App -> {
+                                        when (val result = viewModel.evaluateLaunch(item)) {
+                                            is LaunchResult.Launched -> {
+                                                val launched = appLauncher.launchApp(item.component)
+                                                if (launched) {
+                                                    resetSearchAndHideIme()
+                                                }
+                                            }
+                                            is LaunchResult.FrictionRequired -> {
+                                                hapticEngine.resistanceDetent()
+                                                val requiresKeyboard = result.policy is FrictionPolicy.TypedIntention ||
+                                                    result.policy is FrictionPolicy.SessionBudget
+                                                if (!requiresKeyboard) {
+                                                    hideImeAndClearFocus()
+                                                }
+                                                viewModel.openFriction(item, result.policy)
+                                            }
+                                            is LaunchResult.Blocked -> {
+                                                hapticEngine.resistanceDetent()
+                                            }
+                                        }
+                                    }
+                                    is SearchItem.Action -> {
+                                        if (item.id == "settings") {
                                             resetSearchAndHideIme()
+                                            onOpenSettings()
                                         }
                                     }
-                                    is LaunchResult.FrictionRequired -> {
-                                        hapticEngine.resistanceDetent()
-                                        val requiresKeyboard = result.policy is FrictionPolicy.TypedIntention ||
-                                            result.policy is FrictionPolicy.SessionBudget
-                                        if (!requiresKeyboard) {
-                                            hideImeAndClearFocus()
-                                        }
-                                        viewModel.openFriction(item, result.policy)
-                                    }
-                                    is LaunchResult.Blocked -> {
-                                        hapticEngine.resistanceDetent()
+                                }
+                            },
+                            onItemLongClick = { item ->
+                                if (item is SearchItem.App) {
+                                    hapticEngine.resistanceDetent()
+                                    val opened = appLauncher.openAppInfo(item.component)
+                                    if (opened) {
+                                        resetSearchAndHideIme()
                                     }
                                 }
-                            }
-                            is SearchItem.Action -> {
-                                if (item.id == "settings") {
-                                    resetSearchAndHideIme()
-                                    onOpenSettings()
-                                }
-                            }
-                        }
-                    },
-                    onItemLongClick = { item ->
-                        if (item is SearchItem.App) {
-                            hapticEngine.resistanceDetent()
-                            val opened = appLauncher.openAppInfo(item.component)
-                            if (opened) {
-                                resetSearchAndHideIme()
-                            }
-                        }
-                    },
-                    isSearchActive = inSearch,
-                    onActivateSearch = viewModel::activateSearch,
-                    hapticEngine = hapticEngine,
-                )
+                            },
+                            isSearchActive = inSearch,
+                            onActivateSearch = viewModel::activateSearch,
+                            hapticEngine = hapticEngine,
+                        )
+                    }
+                }
             }
 
             // First-run Onboarding Hint (displayed in center, optical fade out at 20s)

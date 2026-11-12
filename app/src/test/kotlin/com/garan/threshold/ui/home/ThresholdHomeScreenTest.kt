@@ -174,9 +174,9 @@ class ThresholdHomeScreenTest {
         composeTestRule.onNode(hasSetTextAction()).performTextInput("cam")
         composeTestRule.waitForIdle()
 
-        // Long-press on the app item
+        // Long-press on the app item (standard 500ms press — child ViewConfiguration must not require 3s)
         composeTestRule.onNodeWithText("Camera").performTouchInput {
-            longClick()
+            longClick(durationMillis = 500L)
         }
         composeTestRule.waitForIdle()
 
@@ -499,6 +499,58 @@ class ThresholdHomeScreenTest {
         }
 
         composeTestRule.onNodeWithText("REST 48M  ·  6 UNLOCKS").assertIsDisplayed()
+    }
+
+    @Test
+    fun homeCanvas_pressUnderThreeSeconds_doesNotOpenSettings() {
+        val viewModel = SearchViewModel(packageIndexSource = fakePackageIndexSource)
+        val launcher = FakeAppLauncher()
+        var settingsOpenedCount = 0
+
+        composeTestRule.setContent {
+            ThresholdTheme {
+                ThresholdHomeScreen(
+                    viewModel = viewModel,
+                    appLauncher = launcher,
+                    onOpenSettings = { settingsOpenedCount++ },
+                )
+            }
+        }
+
+        // Hold for 2,500ms (well above Android's default 400ms long-press, but below 3,000ms)
+        composeTestRule.onNodeWithText("THRESHOLD").performTouchInput {
+            down(center)
+            advanceEventTime(2_500L)
+            up()
+        }
+        composeTestRule.waitForIdle()
+
+        assertThat(settingsOpenedCount).isEqualTo(0)
+    }
+
+    @Test
+    fun homeCanvas_longPressThreeSeconds_opensSettingsAndMarksFirstRunHintSeen() {
+        val viewModel = SearchViewModel(packageIndexSource = fakePackageIndexSource)
+        val launcher = FakeAppLauncher()
+        var settingsOpenedCount = 0
+
+        composeTestRule.setContent {
+            ThresholdTheme {
+                ThresholdHomeScreen(
+                    viewModel = viewModel,
+                    appLauncher = launcher,
+                    onOpenSettings = { settingsOpenedCount++ },
+                )
+            }
+        }
+
+        // Hold for >= 3,000ms (default node longClick reads viewConfiguration.longPressTimeoutMillis + 100L = 3,100ms)
+        composeTestRule.onNodeWithText("THRESHOLD").performTouchInput {
+            longClick()
+        }
+        composeTestRule.waitForIdle()
+
+        assertThat(settingsOpenedCount).isEqualTo(1)
     }
 
     private class TestHapticEngine : HapticEngine {
