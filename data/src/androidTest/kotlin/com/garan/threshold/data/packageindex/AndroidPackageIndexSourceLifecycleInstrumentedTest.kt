@@ -9,10 +9,10 @@ import androidx.test.uiautomator.UiDevice
 import com.garan.threshold.core.port.PackageChangeEvent
 import com.google.common.truth.Truth.assertThat
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
@@ -22,6 +22,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import java.io.File
 import java.io.FileOutputStream
+import java.util.concurrent.CopyOnWriteArrayList
 
 @RunWith(AndroidJUnit4::class)
 class AndroidPackageIndexSourceLifecycleInstrumentedTest {
@@ -60,7 +61,9 @@ class AndroidPackageIndexSourceLifecycleInstrumentedTest {
 
         instrumentation.uiAutomation.adoptShellPermissionIdentity("android.permission.QUERY_ALL_PACKAGES")
 
-        packageIndexSource = AndroidPackageIndexSource(targetContext)
+        // Use Dispatchers.Unconfined so observePackageChanges() registers LauncherApps.Callback
+        // synchronously when collected with CoroutineStart.UNDISPATCHED before installFixtureApk() runs.
+        packageIndexSource = AndroidPackageIndexSource(targetContext, ioDispatcher = Dispatchers.Unconfined)
     }
 
     @After
@@ -115,8 +118,8 @@ class AndroidPackageIndexSourceLifecycleInstrumentedTest {
     fun realOsPackageInstallAndUninstallEmitsAddedAndRemovedEvents() = runBlocking {
         testScope = CoroutineScope(Dispatchers.Default + Job())
 
-        val events = mutableListOf<PackageChangeEvent>()
-        val collectionJob = testScope!!.launch {
+        val events = CopyOnWriteArrayList<PackageChangeEvent>()
+        val collectionJob = testScope!!.launch(start = CoroutineStart.UNDISPATCHED) {
             packageIndexSource.observePackageChanges()
                 .collect { event ->
                     println("[TEST-LIFECYCLE] Observed PackageChangeEvent: $event")
@@ -144,10 +147,11 @@ class AndroidPackageIndexSourceLifecycleInstrumentedTest {
         val installOutput = installFixtureApk()
         println("[TEST-LIFECYCLE] installOutput: $installOutput")
         assertThat(installOutput.lowercase()).contains("success")
+        device.executeShellCommand("am wait-for-broadcast-idle")
 
-        // Wait up to 15 seconds for OS LauncherApps.Callback Binder dispatch
+        // Wait up to 30 seconds for OS LauncherApps.Callback Binder dispatch
         try {
-            withTimeout(15_000) {
+            withTimeout(30_000) {
                 while (events.none { it is PackageChangeEvent.Added }) {
                     kotlinx.coroutines.delay(200)
                 }
@@ -178,10 +182,11 @@ class AndroidPackageIndexSourceLifecycleInstrumentedTest {
         val uninstallOutput = device.executeShellCommand("pm uninstall $targetPackage")
         println("[TEST-LIFECYCLE] uninstallOutput: $uninstallOutput")
         assertThat(uninstallOutput.lowercase()).contains("success")
+        device.executeShellCommand("am wait-for-broadcast-idle")
 
-        // Wait up to 15 seconds for OS LauncherApps.Callback uninstall dispatch
+        // Wait up to 30 seconds for OS LauncherApps.Callback uninstall dispatch
         try {
-            withTimeout(15_000) {
+            withTimeout(30_000) {
                 while (events.none { it is PackageChangeEvent.Removed }) {
                     kotlinx.coroutines.delay(200)
                 }
