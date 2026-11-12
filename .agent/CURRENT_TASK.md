@@ -1,24 +1,18 @@
-# Active Task: Issue #62 — Geo Profiles with Zero-Bloat Location Editor & Hysteresis
+# Active Task: Issue #65 — AppInfo Instrumented Test Failure on Android 17 (API 37)
 
-- **Issue:** [#62](https://github.com/garanj/threshold/issues/62)
-- **Branch:** `feat/62-geo-profiles`
-- **Status:** Ready for PR Review
+- **Issue:** [#65](https://github.com/garanj/threshold/issues/65)
+- **Branch:** `fix/65-app-info-instrumented-test`
+- **Status:** Completed
 
 ## Checklist
-- [x] **1. `:core` Domain Model, Math, Coordinate Parser & Unit Tests (TDD):**
-  - `LocationFix(latitude, longitude)` with Haversine `distanceMetersTo`.
-  - `GeoTrigger(latitude, longitude, radiusMeters, mode)` with `GeoTriggerMode.INSIDE` / `OUTSIDE`, preset radii (`100`, `250`, `500`, `1000`), and `+25m` hysteresis exit buffer (`HYSTERESIS_BUFFER_METERS = 25.0`).
-  - `GeoCoordinateParser` supporting decimal `lat, lng`, `geo:lat,lng`, and DMS coordinates.
-  - `ProfileTrigger.Geo(val geo: GeoTrigger)` and `LocationSource` port in `:core`.
-  - Updated `CustomProfile.isActive` and `CascadingResolutionEngine` to accept `currentLocation: LocationFix? = null` and `wasPreviouslyActive: Boolean = false` / `previouslyActiveProfileIds: Set<String> = emptySet()`.
-- [x] **2. `:data` Location Adapter, Capability Checker, Serialization & Robolectric Tests:**
-  - `AndroidLocationSource` backed by platform `LocationManager` (`FUSED_PROVIDER`, `GPS_PROVIDER`, `NETWORK_PROVIDER`).
-  - Updated `AndroidSettingsRepository` JSON serialization to persist `ProfileTrigger.Geo`.
-  - Updated `AndroidProfileCapabilityChecker` for Geo location capability (`ACCESS_FINE_LOCATION` / `ACCESS_COARSE_LOCATION` + `isLocationEnabled`).
-- [x] **3. `:app` UI, Editor Sheet, Capability Fault Sheet & Robolectric / Screenshot Tests:**
-  - Added `ThresholdIcons.LocationOn`, `ThresholdIcons.MyLocation`, and `ThresholdIcons.OpenInNew` vector icons.
-  - Updated `ScheduleEditorDialog.kt` (`ProfileEditorSheet`) with `[ Schedule | Geo ]` `SingleChoiceSegmentedButtonRow` on creation and dedicated `GeoEditorFields` when creating/editing Geo profiles.
-  - Updated `ProfilesScreen.kt` to render `ThresholdIcons.LocationOn`, live distance/status summary, and `"Location"` action button on Geo profile cards.
-  - Wired `LocationSource` into `SearchViewModel` and `MainActivity` (`onResume` refresh + inline permission request + capability fault action).
-- [x] **4. Real-Device Instrumented Test (`ThresholdGeoProfileInstrumentedTest`):**
-  - Mock GPS location via `LocationManager.addTestProvider` + `setTestProviderLocation` and verify inside, hysteresis buffer, and outside transitions.
+- [x] **1. Reproduce & Identify Root Cause on API 37:**
+  - Confirmed Hypothesis 1 (`AccessibilityCache` stale window/node hierarchy across the `Threshold` -> `InstalledAppDetails` -> `SpaActivity` transition when `UiAutomation.clearCache()` is not called before each poll).
+  - Identified locked-device keyguard unocclusion on physical hardware (`KeyguardManager.isKeyguardLocked`): `MainActivity` sets `setShowWhenLocked(true)` (occluding the lockscreen), whereas `com.android.settings/.spa.SpaActivity` does not set `showWhenLocked`, causing `WindowManager` to unocclude the lockscreen (`KeyguardService: setOccluded(false)`) and hide `SpaActivity`'s window (`VRI[SpaActivity]: visibilityChanged oldVisibility=true newVisibility=false`) behind `com.android.systemui` while `SpaActivity` is the top resumed activity in `ActivityTaskManager`.
+  - Ruled out Hypothesis 2 (`uiautomator dump` on API 37 confirms `com.android.settings/.spa.SpaActivity` exposes its full `ComposeView` semantics tree with `package="com.android.settings"` when unlocked).
+- [x] **2. Fix `ThresholdAppInfoInstrumentedTest`, `FreshUiWait`, & Cold-Boot CI Contention:**
+  - Updated `pollFresh(timeoutMs)` in `FreshUiWait.kt` to evaluate an initial `checkFresh()` before starting the `deadline` clock (so an initial `UiDevice.waitForIdle()` during activity launch or IME animation does not consume the caller's timeout) and reduced `clearCache()` polling frequency to 250ms.
+  - Updated `ThresholdAppInfoInstrumentedTest`, `ThresholdAntiMetricsInstrumentedTest`, and `ThresholdSearchScrollInstrumentedTest` to use `waitForFresh` / `pollFresh`, and ensured `ThresholdAppInfoInstrumentedTest` stops `com.android.settings` after pressing Back (handling both `ActivityEmbedding` `DeepLinkHomepageActivity` on `pixel_6` and keyguard-locked devices).
+  - Updated `scripts/test-emulator-functional.sh` and `AndroidPackageIndexSourceLifecycleInstrumentedTest` to wait for User 0 `FallbackHome` completion and `am wait-for-broadcast-idle` before running tests, and pre-assembled APKs before booting the AVD in `.github/workflows/ci.yml`.
+- [x] **3. Verification:**
+  - Verified full cold-wiped 2-core (`-wipe-data -cores 2`) `ci34phone` functional + smoke suite (`6/6` instrumented tests + smoke/memory gate), physical Pixel 9a (Android 17 / API 37), and API 37 emulator.
+  - Verified `./gradlew test spotlessCheck` passes.

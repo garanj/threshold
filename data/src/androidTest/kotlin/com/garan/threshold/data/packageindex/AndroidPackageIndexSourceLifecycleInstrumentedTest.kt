@@ -54,8 +54,9 @@ class AndroidPackageIndexSourceLifecycleInstrumentedTest {
         device.executeShellCommand("settings put global verifier_verify_adb_installs 0")
         device.executeShellCommand("settings put global package_verifier_user_consent -1")
 
-        // Clean up any stale fixture install prior to test run
+        // Clean up any stale fixture install prior to test run and let broadcast queues drain
         device.executeShellCommand("pm uninstall $targetPackage")
+        device.executeShellCommand("am wait-for-broadcast-idle")
 
         instrumentation.uiAutomation.adoptShellPermissionIdentity("android.permission.QUERY_ALL_PACKAGES")
 

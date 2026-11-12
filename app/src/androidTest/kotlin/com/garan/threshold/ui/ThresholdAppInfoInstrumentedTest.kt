@@ -1,5 +1,6 @@
 package com.garan.threshold.ui
 
+import android.app.KeyguardManager
 import android.content.Context
 import android.content.Intent
 import android.content.pm.LauncherApps
@@ -9,7 +10,6 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.By
 import androidx.test.uiautomator.UiDevice
-import androidx.test.uiautomator.Until
 import com.garan.threshold.MainActivity
 import com.google.common.truth.Truth.assertThat
 import org.junit.After
@@ -30,14 +30,16 @@ class ThresholdAppInfoInstrumentedTest {
         device = UiDevice.getInstance(instrumentation)
         instrumentation.uiAutomation.adoptShellPermissionIdentity("android.permission.QUERY_ALL_PACKAGES")
 
-        // Ensure device is awake and keyguard dismissed
+        // Ensure device is awake, keyguard dismissed (if insecure), and no stale Settings task is left
         device.wakeUp()
         device.executeShellCommand("wm dismiss-keyguard")
+        device.executeShellCommand("am force-stop com.android.settings")
     }
 
     @After
     fun tearDown() {
         scenario?.close()
+        device.executeShellCommand("am force-stop com.android.settings")
         try {
             InstrumentationRegistry.getInstrumentation().uiAutomation.dropShellPermissionIdentity()
         } catch (_: Exception) {}
@@ -48,6 +50,7 @@ class ThresholdAppInfoInstrumentedTest {
     fun longPressAppSearchResult_opensSystemAppInfoAndDismissesSearch() {
         val targetContext = InstrumentationRegistry.getInstrumentation().targetContext
         val launcherApps = targetContext.getSystemService(Context.LAUNCHER_APPS_SERVICE) as LauncherApps
+        val keyguardManager = targetContext.getSystemService(Context.KEYGUARD_SERVICE) as KeyguardManager
         val myUser = Process.myUserHandle()
 
         // Locate an installed launcher app (prefer third-party/non-settings app to avoid action collision)
@@ -80,25 +83,42 @@ class ThresholdAppInfoInstrumentedTest {
         }
 
         // 2. Find target app in search results and perform long click
-        val resultRow = device.wait(
-            Until.findObject(By.text(targetLabel).clazz("android.widget.TextView")),
+        val resultRow = device.waitForFresh(
+            By.text(targetLabel).clazz("android.widget.TextView"),
             10000L,
-        ) ?: device.wait(Until.findObject(By.text(targetLabel)), 5000L)
+        ) ?: device.waitForFresh(By.text(targetLabel), 5000L)
         assertThat(resultRow).isNotNull()
-        resultRow.longClick()
+        checkNotNull(resultRow).longClick()
 
-        // 3. Verify that Android App Info / Settings screen is launched
+        // 3. Verify that Android App Info / Settings screen is launched.
+        // On a device with a secure PIN/biometric lock screen, MainActivity occludes the keyguard via
+        // setShowWhenLocked(true), but com.android.settings/.spa.SpaActivity does not set showWhenLocked.
+        // WindowManager therefore unoccludes the keyguard (setOccluded(false)) and hides SpaActivity's
+        // window behind com.android.systemui while SpaActivity is the top resumed activity in ActivityTaskManager.
         val settingsPattern = Pattern.compile("com\\.android\\.settings|com\\.google\\.android\\.settings.*")
-        val appDetailsAppeared = device.wait(
-            Until.hasObject(By.pkg(settingsPattern)),
-            15000L,
-        ) ||
-            settingsPattern.matcher(device.currentPackageName ?: "").matches()
+        val topActivityPattern = Pattern.compile(
+            "(?:ResumedActivity|topResumedActivity).*?(com\\.android\\.settings|com\\.google\\.android\\.settings[^/\\s]*)/",
+        )
+        val appDetailsAppeared = pollFresh(15000L) {
+            device.findObject(By.pkg(settingsPattern)) != null ||
+                settingsPattern.matcher(device.currentPackageName ?: "").matches() ||
+                (
+                    keyguardManager.isKeyguardLocked &&
+                        topActivityPattern.matcher(
+                            device.executeShellCommand("dumpsys activity activities"),
+                        ).find()
+                    )
+        }
         assertThat(appDetailsAppeared).isTrue()
 
-        // 4. Navigate back to Threshold and verify search state was dismissed
+        // 4. Navigate back to Threshold and verify search state was dismissed.
+        // On phone-sized displays (e.g. pixel_6), Settings uses ActivityEmbedding
+        // (DeepLinkHomepageActivity + SpaActivity), and on keyguard-locked devices Settings is behind
+        // the lockscreen, so stop the external Settings task after pressing Back to ensure MainActivity
+        // returns cleanly to the foreground.
         device.pressBack()
-        val restoredPlaceholder = device.wait(Until.findObject(By.text("Type to launch...")), 5000L)
+        device.executeShellCommand("am force-stop com.android.settings")
+        val restoredPlaceholder = device.waitForFresh(By.text("Type to launch..."), 10000L)
         assertThat(restoredPlaceholder).isNotNull()
     }
 }
