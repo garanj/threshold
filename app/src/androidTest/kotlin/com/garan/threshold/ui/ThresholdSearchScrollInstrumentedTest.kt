@@ -63,34 +63,40 @@ class ThresholdSearchScrollInstrumentedTest {
             activity.setTurnScreenOn(true)
         }
 
-        // 1. Activate search mode and query a broad single character (e.g. 's' or 'c')
-        val firstChar = activities.first().label.toString().first().lowercaseChar().toString()
+        // 1. Activate search mode and query a broad single character that matches many apps
+        val broadChar = ('a'..'z').maxBy { ch ->
+            activities.count { it.label.toString().contains(ch, ignoreCase = true) }
+        }.toString()
+        val candidate = activities.firstOrNull {
+            it.label.toString().startsWith(broadChar, ignoreCase = true)
+        } ?: activities.first()
+        val candidateLabel = candidate.label.toString()
+
         scenario?.onActivity { activity ->
             activity.searchViewModel.activateSearch()
-            activity.searchViewModel.onQueryChanged(firstChar)
+            activity.searchViewModel.onQueryChanged(broadChar)
         }
 
-        // Wait for results to be populated
-        val firstResultLabel = device.waitForFresh(
-            By.clazz("android.widget.TextView"),
+        // Wait for the scrollable search results list to be populated
+        val resultsList = device.waitForFresh(
+            By.scrollable(true),
             10000L,
         )
-        assertThat(firstResultLabel).isNotNull()
+        assertThat(resultsList).isNotNull()
+        val bounds = checkNotNull(resultsList).visibleBounds
 
-        // 2. Scroll the search results list downward
-        val displayHeight = device.displayHeight
-        val displayWidth = device.displayWidth
+        // 2. Scroll the search results list downward within the list's own visible bounds
+        // using 5 fast steps (25ms) so we never touch the IME or trigger a 400ms canvas long-press.
         device.swipe(
-            displayWidth / 2,
-            (displayHeight * 0.7).toInt(),
-            displayWidth / 2,
-            (displayHeight * 0.3).toInt(),
-            10,
+            bounds.centerX(),
+            (bounds.top + bounds.height() * 0.8).toInt(),
+            bounds.centerX(),
+            (bounds.top + bounds.height() * 0.2).toInt(),
+            5,
         )
         device.waitForIdle()
 
         // 3. Change query by appending a character or switching query
-        val candidateLabel = activities.first().label.toString()
         val refinedQuery = if (candidateLabel.length > 2) candidateLabel.substring(0, 2) else candidateLabel
         scenario?.onActivity { activity ->
             activity.searchViewModel.onQueryChanged(refinedQuery)
