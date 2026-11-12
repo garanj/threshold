@@ -31,19 +31,12 @@ import com.garan.threshold.core.model.ProfileCapability
 import com.garan.threshold.core.model.TimeOfDay
 import com.garan.threshold.core.port.ClockSource
 import com.garan.threshold.core.port.LocalDayTime
-import com.garan.threshold.core.port.SystemClockSource
 import com.garan.threshold.core.search.ActionCandidate
 import com.garan.threshold.data.antimetrics.AndroidAntiMetricsRepository
-import com.garan.threshold.data.haptics.AndroidHapticEngine
 import com.garan.threshold.data.location.AndroidLocationSource
-import com.garan.threshold.data.packageindex.AndroidPackageIndexSource
-import com.garan.threshold.data.settings.AndroidSettingsRepository
-import com.garan.threshold.schedule.AndroidProfileCapabilityChecker
-import com.garan.threshold.schedule.AndroidScheduleAlarmScheduler
 import com.garan.threshold.schedule.ScheduleTransitionNotifier
 import com.garan.threshold.ui.home.ThresholdHomeScreen
 import com.garan.threshold.ui.launcher.AndroidAppLauncher
-import com.garan.threshold.ui.launcher.DialerPackageResolver
 import com.garan.threshold.ui.motion.ThresholdMotion
 import com.garan.threshold.ui.search.SearchViewModel
 import com.garan.threshold.ui.settings.ConfigureAppsScreen
@@ -72,11 +65,14 @@ sealed interface ThresholdRoute : NavKey {
 
 class MainActivity : ComponentActivity() {
 
-    private val packageIndexSource by lazy { AndroidPackageIndexSource(applicationContext ?: this) }
+    private val appContainer by lazy { ThresholdAppContainer.from(this) }
     private val appLauncher by lazy { AndroidAppLauncher(this) }
-    private val hapticEngine by lazy { AndroidHapticEngine(applicationContext ?: this) }
-    private val settingsRepository by lazy { AndroidSettingsRepository(applicationContext ?: this) }
-    internal val locationSource by lazy { AndroidLocationSource(applicationContext ?: this) }
+
+    internal val locationSource: AndroidLocationSource
+        get() = appContainer.locationSource
+
+    internal val antiMetricsRepository: AndroidAntiMetricsRepository
+        get() = appContainer.antiMetricsRepository
 
     @Volatile
     private var pendingLocationResolvedCallback: ((LocationFix) -> Unit)? = null
@@ -101,29 +97,6 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    @Volatile
-    private var clockOverrideForTesting: ClockSource? = null
-
-    @Volatile
-    private var exactAlarmOverrideForTesting: Boolean? = null
-
-    private val activeClockSource = ClockSource {
-        clockOverrideForTesting?.now() ?: SystemClockSource.now()
-    }
-
-    private val scheduleAlarmScheduler by lazy {
-        AndroidScheduleAlarmScheduler(
-            context = applicationContext ?: this,
-            clockSource = activeClockSource,
-        )
-    }
-    private val capabilityChecker by lazy {
-        AndroidProfileCapabilityChecker(
-            context = applicationContext ?: this,
-            exactAlarmOverride = { exactAlarmOverrideForTesting },
-        )
-    }
-    internal val antiMetricsRepository by lazy { AndroidAntiMetricsRepository(applicationContext ?: this) }
     internal lateinit var searchViewModel: SearchViewModel
         private set
     internal lateinit var settingsViewModel: SettingsViewModel
@@ -152,16 +125,17 @@ class MainActivity : ComponentActivity() {
         baseProfile: BaseProfileSettings = BaseProfileSettings(),
         customProfiles: List<CustomProfile>,
     ) {
-        settingsRepository.updateBaseProfile(baseProfile)
-        settingsRepository.updateCustomProfiles(customProfiles)
+        val repository = appContainer.settingsRepository
+        repository.updateBaseProfile(baseProfile)
+        repository.updateCustomProfiles(customProfiles)
         if (::searchViewModel.isInitialized) {
-            searchViewModel.reconcileForTesting(settingsRepository.getSettings())
+            searchViewModel.reconcileForTesting(repository.getSettings())
         }
     }
 
     @androidx.annotation.VisibleForTesting
     fun setClockAndTriggerAlarmForTesting(dayOfWeek: DayOfWeek, timeOfDay: TimeOfDay) {
-        clockOverrideForTesting = ClockSource { LocalDayTime(dayOfWeek, timeOfDay) }
+        appContainer.clockOverrideForTesting = ClockSource { LocalDayTime(dayOfWeek, timeOfDay) }
         ScheduleTransitionNotifier.notifyTransition()
         if (::searchViewModel.isInitialized) {
             kotlinx.coroutines.runBlocking {
@@ -172,7 +146,7 @@ class MainActivity : ComponentActivity() {
 
     @androidx.annotation.VisibleForTesting
     fun setExactAlarmPermissionForTesting(granted: Boolean?) {
-        exactAlarmOverrideForTesting = granted
+        appContainer.exactAlarmOverrideForTesting = granted
         ScheduleTransitionNotifier.notifyTransition()
         if (::searchViewModel.isInitialized) {
             kotlinx.coroutines.runBlocking {
@@ -226,6 +200,10 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
+        val container = appContainer
+        val hapticEngine = container.hapticEngine
+        val scheduleAlarmScheduler = container.scheduleAlarmScheduler
+
         val settingsAction = ActionCandidate(
             id = "settings",
             label = "Threshold Settings",
@@ -237,17 +215,15 @@ class MainActivity : ComponentActivity() {
             object : ViewModelProvider.Factory {
                 @Suppress("UNCHECKED_CAST")
                 override fun <T : ViewModel> create(modelClass: Class<T>): T = SearchViewModel(
-                    packageIndexSource = packageIndexSource,
-                    hapticEngine = hapticEngine,
-                    dialerPackageResolver = {
-                        DialerPackageResolver.resolveDefaultDialerPackage(this@MainActivity.applicationContext)
-                    },
+                    packageIndexSource = container.packageIndexSource,
+                    hapticEngine = container.hapticEngine,
+                    dialerPackageResolver = container.dialerPackageResolver,
                     actions = listOf(settingsAction),
-                    settingsRepository = settingsRepository,
-                    clockSource = activeClockSource,
-                    scheduleAlarmScheduler = scheduleAlarmScheduler,
-                    capabilityChecker = capabilityChecker,
-                    locationSource = locationSource,
+                    settingsRepository = container.settingsRepository,
+                    clockSource = container.activeClockSource,
+                    scheduleAlarmScheduler = container.scheduleAlarmScheduler,
+                    capabilityChecker = container.capabilityChecker,
+                    locationSource = container.locationSource,
                 ) as T
             },
         )[SearchViewModel::class.java]
@@ -257,11 +233,9 @@ class MainActivity : ComponentActivity() {
             object : ViewModelProvider.Factory {
                 @Suppress("UNCHECKED_CAST")
                 override fun <T : ViewModel> create(modelClass: Class<T>): T = SettingsViewModel(
-                    packageIndexSource = packageIndexSource,
-                    settingsRepository = settingsRepository,
-                    dialerPackageResolver = {
-                        DialerPackageResolver.resolveDefaultDialerPackage(this@MainActivity.applicationContext)
-                    },
+                    packageIndexSource = container.packageIndexSource,
+                    settingsRepository = container.settingsRepository,
+                    dialerPackageResolver = container.dialerPackageResolver,
                 ) as T
             },
         )[SettingsViewModel::class.java]
