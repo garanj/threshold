@@ -553,6 +553,124 @@ class ThresholdHomeScreenTest {
         assertThat(settingsOpenedCount).isEqualTo(1)
     }
 
+    @Test
+    fun mainActivity_recreate_doesNotRetainActivityInViewModels() {
+        Robolectric.buildActivity(MainActivity::class.java).use { controller ->
+            controller.setup()
+            val firstActivity = controller.get()
+
+            controller.recreate()
+            val secondActivity = controller.get()
+
+            assertThat(secondActivity).isNotSameInstanceAs(firstActivity)
+            assertThat(findReachableActivities(secondActivity.searchViewModel)).isEmpty()
+            assertThat(findReachableActivities(secondActivity.settingsViewModel)).isEmpty()
+        }
+    }
+
+    @Test
+    fun mainActivity_recreate_sharesSameLocationSourceInstance() {
+        Robolectric.buildActivity(MainActivity::class.java).use { controller ->
+            controller.setup()
+            val firstLocationSource = controller.get().locationSource
+
+            controller.recreate()
+            val secondLocationSource = controller.get().locationSource
+
+            assertThat(secondLocationSource).isSameInstanceAs(firstLocationSource)
+        }
+    }
+
+    @Test
+    fun mainActivity_recreate_testHooksStillDriveSurvivingViewModel() {
+        Robolectric.buildActivity(MainActivity::class.java).use { controller ->
+            controller.setup()
+            val firstActivity = controller.get()
+            val workProfile = com.garan.threshold.core.model.CustomProfile(
+                id = "work",
+                name = "Work",
+                priority = 0,
+                enabled = true,
+                colorIndex = 0,
+                trigger = com.garan.threshold.core.model.ProfileTrigger.Schedule(
+                    com.garan.threshold.core.model.ScheduleTrigger(
+                        dailyWindows = mapOf(
+                            com.garan.threshold.core.model.DayOfWeek.MONDAY to
+                                com.garan.threshold.core.model.TimeWindow(
+                                    com.garan.threshold.core.model.TimeOfDay(9, 0),
+                                    com.garan.threshold.core.model.TimeOfDay(17, 0),
+                                ),
+                        ),
+                        sameScheduleEveryDay = false,
+                    ),
+                ),
+            )
+            firstActivity.setClockAndTriggerAlarmForTesting(
+                com.garan.threshold.core.model.DayOfWeek.MONDAY,
+                com.garan.threshold.core.model.TimeOfDay(8, 0),
+            )
+            firstActivity.setExactAlarmPermissionForTesting(true)
+            kotlinx.coroutines.runBlocking {
+                firstActivity.configureScheduleProfilesForTesting(customProfiles = listOf(workProfile))
+            }
+            assertThat(firstActivity.searchViewModel.uiState.value.activeProfiles).isEmpty()
+            assertThat(firstActivity.searchViewModel.uiState.value.capabilityIssues).isEmpty()
+
+            // Recreate the Activity (simulating fontScale / density / locale change)
+            controller.recreate()
+            val secondActivity = controller.get()
+
+            // Invoking test hooks on the NEW Activity must drive the surviving SearchViewModel
+            secondActivity.setClockAndTriggerAlarmForTesting(
+                com.garan.threshold.core.model.DayOfWeek.MONDAY,
+                com.garan.threshold.core.model.TimeOfDay(10, 0),
+            )
+            secondActivity.setExactAlarmPermissionForTesting(false)
+
+            assertThat(secondActivity.searchViewModel.uiState.value.activeProfiles.map { it.id })
+                .containsExactly("work")
+            assertThat(secondActivity.searchViewModel.uiState.value.capabilityIssues)
+                .isNotEmpty()
+        }
+    }
+
+    private fun findReachableActivities(root: Any): List<MainActivity> {
+        val visited = java.util.Collections.newSetFromMap(java.util.IdentityHashMap<Any, Boolean>())
+        val found = mutableListOf<MainActivity>()
+        val queue = ArrayDeque<Any>()
+        queue.add(root)
+        visited.add(root)
+
+        while (queue.isNotEmpty()) {
+            val current = queue.removeFirst()
+            if (current is MainActivity) {
+                found.add(current)
+                continue
+            }
+            var clazz: Class<*>? = current.javaClass
+            while (clazz != null && clazz != Any::class.java) {
+                val pkg = clazz.packageName
+                if (pkg.startsWith("java.") || pkg.startsWith("jdk.") || pkg.startsWith("android.")) {
+                    break
+                }
+                for (field in clazz.declaredFields) {
+                    if (java.lang.reflect.Modifier.isStatic(field.modifiers)) continue
+                    if (field.type.isPrimitive) continue
+                    runCatching {
+                        field.isAccessible = true
+                        field.get(current)
+                    }.getOrNull()?.let { value ->
+                        if (visited.add(value)) {
+                            queue.add(value)
+                        }
+                    }
+                }
+                clazz = clazz.superclass
+            }
+        }
+        return found
+    }
+
     private class TestHapticEngine : HapticEngine {
         var rotaryDetentCount = 0
             private set

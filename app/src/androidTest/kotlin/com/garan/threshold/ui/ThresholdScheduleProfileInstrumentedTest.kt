@@ -179,8 +179,17 @@ class ThresholdScheduleProfileInstrumentedTest {
         val goneDuringTuesdaySlot = device.waitUntilGoneFresh(By.text(targetLabel), 5000L)
         assertThat(goneDuringTuesdaySlot).isTrue()
 
-        // 5. Simulate missing exact alarm permission -> [!] fault badge appears, then clears when granted
+        // 5. Recreate MainActivity (simulating fontScale/density/locale change) and verify test hooks
+        //    and shared state continue to drive the surviving SearchViewModel on the new Activity instance.
+        var locationSourceBeforeRecreate: Any? = null
         scenario?.onActivity { activity ->
+            locationSourceBeforeRecreate = activity.locationSource
+        }
+        scenario?.recreate()
+        scenario?.onActivity { activity ->
+            activity.setShowWhenLocked(true)
+            activity.setTurnScreenOn(true)
+            assertThat(activity.locationSource).isSameInstanceAs(locationSourceBeforeRecreate)
             activity.setExactAlarmPermissionForTesting(false)
         }
         device.waitForIdle()
@@ -190,10 +199,16 @@ class ThresholdScheduleProfileInstrumentedTest {
 
         scenario?.onActivity { activity ->
             activity.setExactAlarmPermissionForTesting(true)
+            activity.setClockAndTriggerAlarmForTesting(DayOfWeek.TUESDAY, TimeOfDay(12, 0))
         }
         device.waitForIdle()
 
         val faultBadgeCleared = device.waitUntilGoneFresh(By.desc("Missing profile permissions"), 5000L)
         assertThat(faultBadgeCleared).isTrue()
+        val badgeClearedAfterRecreateClockUpdate = device.waitUntilGoneFresh(
+            By.desc("Active profile: Deep Work"),
+            5000L,
+        )
+        assertThat(badgeClearedAfterRecreateClockUpdate).isTrue()
     }
 }

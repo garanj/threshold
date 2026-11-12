@@ -5,7 +5,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.location.LocationManager
-import com.garan.threshold.data.settings.AndroidSettingsRepository
+import com.garan.threshold.ThresholdAppContainer
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -31,10 +31,9 @@ class ScheduleAlarmReceiver : BroadcastReceiver() {
         val appContext = context.applicationContext ?: context
         CoroutineScope(Dispatchers.IO).launch {
             try {
-                val repository = AndroidSettingsRepository(appContext)
-                val settings = repository.getSettings()
-                val scheduler = AndroidScheduleAlarmScheduler(appContext)
-                scheduler.syncNextScheduleAlarm(settings.customProfiles)
+                val container = ThresholdAppContainer.from(appContext)
+                val settings = container.settingsRepository.getSettings()
+                container.scheduleAlarmScheduler.syncNextScheduleAlarm(settings.customProfiles)
             } finally {
                 pendingResult?.finish()
             }

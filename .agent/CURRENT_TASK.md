@@ -1,13 +1,19 @@
-# Active Task: Issue #67 — Increase Long Press Time for Settings to 3s
+# Active Task: Issue #64 & #68 — Prevent ViewModel Factories from Capturing MainActivity Across Recreation
 
-- **Issue:** [#67](https://github.com/garanj/threshold/issues/67)
-- **Branch:** `feat/67-increase-settings-long-press`
+- **Issues:** [#64](https://github.com/garanj/threshold/issues/64), [#68](https://github.com/garanj/threshold/issues/68)
+- **Branch:** `fix/64-viewmodel-activity-leak`
 - **Status:** Ready for Review
 
 ## Checklist
 - [x] **1. TDD Red Phase:**
-  - Added unit tests in `ThresholdHomeScreenTest` verifying that a press under 3s (`2,500ms`) on the home canvas does NOT open settings, while a >= 3,000ms press opens settings, and search result long-press for App Info remains at standard system timeout (`500ms`).
+  - Added recreation tests in `ThresholdHomeScreenTest.kt` verifying:
+    1. Zero `MainActivity` instances are reachable from `searchViewModel` or `settingsViewModel` object graphs across `recreate()`.
+    2. `MainActivity.locationSource` is the same shared instance across `recreate()`.
+    3. `setClockAndTriggerAlarmForTesting` and `setExactAlarmPermissionForTesting` work on the recreated `MainActivity` instance.
+  - Confirmed all 3 failed on the pre-fix code.
 - [x] **2. TDD Green Phase:**
-  - Configured a custom `ViewConfiguration` (`SETTINGS_LONG_PRESS_TIMEOUT_MS = 3_000L`) via `LocalViewConfiguration` for `ThresholdHomeCanvas` in `ThresholdHomeScreen.kt`, restoring the default `ViewConfiguration` inside `ThresholdSearchSurface` so child gestures (App Info long-press, text input) are unaffected.
+  - Introduced process-scoped `ThresholdAppContainer` (and `ThresholdApplication : Application` registered in `AndroidManifest.xml`) holding `packageIndexSource`, `hapticEngine`, `settingsRepository`, `locationSource`, `antiMetricsRepository`, `scheduleAlarmScheduler`, `capabilityChecker`, `dialerPackageResolver`, and test overrides (`clockOverrideForTesting`, `exactAlarmOverrideForTesting`).
+  - Refactored `MainActivity` and `ScheduleAlarmReceiver` to delegate to `ThresholdAppContainer` so `ViewModelProvider.Factory` lambdas never capture `MainActivity`.
 - [x] **3. Verification:**
-  - Ran `./gradlew spotlessApply test` and verified all unit & screenshot tests pass.
+  - Verified all unit & screenshot tests pass (`./gradlew spotlessApply test`).
+  - Added `ActivityScenario.recreate()` verification to `ThresholdScheduleProfileInstrumentedTest` and verified post-GC `Activities: 1` after 5x `font_scale` recreation and release PSS (`26,322 KB <= 35,000 KB`).
