@@ -112,13 +112,13 @@ class ThresholdAppInfoInstrumentedTest {
         assertThat(appDetailsAppeared).isTrue()
 
         // 4. Navigate back to Threshold and verify search state was dismissed.
-        // If the keyguard unoccluded over Settings, pressBack() goes to the lockscreen bouncer, so also
-        // stop Settings to let MainActivity (setShowWhenLocked(true)) re-occlude the keyguard.
+        // On phone-sized displays (e.g. pixel_6), Settings uses ActivityEmbedding
+        // (DeepLinkHomepageActivity + SpaActivity), and on keyguard-locked devices Settings is behind
+        // the lockscreen, so stop the external Settings task after pressing Back to ensure MainActivity
+        // returns cleanly to the foreground.
         device.pressBack()
-        if (keyguardManager.isKeyguardLocked) {
-            device.executeShellCommand("am force-stop com.android.settings")
-        }
-        val restoredPlaceholder = device.waitForFresh(By.text("Type to launch..."), 5000L)
+        device.executeShellCommand("am force-stop com.android.settings")
+        val restoredPlaceholder = device.waitForFresh(By.text("Type to launch..."), 10000L)
         assertThat(restoredPlaceholder).isNotNull()
     }
 }

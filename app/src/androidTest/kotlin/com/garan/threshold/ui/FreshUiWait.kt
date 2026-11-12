@@ -18,19 +18,28 @@ import androidx.test.uiautomator.UiObject2
  * These helpers call `UiAutomation.clearCache()` before every poll so each check reads the live
  * window and node hierarchy from `system_server`.
  */
-private const val POLL_INTERVAL_MS = 100L
+private const val POLL_INTERVAL_MS = 250L
 
 internal fun pollFresh(timeoutMs: Long, condition: () -> Boolean): Boolean {
     val uiAutomation = InstrumentationRegistry.getInstrumentation().uiAutomation
-    val deadline = SystemClock.uptimeMillis() + timeoutMs
-    while (true) {
+    fun checkFresh(): Boolean {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
             uiAutomation.clearCache()
         }
-        if (condition()) return true
-        if (SystemClock.uptimeMillis() >= deadline) return false
-        SystemClock.sleep(POLL_INTERVAL_MS)
+        return condition()
     }
+
+    // Evaluate once before starting the timeout clock so an initial UiDevice.waitForIdle()
+    // during activity launch or keyboard animation does not consume the caller's timeout.
+    if (checkFresh()) return true
+    if (timeoutMs <= 0L) return false
+
+    val deadline = SystemClock.uptimeMillis() + timeoutMs
+    while (SystemClock.uptimeMillis() < deadline) {
+        SystemClock.sleep(POLL_INTERVAL_MS)
+        if (checkFresh()) return true
+    }
+    return checkFresh()
 }
 
 /** Waits until [selector] matches a node in the live hierarchy, returning it, or `null` on timeout. */

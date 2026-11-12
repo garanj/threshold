@@ -63,7 +63,7 @@ class ThresholdAntiMetricsInstrumentedTest {
         // Wait for Home Canvas to be visible
         val initialStatus = device.waitForFresh(
             By.text(Pattern.compile(".*UNLOCK.*")),
-            10000L,
+            15000L,
         )
         assertThat(initialStatus).isNotNull()
 

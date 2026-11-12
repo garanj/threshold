@@ -124,6 +124,9 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
 
+      - name: Pre-assemble APKs before booting AVD
+        run: ./gradlew :fixtures:dummy-app:assembleDebug :data:assembleDebugAndroidTest :app:assembleDebug :app:assembleDebugAndroidTest :app:assembleRelease
+
       - name: Run Emulator Tests in AVD
         uses: reactivecircus/android-emulator-runner@v2
         with:
