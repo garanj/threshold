@@ -1,18 +1,13 @@
-# Active Task: Issue #69 — Eliminate Callback Registration Race & Broadcast Timeout in `:data` Package Index Test
+# Active Task: Issue #67 — Increase Long Press Time for Settings to 3s
 
-- **Issue:** [#69](https://github.com/garanj/threshold/issues/69)
-- **Branch:** `fix/69-data-package-lifecycle-test`
+- **Issue:** [#67](https://github.com/garanj/threshold/issues/67)
+- **Branch:** `feat/67-increase-settings-long-press`
 - **Status:** Ready for Review
 
 ## Checklist
-- [x] **1. Diagnose `:data` failure on post-merge `main` run (`#43200480982`):**
-  - Identified race between `testScope!!.launch { packageIndexSource.observePackageChanges().collect { ... } }` (dispatched asynchronously onto `Dispatchers.Default` -> `Dispatchers.IO`) and `installFixtureApk()` running immediately on the test thread once `BroadcastQueueModernImpl` was already idle.
-  - Identified unsynchronized `mutableListOf<PackageChangeEvent>()` shared across threads.
-  - Identified missing `am wait-for-broadcast-idle` after `installFixtureApk()` and `pm uninstall`.
-- [x] **2. Fix `AndroidPackageIndexSourceLifecycleInstrumentedTest`:**
-  - Inject `ioDispatcher = Dispatchers.Unconfined` and collect with `CoroutineStart.UNDISPATCHED` so `launcherApps.registerCallback(callback, mainHandler)` executes synchronously before `installFixtureApk()` runs.
-  - Use `CopyOnWriteArrayList<PackageChangeEvent>()` for thread-safe event collection.
-  - Run `am wait-for-broadcast-idle` after `installFixtureApk()` and `pm uninstall`, and extend callback wait timeout to 30s.
+- [x] **1. TDD Red Phase:**
+  - Added unit tests in `ThresholdHomeScreenTest` verifying that a press under 3s (`2,500ms`) on the home canvas does NOT open settings, while a >= 3,000ms press opens settings, and search result long-press for App Info remains at standard system timeout (`500ms`).
+- [x] **2. TDD Green Phase:**
+  - Configured a custom `ViewConfiguration` (`SETTINGS_LONG_PRESS_TIMEOUT_MS = 3_000L`) via `LocalViewConfiguration` for `ThresholdHomeCanvas` in `ThresholdHomeScreen.kt`, restoring the default `ViewConfiguration` inside `ThresholdSearchSurface` so child gestures (App Info long-press, text input) are unaffected.
 - [x] **3. Verification:**
-  - Verified locally on `ci34phone` (`-wipe-data -cores 2`).
-  - Verified `./gradlew spotlessCheck test` passes.
+  - Ran `./gradlew spotlessApply test` and verified all unit & screenshot tests pass.
