@@ -37,6 +37,10 @@
    - The fuzzy search matcher must operate using in-place character index matching, avoiding object creation (e.g. intermediate substring lists or boxing) during keystroke search loops.
 3. **IME Handling:**
    - Dismiss the software keyboard cleanly via `WindowInsetsController` prior to triggering `startActivity()`. This eliminates keyboard jitter and redraw delays during app transition.
+4. **Zero `Activity` Retention in `ViewModel`s & Process-Scoped Dependencies:**
+   - Never pass an `Activity` reference or a lambda that captures `this@MainActivity` (including lambdas reading `Activity` properties or calling `this@MainActivity.applicationContext`) into a `ViewModel` or `ViewModelProvider.Factory`.
+   - Never instantiate shared stateful sources (such as `AndroidLocationSource`, `AndroidSettingsRepository`, or test override hooks) as per-`Activity` `by lazy` properties when a `ViewModel` also observes them—after configuration recreation (`fontScale`, `density`, `locale`), the new `Activity` UI and the surviving `ViewModel` will split onto separate instances and leak the old `Activity`.
+   - Always wire Activity-independent dependencies through `ThresholdAppContainer` (owned by `ThresholdApplication` and constructed strictly with `applicationContext`).
 
 ---
 

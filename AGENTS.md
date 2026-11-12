@@ -30,9 +30,10 @@ Every line of code committed to Threshold must adhere to these non-negotiable bo
    - In standard mode, Threshold does not tamper with the system Overview/Recents task switcher.
    - Kernel-level package suspension (`setPackagesSuspended`) and Lock Task mode are strictly isolated to the optional, opt-in **Device Policy Controller (DPC)** mode, mediated by an abstract `AppAccessController` interface.
 
-6. **Memory Ceiling (< 30 MB Total PSS):**
+6. **Memory Ceiling (< 30 MB Total PSS) & Zero `Activity` Retention in `ViewModel`s:**
    - Long-lived state must NEVER hold uncompressed `Bitmap` instances or large icon caches.
    - Typographic mode maintains memory under 25 MB. The hard ceiling in CI is 35,000 KB PSS (accommodating SwiftShader software rendering overhead).
+   - **Never capture an `Activity` in a `ViewModel` or `ViewModelProvider.Factory`:** Because `ViewModel`s outlive `Activity` recreation (e.g., on `fontScale`, `density`, or `locale` changes), no `ViewModel` constructor argument, lambda, or repository may reference `this@MainActivity` or per-Activity fields. All Activity-independent services (`PackageIndexSource`, `SettingsRepository`, `LocationSource`, `HapticEngine`, `ScheduleAlarmScheduler`, `ProfileCapabilityChecker`, and test overrides) must live in the process-scoped `ThresholdAppContainer` (`ThresholdApplication`) initialized with `applicationContext`.
 
 ---
 
