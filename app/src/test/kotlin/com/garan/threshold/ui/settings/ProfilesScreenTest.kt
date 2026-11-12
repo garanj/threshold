@@ -4,6 +4,7 @@ import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithContentDescription
+import androidx.compose.ui.test.onLast
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performSemanticsAction
@@ -13,9 +14,11 @@ import com.garan.threshold.core.model.GeoTrigger
 import com.garan.threshold.core.model.GeoTriggerMode
 import com.garan.threshold.core.model.LocationFix
 import com.garan.threshold.core.model.ProfileTrigger
+import com.garan.threshold.core.model.SavedTrigger
 import com.garan.threshold.core.model.ScheduleTrigger
 import com.garan.threshold.core.model.TimeOfDay
 import com.garan.threshold.core.model.TimeWindow
+import com.garan.threshold.core.model.TriggerRule
 import com.garan.threshold.core.port.LocationTelemetry
 import com.garan.threshold.ui.theme.ThresholdTheme
 import com.google.common.truth.Truth.assertThat
@@ -104,14 +107,24 @@ class ProfilesScreenTest {
             }
         }
 
-        // Open new profile editor sheet and click Create
+        // Open new profile editor sheet, add a schedule trigger inline, and click Create
         composeTestRule.onNodeWithText("Add Profile").performClick()
+        composeTestRule
+            .onNodeWithText("Add Trigger")
+            .performSemanticsAction(SemanticsActions.OnClick)
+        // Create the inline schedule trigger inside TriggerEditorSheet
+        composeTestRule
+            .onAllNodes(androidx.compose.ui.test.hasText("Create"))
+            .onLast()
+            .performSemanticsAction(SemanticsActions.OnClick)
+        // Create the profile inside ProfileRulesEditorSheet
         composeTestRule
             .onNodeWithText("Create")
             .performSemanticsAction(SemanticsActions.OnClick)
 
         assertThat(savedProfiles).hasSize(1)
         assertThat(savedProfiles.first().enabled).isTrue()
+        assertThat(savedProfiles.first().activationRules).hasSize(1)
 
         // Exact alarm permission bottom sheet should be displayed
         composeTestRule.onNodeWithText("Allow exact schedule alarms").assertIsDisplayed()
@@ -268,6 +281,7 @@ class ProfilesScreenTest {
     @Test
     fun profilesScreen_creatingGeoProfileViaSegmentedTypeSelector_savesGeoTrigger() {
         val savedProfiles = mutableListOf<CustomProfile>()
+        val savedTriggers = mutableListOf<SavedTrigger>()
         val mockedFix = LocationFix(51.5074, -0.1278)
         var locationPermissionEnsured = false
 
@@ -282,12 +296,16 @@ class ProfilesScreenTest {
                     onBack = {},
                     onUseCurrentLocation = { callback -> callback(mockedFix) },
                     onEnsureLocationPermissionForProfile = { locationPermissionEnsured = true },
+                    onSaveTrigger = { savedTriggers.add(it) },
                 )
             }
         }
 
-        // Open New Profile sheet
+        // Open New Profile sheet and tap Add Trigger to create a Geo trigger inline
         composeTestRule.onNodeWithText("Add Profile").performClick()
+        composeTestRule
+            .onNodeWithText("Add Trigger")
+            .performSemanticsAction(SemanticsActions.OnClick)
 
         // Switch from Schedule to Geo via the segmented type selector
         composeTestRule
@@ -307,19 +325,153 @@ class ProfilesScreenTest {
             .onNodeWithText("Use Current Location")
             .performSemanticsAction(SemanticsActions.OnClick)
 
-        // Tap "Create"
+        // Tap "Create" in TriggerEditorSheet
+        composeTestRule
+            .onAllNodes(androidx.compose.ui.test.hasText("Create"))
+            .onLast()
+            .performSemanticsAction(SemanticsActions.OnClick)
+
+        // Tap "Create" in ProfileRulesEditorSheet
+        composeTestRule
+            .onNodeWithText("Create")
+            .performSemanticsAction(SemanticsActions.OnClick)
+
+        assertThat(savedTriggers).hasSize(1)
+        val createdTrigger = savedTriggers.first()
+        val geo = (createdTrigger.trigger as ProfileTrigger.Geo).geo
+        assertThat(geo.latitude).isWithin(0.0001).of(51.5074)
+        assertThat(geo.longitude).isWithin(0.0001).of(-0.1278)
+        assertThat(geo.radiusMeters).isEqualTo(500)
+        assertThat(geo.mode).isEqualTo(GeoTriggerMode.OUTSIDE)
+
+        assertThat(savedProfiles).hasSize(1)
+        val createdProfile = savedProfiles.first()
+        assertThat(createdProfile.activationRules).containsExactly(TriggerRule(listOf(createdTrigger.id)))
+        assertThat(locationPermissionEnsured).isTrue()
+    }
+
+    @Test
+    fun profilesScreen_combinesMultipleTriggersWithAndOrRules() {
+        val workHours = SavedTrigger(
+            id = "t-work",
+            name = "Work Hours",
+            trigger = ProfileTrigger.Schedule(),
+        )
+        val atOffice = SavedTrigger(
+            id = "t-office",
+            name = "At Office",
+            trigger = ProfileTrigger.Geo(GeoTrigger(latitude = 51.5, longitude = -0.1)),
+        )
+        val lateNight = SavedTrigger(
+            id = "t-night",
+            name = "Late Night",
+            trigger = ProfileTrigger.Schedule(),
+        )
+        val savedProfiles = mutableListOf<CustomProfile>()
+
+        composeTestRule.setContent {
+            ThresholdTheme {
+                ProfilesScreen(
+                    profiles = emptyList(),
+                    savedTriggers = listOf(workHours, atOffice, lateNight),
+                    onSaveProfile = { savedProfiles.add(it) },
+                    onDeleteProfile = {},
+                    onReorderProfiles = {},
+                    onConfigureProfileApps = {},
+                    onBack = {},
+                )
+            }
+        }
+
+        // Open New Profile sheet
+        composeTestRule.onNodeWithText("Add Profile").performClick()
+
+        // Tap "Add Trigger" and pick "Work Hours"
+        composeTestRule
+            .onNodeWithText("Add Trigger")
+            .performSemanticsAction(SemanticsActions.OnClick)
+        composeTestRule
+            .onNodeWithText("Work Hours")
+            .performSemanticsAction(SemanticsActions.OnClick)
+
+        // Tap "Add AND trigger" on rule 1 and pick "At Office"
+        composeTestRule
+            .onNodeWithText("Add AND trigger")
+            .performSemanticsAction(SemanticsActions.OnClick)
+        composeTestRule
+            .onNodeWithText("At Office")
+            .performSemanticsAction(SemanticsActions.OnClick)
+
+        // Tap "Add OR condition" and pick "Late Night"
+        composeTestRule
+            .onNodeWithText("Add OR condition")
+            .performSemanticsAction(SemanticsActions.OnClick)
+        composeTestRule
+            .onNodeWithText("Late Night")
+            .performSemanticsAction(SemanticsActions.OnClick)
+
+        // Save profile
         composeTestRule
             .onNodeWithText("Create")
             .performSemanticsAction(SemanticsActions.OnClick)
 
         assertThat(savedProfiles).hasSize(1)
-        val created = savedProfiles.first()
-        assertThat(created.name).isEqualTo("Geo Profile")
-        val geo = (created.trigger as ProfileTrigger.Geo).geo
-        assertThat(geo.latitude).isWithin(0.0001).of(51.5074)
-        assertThat(geo.longitude).isWithin(0.0001).of(-0.1278)
-        assertThat(geo.radiusMeters).isEqualTo(500)
-        assertThat(geo.mode).isEqualTo(GeoTriggerMode.OUTSIDE)
-        assertThat(locationPermissionEnsured).isTrue()
+        assertThat(savedProfiles.single().activationRules).containsExactly(
+            TriggerRule(listOf("t-work", "t-office")),
+            TriggerRule(listOf("t-night")),
+        ).inOrder()
+    }
+
+    @Test
+    fun profilesScreen_triggersTab_deletesTriggerWithWarningAndInvokesDeleteCallback() {
+        val workHours = SavedTrigger(
+            id = "t-work",
+            name = "Work Hours",
+            trigger = ProfileTrigger.Schedule(),
+        )
+        val deepWork = CustomProfile(
+            id = "p-work",
+            name = "Deep Work",
+            enabled = true,
+            priority = 0,
+            activationRules = listOf(TriggerRule(listOf("t-work"))),
+            trigger = null,
+        )
+        var deletedTriggerId: String? = null
+
+        composeTestRule.setContent {
+            ThresholdTheme {
+                ProfilesScreen(
+                    profiles = listOf(deepWork),
+                    savedTriggers = listOf(workHours),
+                    onSaveProfile = {},
+                    onDeleteProfile = {},
+                    onReorderProfiles = {},
+                    onConfigureProfileApps = {},
+                    onBack = {},
+                    onDeleteTrigger = { deletedTriggerId = it },
+                )
+            }
+        }
+
+        // Switch to "Triggers" tab in the top segmented button row
+        composeTestRule
+            .onNodeWithText("Triggers")
+            .performSemanticsAction(SemanticsActions.OnClick)
+
+        // Verify trigger card shows usage by "Deep Work"
+        composeTestRule.onNodeWithText("Work Hours").assertIsDisplayed()
+        composeTestRule.onNodeWithText("Used by: Deep Work").assertIsDisplayed()
+
+        // Click Delete Trigger -> shows warning naming "Deep Work"
+        composeTestRule.onAllNodesWithContentDescription("Delete Trigger")[0].performClick()
+        composeTestRule.onNodeWithText("Delete trigger?").assertIsDisplayed()
+        composeTestRule.onNodeWithText(
+            "“Work Hours” is used by “Deep Work”. Deleting it will remove it from those profiles " +
+                "and disable any profile left with no triggers.",
+        ).assertIsDisplayed()
+
+        composeTestRule.onNodeWithText("Delete").performClick()
+        assertThat(deletedTriggerId).isEqualTo("t-work")
     }
 }

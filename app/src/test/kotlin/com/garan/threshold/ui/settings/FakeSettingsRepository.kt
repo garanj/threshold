@@ -3,6 +3,7 @@ package com.garan.threshold.ui.settings
 import com.garan.threshold.core.model.BaseProfileSettings
 import com.garan.threshold.core.model.ComponentKey
 import com.garan.threshold.core.model.GeneralSettings
+import com.garan.threshold.core.model.SavedTrigger
 import com.garan.threshold.core.model.ThresholdSettings
 import com.garan.threshold.core.port.SettingsRepository
 import kotlinx.coroutines.flow.Flow
@@ -75,6 +76,35 @@ class FakeSettingsRepository(initialSettings: ThresholdSettings = ThresholdSetti
     override suspend fun deleteCustomProfile(profileId: String) {
         _settings.update { current ->
             current.copy(customProfiles = current.customProfiles.filter { it.id != profileId })
+        }
+    }
+
+    override suspend fun saveTrigger(trigger: SavedTrigger) {
+        _settings.update { current ->
+            val existingIndex = current.savedTriggers.indexOfFirst { it.id == trigger.id }
+            val updated = if (existingIndex >= 0) {
+                current.savedTriggers.toMutableList().apply { set(existingIndex, trigger) }
+            } else {
+                current.savedTriggers + trigger
+            }
+            current.copy(savedTriggers = updated)
+        }
+    }
+
+    override suspend fun deleteTrigger(triggerId: String) {
+        _settings.update { current ->
+            val updatedTriggers = current.savedTriggers.filter { it.id != triggerId }
+            val updatedProfiles = current.customProfiles.map { profile ->
+                if (triggerId in profile.referencedTriggerIds) {
+                    profile.withoutTrigger(triggerId)
+                } else {
+                    profile
+                }
+            }
+            current.copy(
+                savedTriggers = updatedTriggers,
+                customProfiles = updatedProfiles,
+            )
         }
     }
 }

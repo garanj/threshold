@@ -3,6 +3,7 @@ package com.garan.threshold.core.cascading
 import com.garan.threshold.core.model.CustomProfile
 import com.garan.threshold.core.model.DayOfWeek
 import com.garan.threshold.core.model.ProfileTrigger
+import com.garan.threshold.core.model.SavedTrigger
 import com.garan.threshold.core.model.TimeOfDay
 
 /**
@@ -21,34 +22,39 @@ class ScheduleHorizonCalculator {
         customProfiles: List<CustomProfile>,
         currentDay: DayOfWeek,
         currentTime: TimeOfDay,
+        savedTriggers: List<SavedTrigger> = emptyList(),
     ): NextScheduleTransition? {
         val nowMinuteOfWeek = currentDay.ordinal * MINUTES_PER_DAY + currentTime.totalMinutes
+        val savedTriggersById = savedTriggers.associateBy { it.id }
         var bestDelta = Int.MAX_VALUE
         var bestDay: DayOfWeek? = null
         var bestTime: TimeOfDay? = null
 
         for (profile in customProfiles) {
             if (!profile.enabled) continue
-            val trigger = profile.trigger as? ProfileTrigger.Schedule ?: continue
-            val dailyWindows = trigger.schedule.dailyWindows
-            if (dailyWindows.isEmpty()) continue
+            val resolvedTriggers = profile.resolvedTriggers(savedTriggersById)
+            for (trigger in resolvedTriggers) {
+                val scheduleTrigger = trigger as? ProfileTrigger.Schedule ?: continue
+                val dailyWindows = scheduleTrigger.schedule.dailyWindows
+                if (dailyWindows.isEmpty()) continue
 
-            for ((day, window) in dailyWindows) {
-                // 1. Start boundary on `day` at `window.startTime`
-                val startDelta = computeDeltaMinutes(nowMinuteOfWeek, day, window.startTime)
-                if (startDelta < bestDelta) {
-                    bestDelta = startDelta
-                    bestDay = day
-                    bestTime = window.startTime
-                }
+                for ((day, window) in dailyWindows) {
+                    // 1. Start boundary on `day` at `window.startTime`
+                    val startDelta = computeDeltaMinutes(nowMinuteOfWeek, day, window.startTime)
+                    if (startDelta < bestDelta) {
+                        bestDelta = startDelta
+                        bestDay = day
+                        bestTime = window.startTime
+                    }
 
-                // 2. End boundary on `day` (or `day.nextDay()` if overnight) at `window.endTime`
-                val endDay = if (window.isOvernight) day.nextDay() else day
-                val endDelta = computeDeltaMinutes(nowMinuteOfWeek, endDay, window.endTime)
-                if (endDelta < bestDelta) {
-                    bestDelta = endDelta
-                    bestDay = endDay
-                    bestTime = window.endTime
+                    // 2. End boundary on `day` (or `day.nextDay()` if overnight) at `window.endTime`
+                    val endDay = if (window.isOvernight) day.nextDay() else day
+                    val endDelta = computeDeltaMinutes(nowMinuteOfWeek, endDay, window.endTime)
+                    if (endDelta < bestDelta) {
+                        bestDelta = endDelta
+                        bestDay = endDay
+                        bestTime = window.endTime
+                    }
                 }
             }
         }

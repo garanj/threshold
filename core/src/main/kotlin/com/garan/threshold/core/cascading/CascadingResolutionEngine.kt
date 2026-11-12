@@ -8,14 +8,19 @@ import com.garan.threshold.core.model.CustomProfile
 import com.garan.threshold.core.model.DayOfWeek
 import com.garan.threshold.core.model.LocationFix
 import com.garan.threshold.core.model.Profile
+import com.garan.threshold.core.model.SavedTrigger
 import com.garan.threshold.core.model.TimeOfDay
 import kotlin.random.Random
 
 /**
- * Snapshot of the currently active custom profiles and the precomputed effective access rules
- * for all configured applications.
+ * Snapshot of the currently active custom profiles, active trigger IDs, and the precomputed
+ * effective access rules for all configured applications.
  */
-data class ResolvedWorkingSet(val activeProfiles: List<CustomProfile>, val effectiveProfile: Profile) {
+data class ResolvedWorkingSet(
+    val activeProfiles: List<CustomProfile>,
+    val effectiveProfile: Profile,
+    val activeTriggerIds: Set<String> = emptySet(),
+) {
     val blockedComponents: Set<ComponentKey>
         get() = effectiveProfile.appRules.filterValues { it is AppAccessState.Blocked }.keys
 }
@@ -36,6 +41,38 @@ data class ResolvedWorkingSet(val activeProfiles: List<CustomProfile>, val effec
 class CascadingResolutionEngine {
 
     /**
+     * Evaluates all [savedTriggers] and returns the IDs of triggers that are currently active.
+     */
+    fun evaluateActiveTriggerIds(
+        savedTriggers: List<SavedTrigger>,
+        currentDay: DayOfWeek,
+        currentTime: TimeOfDay,
+        currentLocation: LocationFix? = null,
+        previouslyActiveTriggerIds: Set<String> = emptySet(),
+        customProfiles: List<CustomProfile> = emptyList(),
+        previouslyActiveProfileIds: Set<String> = emptySet(),
+    ): Set<String> {
+        if (savedTriggers.isEmpty()) return emptySet()
+        return savedTriggers.mapNotNullTo(linkedSetOf()) { saved ->
+            val wasActive = saved.id in previouslyActiveTriggerIds ||
+                customProfiles.any { profile ->
+                    profile.id in previouslyActiveProfileIds && saved.id in profile.referencedTriggerIds
+                }
+            if (saved.isActive(
+                    currentDay = currentDay,
+                    currentTime = currentTime,
+                    currentLocation = currentLocation,
+                    wasPreviouslyActive = wasActive,
+                )
+            ) {
+                saved.id
+            } else {
+                null
+            }
+        }
+    }
+
+    /**
      * Filters and returns active custom profiles sorted in priority order (0 = highest priority).
      */
     fun getActiveProfiles(
@@ -44,29 +81,33 @@ class CascadingResolutionEngine {
         currentTime: TimeOfDay,
         currentLocation: LocationFix? = null,
         previouslyActiveProfileIds: Set<String> = emptySet(),
-    ): List<CustomProfile> = customProfiles
-        .filter {
-            it.isActive(
-                currentDay = currentDay,
-                currentTime = currentTime,
-                currentLocation = currentLocation,
-                wasPreviouslyActive = it.id in previouslyActiveProfileIds,
-            )
-        }
-        .sortedBy { it.priority }
+        savedTriggers: List<SavedTrigger> = emptyList(),
+        previouslyActiveTriggerIds: Set<String> = emptySet(),
+    ): List<CustomProfile> {
+        val activeTriggerIds = evaluateActiveTriggerIds(
+            savedTriggers = savedTriggers,
+            currentDay = currentDay,
+            currentTime = currentTime,
+            currentLocation = currentLocation,
+            previouslyActiveTriggerIds = previouslyActiveTriggerIds,
+            customProfiles = customProfiles,
+            previouslyActiveProfileIds = previouslyActiveProfileIds,
+        )
+        return customProfiles
+            .filter {
+                it.isActive(
+                    currentDay = currentDay,
+                    currentTime = currentTime,
+                    currentLocation = currentLocation,
+                    wasPreviouslyActive = it.id in previouslyActiveProfileIds,
+                    activeTriggerIds = activeTriggerIds,
+                )
+            }
+            .sortedBy { it.priority }
+    }
 
     /**
      * Resolves the effective [AppAccessState] for [component] against active profiles and base configuration.
-     *
-     * @param component Target application component to resolve.
-     * @param baseProfile Fallback baseline profile rules and default friction.
-     * @param customProfiles Candidate custom profiles to evaluate.
-     * @param currentDay Current day of the week.
-     * @param currentTime Current 24-hour time of day.
-     * @param isDefaultDialer Whether this component is the system dialer role holder.
-     * @param currentLocation Optional current geographic location fix.
-     * @param previouslyActiveProfileIds Set of profile IDs that were active in the prior evaluation (for hysteresis).
-     * @param random Deterministic random source for random friction evaluation.
      */
     fun resolveAppAccess(
         component: ComponentKey,
@@ -77,6 +118,8 @@ class CascadingResolutionEngine {
         isDefaultDialer: Boolean,
         currentLocation: LocationFix? = null,
         previouslyActiveProfileIds: Set<String> = emptySet(),
+        savedTriggers: List<SavedTrigger> = emptyList(),
+        previouslyActiveTriggerIds: Set<String> = emptySet(),
         random: Random = Random.Default,
     ): AppAccessState {
         // Prime Invariant 2: Universal Dialer Safety Invariant
@@ -90,6 +133,8 @@ class CascadingResolutionEngine {
             currentTime = currentTime,
             currentLocation = currentLocation,
             previouslyActiveProfileIds = previouslyActiveProfileIds,
+            savedTriggers = savedTriggers,
+            previouslyActiveTriggerIds = previouslyActiveTriggerIds,
         )
 
         for (profile in activeProfiles) {
@@ -116,9 +161,8 @@ class CascadingResolutionEngine {
     }
 
     /**
-     * Computes the complete [ResolvedWorkingSet] (active custom profiles and merged effective [Profile]
-     * across all configured components in [baseProfile] and [customProfiles]) for a given [currentDay]
-     * and [currentTime].
+     * Computes the complete [ResolvedWorkingSet] (active custom profiles, active trigger IDs, and
+     * merged effective [Profile] across all configured components in [baseProfile] and [customProfiles]).
      */
     fun resolveWorkingSet(
         baseProfile: BaseProfileSettings,
@@ -129,15 +173,31 @@ class CascadingResolutionEngine {
         additionalComponents: Collection<ComponentKey> = emptyList(),
         currentLocation: LocationFix? = null,
         previouslyActiveProfileIds: Set<String> = emptySet(),
+        savedTriggers: List<SavedTrigger> = emptyList(),
+        previouslyActiveTriggerIds: Set<String> = emptySet(),
         random: Random = Random.Default,
     ): ResolvedWorkingSet {
-        val activeProfiles = getActiveProfiles(
-            customProfiles = customProfiles,
+        val activeTriggerIds = evaluateActiveTriggerIds(
+            savedTriggers = savedTriggers,
             currentDay = currentDay,
             currentTime = currentTime,
             currentLocation = currentLocation,
+            previouslyActiveTriggerIds = previouslyActiveTriggerIds,
+            customProfiles = customProfiles,
             previouslyActiveProfileIds = previouslyActiveProfileIds,
         )
+
+        val activeProfiles = customProfiles
+            .filter {
+                it.isActive(
+                    currentDay = currentDay,
+                    currentTime = currentTime,
+                    currentLocation = currentLocation,
+                    wasPreviouslyActive = it.id in previouslyActiveProfileIds,
+                    activeTriggerIds = activeTriggerIds,
+                )
+            }
+            .sortedBy { it.priority }
 
         val candidateComponents = buildSet {
             addAll(baseProfile.appAssignments.keys)
@@ -168,6 +228,7 @@ class CascadingResolutionEngine {
         return ResolvedWorkingSet(
             activeProfiles = activeProfiles,
             effectiveProfile = effectiveProfile,
+            activeTriggerIds = activeTriggerIds,
         )
     }
 

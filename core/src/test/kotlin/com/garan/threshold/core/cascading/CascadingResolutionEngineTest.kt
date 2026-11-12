@@ -12,8 +12,10 @@ import com.garan.threshold.core.model.GeoTrigger
 import com.garan.threshold.core.model.GeoTriggerMode
 import com.garan.threshold.core.model.LocationFix
 import com.garan.threshold.core.model.ProfileTrigger
+import com.garan.threshold.core.model.SavedTrigger
 import com.garan.threshold.core.model.ScheduleTrigger
 import com.garan.threshold.core.model.TimeOfDay
+import com.garan.threshold.core.model.TriggerRule
 import com.google.common.truth.Truth.assertThat
 import org.junit.Test
 
@@ -417,5 +419,125 @@ class CascadingResolutionEngineTest {
             previouslyActiveProfileIds = setOf("office", "away"),
         )
         assertThat(wsNull.activeProfiles).isEmpty()
+    }
+
+    @Test
+    fun reusableTriggers_evaluatesAndWithinRuleAndOrAcrossRulesWithTriggerHysteresis() {
+        val officeCenter = LocationFix(latitude = 51.5074, longitude = -0.1278)
+        val insideFix =
+            LocationFix(latitude = officeCenter.latitude + (100.0 / 111_194.9266), longitude = officeCenter.longitude)
+        val boundaryFix =
+            LocationFix(latitude = officeCenter.latitude + (265.0 / 111_194.9266), longitude = officeCenter.longitude)
+        val farFix =
+            LocationFix(latitude = officeCenter.latitude + (500.0 / 111_194.9266), longitude = officeCenter.longitude)
+
+        val workHoursTrigger = SavedTrigger(
+            id = "t-work-hours",
+            name = "Work Hours",
+            trigger = ProfileTrigger.Schedule(weekdayDaySchedule),
+        )
+        val officeGeoTrigger = SavedTrigger(
+            id = "t-office-geo",
+            name = "At Office",
+            trigger = ProfileTrigger.Geo(
+                GeoTrigger(
+                    latitude = officeCenter.latitude,
+                    longitude = officeCenter.longitude,
+                    radiusMeters = 250,
+                    mode = GeoTriggerMode.INSIDE,
+                ),
+            ),
+        )
+        val weekendEveningTrigger = SavedTrigger(
+            id = "t-weekend",
+            name = "Saturday Study",
+            trigger = ProfileTrigger.Schedule(
+                ScheduleTrigger(
+                    days = setOf(DayOfWeek.SATURDAY),
+                    startTime = TimeOfDay(14, 0),
+                    endTime = TimeOfDay(18, 0),
+                ),
+            ),
+        )
+        val savedTriggers = listOf(workHoursTrigger, officeGeoTrigger, weekendEveningTrigger)
+
+        // Profile activates when: (Work Hours AND At Office) OR (Saturday Study)
+        val focusProfile = CustomProfile(
+            id = "focus",
+            name = "Focus",
+            priority = 0,
+            enabled = true,
+            trigger = null,
+            activationRules = listOf(
+                TriggerRule(listOf("t-work-hours", "t-office-geo")),
+                TriggerRule(listOf("t-weekend")),
+            ),
+            appAssignments = mapOf(socialComponent to AppAssignment.Blocked),
+        )
+        val base = BaseProfileSettings(
+            appAssignments = mapOf(socialComponent to AppAssignment.Standard),
+        )
+
+        // 1. Monday 10:00 (Work Hours = true), but far from Office (At Office = false) -> AND rule is FALSE
+        val wsTimeOnly = engine.resolveWorkingSet(
+            baseProfile = base,
+            customProfiles = listOf(focusProfile),
+            currentDay = DayOfWeek.MONDAY,
+            currentTime = TimeOfDay(10, 0),
+            defaultDialerPackage = dialerComponent.packageName,
+            currentLocation = farFix,
+            savedTriggers = savedTriggers,
+        )
+        assertThat(wsTimeOnly.activeProfiles).isEmpty()
+
+        // 2. Sunday 10:00 (Work Hours = false), inside Office (At Office = true) -> AND rule is FALSE
+        val wsGeoOnly = engine.resolveWorkingSet(
+            baseProfile = base,
+            customProfiles = listOf(focusProfile),
+            currentDay = DayOfWeek.SUNDAY,
+            currentTime = TimeOfDay(10, 0),
+            defaultDialerPackage = dialerComponent.packageName,
+            currentLocation = insideFix,
+            savedTriggers = savedTriggers,
+        )
+        assertThat(wsGeoOnly.activeProfiles).isEmpty()
+
+        // 3. Monday 10:00 (Work Hours = true) AND inside Office (At Office = true) -> AND rule is TRUE
+        val wsBoth = engine.resolveWorkingSet(
+            baseProfile = base,
+            customProfiles = listOf(focusProfile),
+            currentDay = DayOfWeek.MONDAY,
+            currentTime = TimeOfDay(10, 0),
+            defaultDialerPackage = dialerComponent.packageName,
+            currentLocation = insideFix,
+            savedTriggers = savedTriggers,
+        )
+        assertThat(wsBoth.activeProfiles).containsExactly(focusProfile)
+        assertThat(wsBoth.activeTriggerIds).containsExactly("t-work-hours", "t-office-geo")
+
+        // 4. Drifts to 265m on Monday 10:05 -> trigger hysteresis keeps t-office-geo active
+        val wsDrift = engine.resolveWorkingSet(
+            baseProfile = base,
+            customProfiles = listOf(focusProfile),
+            currentDay = DayOfWeek.MONDAY,
+            currentTime = TimeOfDay(10, 5),
+            defaultDialerPackage = dialerComponent.packageName,
+            currentLocation = boundaryFix,
+            savedTriggers = savedTriggers,
+            previouslyActiveTriggerIds = wsBoth.activeTriggerIds,
+        )
+        assertThat(wsDrift.activeProfiles).containsExactly(focusProfile)
+
+        // 5. Saturday 15:00 while far from Office -> second OR rule (t-weekend) activates profile
+        val wsOrRule = engine.resolveWorkingSet(
+            baseProfile = base,
+            customProfiles = listOf(focusProfile),
+            currentDay = DayOfWeek.SATURDAY,
+            currentTime = TimeOfDay(15, 0),
+            defaultDialerPackage = dialerComponent.packageName,
+            currentLocation = farFix,
+            savedTriggers = savedTriggers,
+        )
+        assertThat(wsOrRule.activeProfiles).containsExactly(focusProfile)
     }
 }

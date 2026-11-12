@@ -33,7 +33,10 @@ class ScheduleAlarmReceiver : BroadcastReceiver() {
             try {
                 val container = ThresholdAppContainer.from(appContext)
                 val settings = container.settingsRepository.getSettings()
-                container.scheduleAlarmScheduler.syncNextScheduleAlarm(settings.customProfiles)
+                container.scheduleAlarmScheduler.syncNextScheduleAlarm(
+                    profiles = settings.customProfiles,
+                    savedTriggers = settings.savedTriggers,
+                )
             } finally {
                 pendingResult?.finish()
             }
