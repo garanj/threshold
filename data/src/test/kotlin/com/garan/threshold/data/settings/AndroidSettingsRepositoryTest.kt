@@ -500,8 +500,10 @@ class AndroidSettingsRepositoryTest {
 
         val loadedLatches = repository.getSettings().nfcLatches
         assertThat(loadedLatches).containsExactly(
-            "t-nfc-1", latch1,
-            "t-nfc-2", latch2,
+            "t-nfc-1",
+            latch1,
+            "t-nfc-2",
+            latch2,
         )
 
         // Editing t-nfc-1 from TOGGLE_ON_TAP to TIMED_SESSION (15m) updates its persisted expiresAtEpochMillis
