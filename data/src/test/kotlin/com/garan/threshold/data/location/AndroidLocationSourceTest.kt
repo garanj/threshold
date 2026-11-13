@@ -109,26 +109,49 @@ class AndroidLocationSourceTest {
         }
 
     @Test
-    fun refreshLocation_whenLastKnownFixIsOlderThan30Seconds_triggersFreshCurrentLocationUpdate() = runTest {
+    fun refreshLocation_whenLastKnownFixIs60SecondsOldOnMinuteTick_returnsCacheHitWithoutActiveRequest() = runTest {
+        val nowNanos = SystemClock.elapsedRealtimeNanos()
+        val nowWallMs = System.currentTimeMillis()
+        val minuteOldFix = buildLocation(
+            provider = LocationManager.FUSED_PROVIDER,
+            lat = 51.5000,
+            lon = -0.1200,
+            elapsedNanos = (nowNanos - 60_000_000_000L).coerceAtLeast(1L),
+            wallClockMs = nowWallMs - 60_000L,
+        )
+        shadowOf(locationManager).setLastKnownLocation(LocationManager.FUSED_PROVIDER, minuteOldFix)
+        shadowOf(locationManager).setProviderEnabled(LocationManager.FUSED_PROVIDER, true)
+
+        val source = AndroidLocationSource(context, clockMs = { nowWallMs })
+        val result = source.refreshLocation()
+
+        assertThat(result).isEqualTo(LocationFix(51.5000, -0.1200))
+        assertThat(source.telemetry.value.cacheHitsLastHour).isEqualTo(1)
+        assertThat(source.telemetry.value.activeChecksLastHour).isEqualTo(0)
+        assertThat(source.activeListenerCountForTesting).isEqualTo(0)
+    }
+
+    @Test
+    fun refreshLocation_whenLastKnownFixIsOlderThan2Minutes_triggersFreshCurrentLocationUpdate() = runTest {
         val nowNanos = SystemClock.elapsedRealtimeNanos()
         val staleHomeFix = buildLocation(
             provider = LocationManager.GPS_PROVIDER,
             lat = 51.5000,
             lon = -0.1200,
-            elapsedNanos = (nowNanos - 60_000_000_000L).coerceAtLeast(1L),
-            wallClockMs = System.currentTimeMillis() - 60_000L,
+            elapsedNanos = (nowNanos - 150_000_000_000L).coerceAtLeast(1L),
+            wallClockMs = System.currentTimeMillis() - 150_000L,
         )
         shadowOf(locationManager).setLastKnownLocation(LocationManager.GPS_PROVIDER, staleHomeFix)
         shadowOf(locationManager).setProviderEnabled(LocationManager.GPS_PROVIDER, true)
 
         val source = AndroidLocationSource(context)
 
-        // 1. Immediately returns the cached fix so UI never blocks, while firing async getCurrentLocation
+        // 1. Immediately returns the cached fix so UI never blocks, while firing async single-shot update
         val initialResult = source.refreshLocation()
         assertThat(initialResult).isEqualTo(LocationFix(51.5000, -0.1200))
         assertThat(source.telemetry.value.activeChecksLastHour).isEqualTo(1)
 
-        // 2. Simulate OS delivering the fresh location fix for the in-flight getCurrentLocation request
+        // 2. Simulate OS delivering the fresh location fix for the in-flight request
         val freshAwayFix = buildLocation(
             provider = LocationManager.GPS_PROVIDER,
             lat = 51.5200,
@@ -167,7 +190,7 @@ class AndroidLocationSourceTest {
             lat = 51.5000,
             lon = -0.1200,
             elapsedNanos = 1L,
-            wallClockMs = fakeClockMs - 120_000L, // 2 minutes old
+            wallClockMs = fakeClockMs - 150_000L, // > 2 minutes old
         )
         shadowOf(locationManager).setLastKnownLocation(LocationManager.NETWORK_PROVIDER, staleHomeFix)
         shadowOf(locationManager).setProviderEnabled(LocationManager.NETWORK_PROVIDER, true)
@@ -195,7 +218,7 @@ class AndroidLocationSourceTest {
             lat = 51.5000,
             lon = -0.1200,
             elapsedNanos = 1L,
-            wallClockMs = fakeClockMs - 120_000L,
+            wallClockMs = fakeClockMs - 150_000L,
         )
         shadowOf(locationManager).setLastKnownLocation(LocationManager.NETWORK_PROVIDER, staleFix)
         shadowOf(locationManager).setProviderEnabled(LocationManager.NETWORK_PROVIDER, true)

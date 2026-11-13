@@ -9,7 +9,6 @@ import android.location.LocationListener
 import android.location.LocationManager
 import android.location.LocationRequest
 import android.os.Build
-import android.os.CancellationSignal
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
@@ -26,7 +25,6 @@ import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withTimeoutOrNull
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
-import java.util.function.Consumer
 import kotlin.coroutines.resume
 
 /**
@@ -34,7 +32,7 @@ import kotlin.coroutines.resume
  *
  * Requires zero Google Play Services dependencies and enforces strict power-efficiency invariants:
  * 1. **Cache-first (`getLastKnownLocation`):** Reads cached fixes across available providers (`fused`,
- *    `network`, `gps`, `passive`) with zero radio wake-up when a fix is fresher than [STALE_FIX_THRESHOLD_MS] (30s).
+ *    `network`, `gps`, `passive`) with zero radio wake-up when a fix is fresher than [STALE_FIX_THRESHOLD_MS] (2m).
  * 2. **Single Low-Power Provider Selection:** When a refresh is needed, queries only the single lowest-power
  *    enabled provider (`FUSED_PROVIDER` with `QUALITY_BALANCED_POWER_ACCURACY` -> `NETWORK_PROVIDER` -> `GPS_PROVIDER`
  *    only if neither Fused nor Network is enabled).
@@ -190,7 +188,6 @@ class AndroidLocationSource(context: Context, private val clockMs: () -> Long = 
         recordActiveRequestStarted(provider, nowMs)
 
         val completed = AtomicBoolean(false)
-        val cancellationSignal = CancellationSignal()
         var registeredListener: LocationListener? = null
 
         val timeoutRunnable = Runnable {
@@ -199,7 +196,6 @@ class AndroidLocationSource(context: Context, private val clockMs: () -> Long = 
                     runCatching { manager.removeUpdates(listener) }
                     activeListenersCount.decrementAndGet()
                 }
-                runCatching { cancellationSignal.cancel() }
                 isRefreshInFlight.set(false)
                 recordTimeout(provider)
                 onFixResolved?.invoke(null)
@@ -214,7 +210,6 @@ class AndroidLocationSource(context: Context, private val clockMs: () -> Long = 
                         runCatching { manager.removeUpdates(listener) }
                         activeListenersCount.decrementAndGet()
                     }
-                    runCatching { cancellationSignal.cancel() }
                     isRefreshInFlight.set(false)
 
                     val latencyMs = (clockMs() - nowMs).coerceAtLeast(0L)
@@ -242,40 +237,29 @@ class AndroidLocationSource(context: Context, private val clockMs: () -> Long = 
 
         runCatching {
             activeListenersCount.incrementAndGet()
-            manager.requestLocationUpdates(
-                provider,
-                0L,
-                0f,
-                oneShotListener,
-                Looper.getMainLooper(),
-            )
-        }.onFailure {
-            activeListenersCount.decrementAndGet()
-        }
-
-        runCatching {
-            val executor = ContextCompat.getMainExecutor(appContext)
-            val consumer = Consumer<Location?> { location -> handleLocationResult(location) }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 val request = LocationRequest.Builder(0L)
                     .setQuality(LocationRequest.QUALITY_BALANCED_POWER_ACCURACY)
+                    .setMaxUpdates(1)
                     .setDurationMillis(ACTIVE_REQUEST_TIMEOUT_MS)
                     .build()
-                manager.getCurrentLocation(
+                manager.requestLocationUpdates(
                     provider,
                     request,
-                    cancellationSignal,
-                    executor,
-                    consumer,
+                    ContextCompat.getMainExecutor(appContext),
+                    oneShotListener,
                 )
             } else {
-                manager.getCurrentLocation(
+                manager.requestLocationUpdates(
                     provider,
-                    cancellationSignal,
-                    executor,
-                    consumer,
+                    0L,
+                    0f,
+                    oneShotListener,
+                    Looper.getMainLooper(),
                 )
             }
+        }.onFailure {
+            activeListenersCount.decrementAndGet()
         }
     }
 
@@ -483,7 +467,7 @@ class AndroidLocationSource(context: Context, private val clockMs: () -> Long = 
         private const val WINDOW_1H_MS = 60 * 60 * 1_000L
         private const val WINDOW_24H_MS = 24 * 60 * 60 * 1_000L
 
-        internal const val STALE_FIX_THRESHOLD_MS = 30_000L
+        internal const val STALE_FIX_THRESHOLD_MS = 120_000L
         internal const val STALE_FIX_THRESHOLD_NANOS = STALE_FIX_THRESHOLD_MS * 1_000_000L
         internal const val MIN_ACTIVE_REQUEST_INTERVAL_MS = 30_000L
         internal const val ACTIVE_REQUEST_TIMEOUT_MS = 5_000L
