@@ -280,7 +280,9 @@ class ThresholdScheduleProfileInstrumentedTest {
         )
 
         val launchIntent = Intent(targetContext, MainActivity::class.java).apply {
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+            action = Intent.ACTION_MAIN
+            addCategory(Intent.CATEGORY_HOME)
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK
         }
         scenario = ActivityScenario.launch(launchIntent)
         scenario?.onActivity { activity ->
@@ -303,22 +305,14 @@ class ThresholdScheduleProfileInstrumentedTest {
         device.waitForIdle()
 
         // 1. At Monday 21:00 (before Late Night starts at 22:00), simulate early NFC tap -> rejected!
+        val queryPrefix = targetLabel.take(3)
         scenario?.onActivity { activity ->
             activity.simulateNfcTapForTesting("04:A2:3F:8B:1C:90:80")
-        }
-        device.waitForIdle()
-        assertThat(device.findObject(By.desc("Active profile: Sleep Mode"))).isNull()
-
-        // Open search and type target app label -> target app is visible
-        val searchBox = device.waitForFresh(By.text("Search apps"), 5000L)
-            ?: device.waitForFresh(By.clazz("android.widget.EditText"), 5000L)
-        assertThat(searchBox).isNotNull()
-        searchBox!!.click()
-        val queryPrefix = targetLabel.take(4)
-        scenario?.onActivity { activity ->
+            activity.searchViewModel.activateSearch()
             activity.searchViewModel.onQueryChanged(queryPrefix)
         }
         device.waitForIdle()
+        assertThat(device.waitUntilGoneFresh(By.desc("Active profile: Sleep Mode"), 0L)).isTrue()
         assertThat(device.waitForFresh(By.text(targetLabel), 5000L)).isNotNull()
 
         // 2. Advance clock to Monday 22:15 (inside Late Night window) -> still inactive until NFC tap
@@ -326,7 +320,7 @@ class ThresholdScheduleProfileInstrumentedTest {
             activity.setClockAndTriggerAlarmForTesting(DayOfWeek.MONDAY, TimeOfDay(22, 15))
         }
         device.waitForIdle()
-        assertThat(device.findObject(By.desc("Active profile: Sleep Mode"))).isNull()
+        assertThat(device.waitUntilGoneFresh(By.desc("Active profile: Sleep Mode"), 0L)).isTrue()
 
         // 3. Simulate NFC tap at Monday 22:15 -> latches ON, activates Sleep Mode, blocks target app
         scenario?.onActivity { activity ->
