@@ -17,6 +17,9 @@ import com.garan.threshold.core.model.FrictionChoice
 import com.garan.threshold.core.model.GeneralSettings
 import com.garan.threshold.core.model.GeoTrigger
 import com.garan.threshold.core.model.GeoTriggerMode
+import com.garan.threshold.core.model.NfcTagEntry
+import com.garan.threshold.core.model.NfcTrigger
+import com.garan.threshold.core.model.NfcTriggerMode
 import com.garan.threshold.core.model.ProfileTrigger
 import com.garan.threshold.core.model.SavedTrigger
 import com.garan.threshold.core.model.ScheduleTrigger
@@ -392,6 +395,20 @@ class AndroidSettingsRepository(
                 triggerObj.put("radiusMeters", geo.radiusMeters)
                 triggerObj.put("mode", geo.mode.name)
             }
+            is ProfileTrigger.Nfc -> {
+                val nfc = trigger.nfc
+                triggerObj.put("type", "NFC")
+                triggerObj.put("mode", nfc.mode.name)
+                triggerObj.put("durationMinutes", nfc.durationMinutes)
+                val tagsArray = JSONArray()
+                for (tag in nfc.tags) {
+                    val tagObj = JSONObject()
+                    tagObj.put("uid", tag.normalizedUid)
+                    tagObj.put("label", tag.label)
+                    tagsArray.put(tagObj)
+                }
+                triggerObj.put("tags", tagsArray)
+            }
         }
         return triggerObj
     }
@@ -464,6 +481,35 @@ class AndroidSettingsRepository(
                         longitude = longitude,
                         radiusMeters = radiusMeters,
                         mode = mode,
+                    ),
+                )
+            }
+            "NFC" -> {
+                val mode = runCatching {
+                    NfcTriggerMode.valueOf(triggerObj.optString("mode", NfcTriggerMode.TOGGLE_ON_TAP.name))
+                }.getOrDefault(NfcTriggerMode.TOGGLE_ON_TAP)
+                val durationMinutes = triggerObj.optInt("durationMinutes", NfcTrigger.DEFAULT_DURATION_MINUTES)
+                    .coerceIn(NfcTrigger.MIN_DURATION_MINUTES, NfcTrigger.MAX_DURATION_MINUTES)
+                val tags = mutableListOf<NfcTagEntry>()
+                val tagsArray = triggerObj.optJSONArray("tags")
+                if (tagsArray != null) {
+                    for (t in 0 until tagsArray.length()) {
+                        val tagObj = tagsArray.optJSONObject(t)
+                        if (tagObj != null) {
+                            val uid = tagObj.optString("uid", "")
+                            val label = tagObj.optString("label", "")
+                            val normalized = NfcTagEntry.normalizeUid(uid)
+                            if (normalized.isNotBlank()) {
+                                tags.add(NfcTagEntry(uid = normalized, label = label))
+                            }
+                        }
+                    }
+                }
+                ProfileTrigger.Nfc(
+                    NfcTrigger(
+                        tags = tags,
+                        mode = mode,
+                        durationMinutes = durationMinutes,
                     ),
                 )
             }

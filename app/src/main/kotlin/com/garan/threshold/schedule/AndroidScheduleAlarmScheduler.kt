@@ -9,6 +9,7 @@ import android.os.Build
 import android.provider.Settings
 import com.garan.threshold.core.cascading.ScheduleHorizonCalculator
 import com.garan.threshold.core.model.CustomProfile
+import com.garan.threshold.core.model.NfcLatchState
 import com.garan.threshold.core.model.SavedTrigger
 import com.garan.threshold.core.port.ClockSource
 import com.garan.threshold.core.port.ScheduleAlarmScheduler
@@ -61,10 +62,14 @@ class AndroidScheduleAlarmScheduler(
     }
 
     override fun syncNextScheduleAlarm(profiles: List<CustomProfile>) {
-        syncNextScheduleAlarm(profiles = profiles, savedTriggers = emptyList())
+        syncNextScheduleAlarm(profiles = profiles, savedTriggers = emptyList(), nfcLatches = emptyMap())
     }
 
-    override fun syncNextScheduleAlarm(profiles: List<CustomProfile>, savedTriggers: List<SavedTrigger>) {
+    override fun syncNextScheduleAlarm(
+        profiles: List<CustomProfile>,
+        savedTriggers: List<SavedTrigger>,
+        nfcLatches: Map<String, NfcLatchState>,
+    ) {
         val manager = alarmManager ?: return
         val pendingIntent = createAlarmPendingIntent(context)
         val now = clockSource.now()
@@ -75,13 +80,20 @@ class AndroidScheduleAlarmScheduler(
             savedTriggers = savedTriggers,
         )
 
-        if (nextTransition == null) {
+        val currentMinuteFloorMillis = nowEpochMillisProvider()
+        val scheduleTriggerAtMillis = nextTransition?.let {
+            currentMinuteFloorMillis + it.minutesFromNow * 60_000L
+        }
+        val earliestNfcExpiryMillis = nfcLatches.values
+            .mapNotNull { it.expiresAtEpochMillis }
+            .filter { it > currentMinuteFloorMillis }
+            .minOrNull()
+
+        val triggerAtMillis = listOfNotNull(scheduleTriggerAtMillis, earliestNfcExpiryMillis).minOrNull()
+        if (triggerAtMillis == null) {
             manager.cancel(pendingIntent)
             return
         }
-
-        val currentMinuteFloorMillis = nowEpochMillisProvider()
-        val triggerAtMillis = currentMinuteFloorMillis + nextTransition.minutesFromNow * 60_000L
 
         if (canScheduleExactAlarms()) {
             runCatching {

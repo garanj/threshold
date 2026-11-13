@@ -16,10 +16,15 @@ import com.garan.threshold.core.model.BaseProfileSettings
 import com.garan.threshold.core.model.ComponentKey
 import com.garan.threshold.core.model.CustomProfile
 import com.garan.threshold.core.model.DayOfWeek
+import com.garan.threshold.core.model.NfcTagEntry
+import com.garan.threshold.core.model.NfcTrigger
+import com.garan.threshold.core.model.NfcTriggerMode
 import com.garan.threshold.core.model.ProfileTrigger
+import com.garan.threshold.core.model.SavedTrigger
 import com.garan.threshold.core.model.ScheduleTrigger
 import com.garan.threshold.core.model.TimeOfDay
 import com.garan.threshold.core.model.TimeWindow
+import com.garan.threshold.core.model.TriggerRule
 import com.garan.threshold.ui.launcher.DialerPackageResolver
 import com.google.common.truth.Truth.assertThat
 import kotlinx.coroutines.runBlocking
@@ -48,6 +53,8 @@ class ThresholdScheduleProfileInstrumentedTest {
     fun tearDown() {
         scenario?.onActivity { activity ->
             activity.setExactAlarmPermissionForTesting(null)
+            activity.setNfcCapabilityForTesting(null)
+            activity.setNowEpochMillisForTesting(null)
             runBlocking {
                 activity.configureScheduleProfilesForTesting(
                     baseProfile = BaseProfileSettings(),
@@ -210,5 +217,125 @@ class ThresholdScheduleProfileInstrumentedTest {
             5000L,
         )
         assertThat(badgeClearedAfterRecreateClockUpdate).isTrue()
+    }
+
+    @Test
+    fun nfcAndScheduleCompositeRule_rejectsEarlyTapLatchesDuringWindowAndAutoUnlatchesWhenScheduleEnds() {
+        val targetContext = InstrumentationRegistry.getInstrumentation().targetContext
+        val launcherApps = targetContext.getSystemService(Context.LAUNCHER_APPS_SERVICE) as LauncherApps
+        val userManager = targetContext.getSystemService(Context.USER_SERVICE) as UserManager
+        val myUser = Process.myUserHandle()
+        val userSerial = userManager.getSerialNumberForUser(myUser)
+        val dialerPkg = DialerPackageResolver.resolveDefaultDialerPackage(targetContext)
+
+        val allActivities = launcherApps.getActivityList(null, myUser)
+        val targetActivity = allActivities.first { info ->
+            val pkg = info.componentName.packageName
+            val label = info.label?.toString()?.trim().orEmpty()
+            pkg != dialerPkg &&
+                pkg != targetContext.packageName &&
+                label.length >= 4 &&
+                allActivities.count { it.label?.toString()?.trim().equals(label, ignoreCase = true) } == 1
+        }
+        val targetLabel = targetActivity.label.toString().trim()
+        val targetComponent = ComponentKey(
+            packageName = targetActivity.componentName.packageName,
+            activityName = targetActivity.componentName.className,
+            userSerial = userSerial,
+        )
+
+        val lateNightTrigger = SavedTrigger(
+            id = "t-late-night",
+            name = "Late Night",
+            trigger = ProfileTrigger.Schedule(
+                ScheduleTrigger(
+                    dailyWindows = mapOf(
+                        DayOfWeek.MONDAY to TimeWindow(TimeOfDay(22, 0), TimeOfDay(6, 0)),
+                    ),
+                    sameScheduleEveryDay = false,
+                ),
+            ),
+        )
+        val bedsideNfcTrigger = SavedTrigger(
+            id = "t-bedside-nfc",
+            name = "Bedside Tag",
+            trigger = ProfileTrigger.Nfc(
+                NfcTrigger(
+                    tags = listOf(NfcTagEntry(uid = "04:A2:3F:8B:1C:90:80", label = "Bedside")),
+                    mode = NfcTriggerMode.TOGGLE_ON_TAP,
+                ),
+            ),
+        )
+        val sleepProfile = CustomProfile(
+            id = "sleep-mode",
+            name = "Sleep Mode",
+            priority = 0,
+            enabled = true,
+            trigger = null,
+            activationRules = listOf(
+                TriggerRule(listOf("t-late-night", "t-bedside-nfc")),
+            ),
+            appAssignments = mapOf(targetComponent to AppAssignment.Blocked),
+            colorIndex = 2,
+        )
+
+        val launchIntent = Intent(targetContext, MainActivity::class.java).apply {
+            action = Intent.ACTION_MAIN
+            addCategory(Intent.CATEGORY_HOME)
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK
+        }
+        scenario = ActivityScenario.launch(launchIntent)
+        scenario?.onActivity { activity ->
+            activity.setShowWhenLocked(true)
+            activity.setTurnScreenOn(true)
+            activity.setExactAlarmPermissionForTesting(true)
+            activity.setNfcCapabilityForTesting(true)
+            activity.setNowEpochMillisForTesting(1_700_000_000_000L)
+            activity.setClockAndTriggerAlarmForTesting(DayOfWeek.MONDAY, TimeOfDay(21, 0))
+            runBlocking {
+                activity.configureScheduleProfilesForTesting(
+                    baseProfile = BaseProfileSettings(
+                        appAssignments = mapOf(targetComponent to AppAssignment.Standard),
+                    ),
+                    customProfiles = listOf(sleepProfile),
+                    savedTriggers = listOf(lateNightTrigger, bedsideNfcTrigger),
+                )
+            }
+        }
+        device.waitForIdle()
+
+        // 1. At Monday 21:00 (before Late Night starts at 22:00), simulate early NFC tap -> rejected!
+        val queryPrefix = targetLabel.take(3)
+        scenario?.onActivity { activity ->
+            activity.simulateNfcTapForTesting("04:A2:3F:8B:1C:90:80")
+            activity.searchViewModel.activateSearch()
+            activity.searchViewModel.onQueryChanged(queryPrefix)
+        }
+        device.waitForIdle()
+        assertThat(device.waitUntilGoneFresh(By.desc("Active profile: Sleep Mode"), 0L)).isTrue()
+        assertThat(device.waitForFresh(By.text(targetLabel), 5000L)).isNotNull()
+
+        // 2. Advance clock to Monday 22:15 (inside Late Night window) -> still inactive until NFC tap
+        scenario?.onActivity { activity ->
+            activity.setClockAndTriggerAlarmForTesting(DayOfWeek.MONDAY, TimeOfDay(22, 15))
+        }
+        device.waitForIdle()
+        assertThat(device.waitUntilGoneFresh(By.desc("Active profile: Sleep Mode"), 0L)).isTrue()
+
+        // 3. Simulate NFC tap at Monday 22:15 -> latches ON, activates Sleep Mode, blocks target app
+        scenario?.onActivity { activity ->
+            activity.simulateNfcTapForTesting("04a23f8b1c9080")
+        }
+        device.waitForIdle()
+        assertThat(device.waitForFresh(By.desc("Active profile: Sleep Mode"), 5000L)).isNotNull()
+        assertThat(device.waitUntilGoneFresh(By.text(targetLabel), 5000L)).isTrue()
+
+        // 4. Advance clock to Tuesday 07:00 (after overnight Late Night window ends) -> auto-unlatches NFC!
+        scenario?.onActivity { activity ->
+            activity.setClockAndTriggerAlarmForTesting(DayOfWeek.TUESDAY, TimeOfDay(7, 0))
+        }
+        device.waitForIdle()
+        assertThat(device.waitUntilGoneFresh(By.desc("Active profile: Sleep Mode"), 5000L)).isTrue()
+        assertThat(device.waitForFresh(By.text(targetLabel), 5000L)).isNotNull()
     }
 }

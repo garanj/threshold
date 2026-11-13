@@ -38,6 +38,21 @@ sealed interface ProfileTrigger {
     }
 
     /**
+     * Physical NFC tag trigger evaluated via foreground tag tap latching and session expiry.
+     */
+    data class Nfc(val nfc: NfcTrigger = NfcTrigger()) : ProfileTrigger {
+        override val requiredCapabilities: Set<ProfileCapability>
+            get() = setOf(ProfileCapability.NFC_HARDWARE_ENABLED)
+
+        override fun isActive(
+            currentDay: DayOfWeek,
+            currentTime: TimeOfDay,
+            currentLocation: LocationFix?,
+            wasPreviouslyActive: Boolean,
+        ): Boolean = nfc.tags.isNotEmpty() && wasPreviouslyActive
+    }
+
+    /**
      * OS permissions or hardware capabilities required for this trigger to function reliably.
      */
     val requiredCapabilities: Set<ProfileCapability>

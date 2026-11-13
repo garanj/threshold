@@ -11,6 +11,9 @@ import com.garan.threshold.core.model.FrictionPolicy
 import com.garan.threshold.core.model.GeoTrigger
 import com.garan.threshold.core.model.GeoTriggerMode
 import com.garan.threshold.core.model.LocationFix
+import com.garan.threshold.core.model.NfcTagEntry
+import com.garan.threshold.core.model.NfcTrigger
+import com.garan.threshold.core.model.NfcTriggerMode
 import com.garan.threshold.core.model.ProfileTrigger
 import com.garan.threshold.core.model.SavedTrigger
 import com.garan.threshold.core.model.ScheduleTrigger
@@ -694,5 +697,176 @@ class CascadingResolutionEngineTest {
         assertThat(wsInBreakRoom.activeProfiles).containsExactly(generalWork)
         assertThat(wsInBreakRoom.blockedComponents).isEmpty()
         assertThat(wsInBreakRoom.effectiveProfile.appRules[socialComponent]).isNotNull()
+    }
+
+    @Test
+    fun nfcTriggerWithAndCompanionRule_rejectsEarlyTapsLatchesWhenCompanionMetAndAutoUnlatchesWhenCompanionLost() {
+        val lateNightTrigger = SavedTrigger(
+            id = "t-late-night",
+            name = "Late Night",
+            trigger = ProfileTrigger.Schedule(
+                ScheduleTrigger(
+                    days = setOf(DayOfWeek.MONDAY),
+                    startTime = TimeOfDay(21, 0),
+                    endTime = TimeOfDay(23, 30),
+                ),
+            ),
+        )
+        val bedsideNfcTrigger = SavedTrigger(
+            id = "t-bedside-nfc",
+            name = "Bedside Tag",
+            trigger = ProfileTrigger.Nfc(
+                NfcTrigger(
+                    tags = listOf(NfcTagEntry(uid = "04:A2:3F:8B", label = "Nightstand")),
+                    mode = NfcTriggerMode.TOGGLE_ON_TAP,
+                ),
+            ),
+        )
+        val savedTriggers = listOf(lateNightTrigger, bedsideNfcTrigger)
+
+        // Sleep Profile requires: Bedside Tag AND Late Night
+        val sleepProfile = CustomProfile(
+            id = "sleep",
+            name = "Sleep",
+            priority = 0,
+            enabled = true,
+            trigger = null,
+            activationRules = listOf(
+                TriggerRule(listOf("t-bedside-nfc", "t-late-night")),
+            ),
+            appAssignments = mapOf(socialComponent to AppAssignment.Blocked),
+        )
+        val profiles = listOf(sleepProfile)
+
+        // 1. Tap tag early at Monday 20:00 (before Late Night starts at 21:00) -> rejected, does NOT latch
+        val earlyTap = engine.processNfcTagTap(
+            rawTagUid = "04:A2:3F:8B",
+            savedTriggers = savedTriggers,
+            customProfiles = profiles,
+            currentDay = DayOfWeek.MONDAY,
+            currentTime = TimeOfDay(20, 0),
+            nowEpochMillis = 1_000_000L,
+        )
+        assertThat(earlyTap.outcome).isEqualTo(NfcTapOutcome.COMPANION_CONDITIONS_NOT_MET)
+        assertThat(earlyTap.updatedLatches).isEmpty()
+
+        // 2. Tap tag at Monday 21:15 (inside Late Night window) -> latches ON and activates Sleep profile
+        val validTap = engine.processNfcTagTap(
+            rawTagUid = "04:A2:3F:8B",
+            savedTriggers = savedTriggers,
+            customProfiles = profiles,
+            currentDay = DayOfWeek.MONDAY,
+            currentTime = TimeOfDay(21, 15),
+            nowEpochMillis = 2_000_000L,
+        )
+        assertThat(validTap.outcome).isEqualTo(NfcTapOutcome.LATCHED_ON)
+        assertThat(validTap.updatedLatches).containsKey("t-bedside-nfc")
+
+        val wsActive = engine.resolveWorkingSet(
+            baseProfile = BaseProfileSettings(),
+            customProfiles = profiles,
+            currentDay = DayOfWeek.MONDAY,
+            currentTime = TimeOfDay(21, 15),
+            defaultDialerPackage = dialerComponent.packageName,
+            savedTriggers = savedTriggers,
+            nfcLatchStates = validTap.updatedLatches,
+            nowEpochMillis = 2_000_000L,
+        )
+        assertThat(wsActive.activeProfiles).containsExactly(sleepProfile)
+        assertThat(wsActive.activeNfcLatches).containsKey("t-bedside-nfc")
+
+        // 3. When Late Night window ends at Monday 23:45 -> companion condition lost -> auto-unlatches!
+        val wsAfterWindow = engine.resolveWorkingSet(
+            baseProfile = BaseProfileSettings(),
+            customProfiles = profiles,
+            currentDay = DayOfWeek.MONDAY,
+            currentTime = TimeOfDay(23, 45),
+            defaultDialerPackage = dialerComponent.packageName,
+            savedTriggers = savedTriggers,
+            nfcLatchStates = wsActive.activeNfcLatches,
+            nowEpochMillis = 3_000_000L,
+        )
+        assertThat(wsAfterWindow.activeProfiles).isEmpty()
+        assertThat(wsAfterWindow.activeNfcLatches).isEmpty()
+    }
+
+    @Test
+    fun nfcTriggerTimedSession_activatesForDurationTogglesOffOnSecondTapAndAutoExpires() {
+        val deskNfcTrigger = SavedTrigger(
+            id = "t-desk-nfc",
+            name = "Desk Tag",
+            trigger = ProfileTrigger.Nfc(
+                NfcTrigger(
+                    tags = listOf(NfcTagEntry(uid = "04:B1:22:99", label = "Desk")),
+                    mode = NfcTriggerMode.TIMED_SESSION,
+                    durationMinutes = 30,
+                ),
+            ),
+        )
+        val savedTriggers = listOf(deskNfcTrigger)
+        val deepWork = CustomProfile(
+            id = "deep-work",
+            name = "Deep Work",
+            priority = 0,
+            enabled = true,
+            trigger = null,
+            activationRules = listOf(TriggerRule(listOf("t-desk-nfc"))),
+            appAssignments = mapOf(socialComponent to AppAssignment.Blocked),
+        )
+        val profiles = listOf(deepWork)
+        val t0 = 10_000_000L
+
+        // 1. Tap tag -> latches ON for 30 minutes
+        val tapOn = engine.processNfcTagTap(
+            rawTagUid = "04:B1:22:99",
+            savedTriggers = savedTriggers,
+            customProfiles = profiles,
+            currentDay = DayOfWeek.TUESDAY,
+            currentTime = TimeOfDay(10, 0),
+            nowEpochMillis = t0,
+        )
+        assertThat(tapOn.outcome).isEqualTo(NfcTapOutcome.LATCHED_ON)
+        assertThat(tapOn.updatedLatches["t-desk-nfc"]?.expiresAtEpochMillis)
+            .isEqualTo(t0 + 30 * 60_000L)
+
+        // 2. 15 minutes later -> still active
+        val wsMidSession = engine.resolveWorkingSet(
+            baseProfile = BaseProfileSettings(),
+            customProfiles = profiles,
+            currentDay = DayOfWeek.TUESDAY,
+            currentTime = TimeOfDay(10, 15),
+            defaultDialerPackage = dialerComponent.packageName,
+            savedTriggers = savedTriggers,
+            nfcLatchStates = tapOn.updatedLatches,
+            nowEpochMillis = t0 + 15 * 60_000L,
+        )
+        assertThat(wsMidSession.activeProfiles).containsExactly(deepWork)
+
+        // 3. At 30 minutes -> session expires automatically and unlatches
+        val wsExpired = engine.resolveWorkingSet(
+            baseProfile = BaseProfileSettings(),
+            customProfiles = profiles,
+            currentDay = DayOfWeek.TUESDAY,
+            currentTime = TimeOfDay(10, 30),
+            defaultDialerPackage = dialerComponent.packageName,
+            savedTriggers = savedTriggers,
+            nfcLatchStates = tapOn.updatedLatches,
+            nowEpochMillis = t0 + 30 * 60_000L,
+        )
+        assertThat(wsExpired.activeProfiles).isEmpty()
+        assertThat(wsExpired.activeNfcLatches).isEmpty()
+
+        // 4. Tap ON again, then tap a second time 5 minutes later -> early exit (UNLATCHED_OFF)
+        val tapAgain = engine.processNfcTagTap(
+            rawTagUid = "04:B1:22:99",
+            savedTriggers = savedTriggers,
+            customProfiles = profiles,
+            currentDay = DayOfWeek.TUESDAY,
+            currentTime = TimeOfDay(11, 0),
+            currentNfcLatches = tapOn.updatedLatches,
+            nowEpochMillis = t0 + 5 * 60_000L,
+        )
+        assertThat(tapAgain.outcome).isEqualTo(NfcTapOutcome.UNLATCHED_OFF)
+        assertThat(tapAgain.updatedLatches).isEmpty()
     }
 }

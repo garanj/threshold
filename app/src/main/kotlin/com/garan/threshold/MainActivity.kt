@@ -125,6 +125,16 @@ class MainActivity : ComponentActivity() {
         ImeUtils.dismissIme(this)
     }
 
+    override fun onResume() {
+        super.onResume()
+        appContainer.nfcReaderSource.enableForegroundReader(this)
+    }
+
+    override fun onPause() {
+        appContainer.nfcReaderSource.disableForegroundReader(this)
+        super.onPause()
+    }
+
     @androidx.annotation.VisibleForTesting
     suspend fun configureScheduleProfilesForTesting(
         baseProfile: BaseProfileSettings = BaseProfileSettings(),
@@ -163,6 +173,40 @@ class MainActivity : ComponentActivity() {
         if (::searchViewModel.isInitialized) {
             kotlinx.coroutines.runBlocking {
                 searchViewModel.reconcileForTesting()
+            }
+        }
+    }
+
+    @androidx.annotation.VisibleForTesting
+    fun setNfcCapabilityForTesting(enabled: Boolean?) {
+        appContainer.nfcCapabilityOverrideForTesting = enabled
+        ScheduleTransitionNotifier.notifyTransition()
+        if (::searchViewModel.isInitialized) {
+            kotlinx.coroutines.runBlocking {
+                searchViewModel.reconcileForTesting()
+            }
+        }
+    }
+
+    @androidx.annotation.VisibleForTesting
+    fun setNowEpochMillisForTesting(millis: Long?) {
+        appContainer.nowEpochMillisOverrideForTesting = millis
+        ScheduleTransitionNotifier.notifyTransition()
+        if (::searchViewModel.isInitialized) {
+            kotlinx.coroutines.runBlocking {
+                searchViewModel.reconcileForTesting()
+            }
+        }
+    }
+
+    @androidx.annotation.VisibleForTesting
+    fun simulateNfcTapForTesting(rawUid: String) {
+        val registrationListener = appContainer.nfcReaderSource.activeRegistrationListener
+        if (registrationListener != null) {
+            appContainer.nfcReaderSource.dispatchScannedUid(rawUid)
+        } else if (::searchViewModel.isInitialized) {
+            kotlinx.coroutines.runBlocking {
+                searchViewModel.processScannedNfcTag(rawUid)
             }
         }
     }
@@ -236,6 +280,8 @@ class MainActivity : ComponentActivity() {
                     scheduleAlarmScheduler = container.scheduleAlarmScheduler,
                     capabilityChecker = container.capabilityChecker,
                     locationSource = container.locationSource,
+                    nfcReaderSource = container.nfcReaderSource,
+                    nowEpochMillisProvider = container.activeNowEpochMillisProvider,
                 ) as T
             },
         )[SearchViewModel::class.java]
@@ -333,7 +379,11 @@ class MainActivity : ComponentActivity() {
                                             }
                                         }
                                         ProfileCapability.NFC_HARDWARE_ENABLED -> {
-                                            if (backStack.lastOrNull() != ThresholdRoute.Profiles) {
+                                            val nfcIntent = Intent(Settings.ACTION_NFC_SETTINGS).apply {
+                                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                            }
+                                            val opened = runCatching { startActivity(nfcIntent) }.isSuccess
+                                            if (!opened && backStack.lastOrNull() != ThresholdRoute.Profiles) {
                                                 backStack.add(ThresholdRoute.Profiles)
                                             }
                                         }
@@ -396,6 +446,9 @@ class MainActivity : ComponentActivity() {
                                 savedTriggers = settingsUiState.savedTriggers,
                                 onSaveTrigger = settingsViewModel::saveTrigger,
                                 onDeleteTrigger = settingsViewModel::deleteTrigger,
+                                onRegisterNfcScanListener = { listener ->
+                                    container.nfcReaderSource.activeRegistrationListener = listener
+                                },
                             )
                         }
 

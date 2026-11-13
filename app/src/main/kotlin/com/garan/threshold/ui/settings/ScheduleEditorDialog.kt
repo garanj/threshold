@@ -25,6 +25,7 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
@@ -41,10 +42,12 @@ import androidx.compose.material3.TimePicker
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -60,6 +63,9 @@ import com.garan.threshold.core.model.GeoCoordinateParser
 import com.garan.threshold.core.model.GeoTrigger
 import com.garan.threshold.core.model.GeoTriggerMode
 import com.garan.threshold.core.model.LocationFix
+import com.garan.threshold.core.model.NfcTagEntry
+import com.garan.threshold.core.model.NfcTrigger
+import com.garan.threshold.core.model.NfcTriggerMode
 import com.garan.threshold.core.model.ProfileTrigger
 import com.garan.threshold.core.model.ScheduleTrigger
 import com.garan.threshold.core.model.TimeOfDay
@@ -80,6 +86,7 @@ private val DAY_ABBREVIATIONS = listOf(
 private enum class EditorTriggerKind {
     SCHEDULE,
     GEO,
+    NFC,
 }
 
 private sealed interface TimeEditTarget {
@@ -118,6 +125,7 @@ fun TriggerEditorSheet(
     currentLocation: LocationFix? = null,
     onUseCurrentLocation: ((onLocationResolved: (LocationFix) -> Unit) -> Unit)? = null,
     onOpenMapApp: (LocationFix?) -> Unit = {},
+    onRegisterNfcScanListener: (((String) -> Unit)?) -> Unit = {},
 ) {
     ProfileEditorSheet(
         initialName = initialName,
@@ -130,23 +138,26 @@ fun TriggerEditorSheet(
         currentLocation = currentLocation,
         onUseCurrentLocation = onUseCurrentLocation,
         onOpenMapApp = onOpenMapApp,
+        onRegisterNfcScanListener = onRegisterNfcScanListener,
         nameFieldLabel = "Trigger name",
         newTitle = "New Trigger",
         editTitle = "Edit Trigger",
         editGeoTitle = "Edit Location Trigger",
+        editNfcTitle = "Edit NFC Trigger",
         typeSectionLabel = "TRIGGER TYPE",
         scheduleDefaultName = "Schedule Trigger",
         geoDefaultName = "Geo Trigger",
+        nfcDefaultName = "NFC Trigger",
     )
 }
 
 /**
  * Cohesive Material 3 [ModalBottomSheet] for creating or editing a custom profile's
- * name and either a temporal [ScheduleTrigger] or a spatial [GeoTrigger].
+ * name and either a temporal [ScheduleTrigger], spatial [GeoTrigger], or physical [NfcTrigger].
  *
- * When [isNewProfile] is `true`, a Material 3 [SingleChoiceSegmentedButtonRow] (`Schedule | Geo`)
- * lets the user choose the profile type. When editing an existing profile, the editor opens
- * directly to that profile's dedicated Schedule or Location configuration.
+ * When [isNewProfile] is `true`, a Material 3 [SingleChoiceSegmentedButtonRow] (`Schedule | Geo | NFC`)
+ * lets the user choose the trigger type. When editing an existing trigger, the editor opens
+ * directly to that trigger's dedicated Schedule, Location, or NFC configuration.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -172,14 +183,17 @@ fun ProfileEditorSheet(
     currentLocation: LocationFix? = null,
     onUseCurrentLocation: ((onLocationResolved: (LocationFix) -> Unit) -> Unit)? = null,
     onOpenMapApp: (LocationFix?) -> Unit = {},
+    onRegisterNfcScanListener: (((String) -> Unit)?) -> Unit = {},
     onSaveTrigger: ((name: String, trigger: ProfileTrigger) -> Unit)? = null,
     nameFieldLabel: String = "Profile name",
     newTitle: String = "New Profile",
     editTitle: String = "Edit Profile",
     editGeoTitle: String = "Edit Location Profile",
+    editNfcTitle: String = "Edit NFC Profile",
     typeSectionLabel: String = "PROFILE TYPE",
     scheduleDefaultName: String = "Custom Profile",
     geoDefaultName: String = "Geo Profile",
+    nfcDefaultName: String = "NFC Profile",
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var profileName by remember { mutableStateOf(initialName) }
@@ -188,6 +202,7 @@ fun ProfileEditorSheet(
         mutableStateOf(
             when (initialTrigger) {
                 is ProfileTrigger.Geo -> EditorTriggerKind.GEO
+                is ProfileTrigger.Nfc -> EditorTriggerKind.NFC
                 is ProfileTrigger.Schedule, null -> EditorTriggerKind.SCHEDULE
             },
         )
@@ -237,6 +252,34 @@ fun ProfileEditorSheet(
     }
     val parsedFix = (parseResult as? CoordinateParseResult.Success)?.location
 
+    // NFC state
+    val seedNfc = (initialTrigger as? ProfileTrigger.Nfc)?.nfc
+    var nfcMode by remember { mutableStateOf(seedNfc?.mode ?: NfcTriggerMode.TOGGLE_ON_TAP) }
+    var nfcDurationMinutes by remember {
+        mutableIntStateOf(seedNfc?.durationMinutes ?: NfcTrigger.DEFAULT_DURATION_MINUTES)
+    }
+    var nfcTags by remember { mutableStateOf(seedNfc?.tags ?: emptyList()) }
+    val currentHapticEngine by rememberUpdatedState(hapticEngine)
+
+    DisposableEffect(selectedKind, onRegisterNfcScanListener) {
+        if (selectedKind == EditorTriggerKind.NFC) {
+            onRegisterNfcScanListener { rawUid ->
+                val normalized = NfcTagEntry.normalizeUid(rawUid)
+                if (normalized.isNotEmpty()) {
+                    currentHapticEngine.relaySnap()
+                    if (nfcTags.none { it.uid == normalized }) {
+                        nfcTags = nfcTags + NfcTagEntry(uid = normalized)
+                    }
+                }
+            }
+        } else {
+            onRegisterNfcScanListener(null)
+        }
+        onDispose {
+            onRegisterNfcScanListener(null)
+        }
+    }
+
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
@@ -255,6 +298,7 @@ fun ProfileEditorSheet(
                 text = when {
                     isNewProfile -> newTitle
                     selectedKind == EditorTriggerKind.GEO -> editGeoTitle
+                    selectedKind == EditorTriggerKind.NFC -> editNfcTitle
                     else -> editTitle
                 },
                 style = MaterialTheme.typography.titleLarge,
@@ -269,10 +313,10 @@ fun ProfileEditorSheet(
                 label = { Text(nameFieldLabel) },
                 placeholder = {
                     Text(
-                        if (selectedKind == EditorTriggerKind.GEO) {
-                            "e.g. Office, Home"
-                        } else {
-                            "e.g. Deep Work, Bedtime"
+                        when (selectedKind) {
+                            EditorTriggerKind.GEO -> "e.g. Office, Home"
+                            EditorTriggerKind.NFC -> "e.g. Bedside Tag, Desk Tag"
+                            EditorTriggerKind.SCHEDULE -> "e.g. Deep Work, Bedtime"
                         },
                     )
                 },
@@ -307,7 +351,7 @@ fun ProfileEditorSheet(
                                 selectedKind = EditorTriggerKind.SCHEDULE
                             }
                         },
-                        shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2),
+                        shape = SegmentedButtonDefaults.itemShape(index = 0, count = 3),
                         modifier = Modifier.testTag(ProfilesTestTags.TRIGGER_EDITOR_TYPE_SCHEDULE),
                         icon = {
                             Icon(
@@ -328,7 +372,7 @@ fun ProfileEditorSheet(
                                 selectedKind = EditorTriggerKind.GEO
                             }
                         },
-                        shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2),
+                        shape = SegmentedButtonDefaults.itemShape(index = 1, count = 3),
                         modifier = Modifier.testTag(ProfilesTestTags.TRIGGER_EDITOR_TYPE_GEO),
                         icon = {
                             Icon(
@@ -339,6 +383,27 @@ fun ProfileEditorSheet(
                         },
                     ) {
                         Text("Geo")
+                    }
+
+                    SegmentedButton(
+                        selected = selectedKind == EditorTriggerKind.NFC,
+                        onClick = {
+                            if (selectedKind != EditorTriggerKind.NFC) {
+                                hapticEngine.rotaryDetent()
+                                selectedKind = EditorTriggerKind.NFC
+                            }
+                        },
+                        shape = SegmentedButtonDefaults.itemShape(index = 2, count = 3),
+                        modifier = Modifier.testTag(ProfilesTestTags.TRIGGER_EDITOR_TYPE_NFC),
+                        icon = {
+                            Icon(
+                                imageVector = ThresholdIcons.Nfc,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp),
+                            )
+                        },
+                    ) {
+                        Text("NFC")
                     }
                 }
             }
@@ -391,6 +456,31 @@ fun ProfileEditorSheet(
                         },
                     )
                 }
+
+                EditorTriggerKind.NFC -> {
+                    NfcEditorFields(
+                        nfcMode = nfcMode,
+                        onNfcModeChange = {
+                            hapticEngine.rotaryDetent()
+                            nfcMode = it
+                        },
+                        nfcDurationMinutes = nfcDurationMinutes,
+                        onNfcDurationMinutesChange = {
+                            hapticEngine.rotaryDetent()
+                            nfcDurationMinutes = it
+                        },
+                        nfcTags = nfcTags,
+                        onTagLabelChange = { uid, updatedLabel ->
+                            nfcTags = nfcTags.map { entry ->
+                                if (entry.uid == uid) entry.copy(label = updatedLabel) else entry
+                            }
+                        },
+                        onRemoveTag = { uid ->
+                            hapticEngine.rotaryDetent()
+                            nfcTags = nfcTags.filterNot { it.uid == uid }
+                        },
+                    )
+                }
             }
 
             Spacer(modifier = Modifier.height(16.dp))
@@ -398,6 +488,7 @@ fun ProfileEditorSheet(
             val canSubmit = when (selectedKind) {
                 EditorTriggerKind.SCHEDULE -> true
                 EditorTriggerKind.GEO -> parsedFix != null
+                EditorTriggerKind.NFC -> nfcTags.isNotEmpty()
             }
 
             Row(
@@ -414,10 +505,10 @@ fun ProfileEditorSheet(
                 Spacer(modifier = Modifier.width(8.dp))
                 Button(
                     onClick = {
-                        val defaultFallbackName = if (selectedKind == EditorTriggerKind.GEO) {
-                            geoDefaultName
-                        } else {
-                            scheduleDefaultName
+                        val defaultFallbackName = when (selectedKind) {
+                            EditorTriggerKind.GEO -> geoDefaultName
+                            EditorTriggerKind.NFC -> nfcDefaultName
+                            EditorTriggerKind.SCHEDULE -> scheduleDefaultName
                         }
                         val resolvedName = profileName.trim().ifBlank { defaultFallbackName }
 
@@ -451,6 +542,17 @@ fun ProfileEditorSheet(
                                     mode = geoMode,
                                 )
                                 onSaveTrigger?.invoke(resolvedName, ProfileTrigger.Geo(newGeo))
+                                onDismiss()
+                            }
+
+                            EditorTriggerKind.NFC -> {
+                                if (nfcTags.isEmpty()) return@Button
+                                val newNfc = NfcTrigger(
+                                    tags = nfcTags.map { it.copy(label = it.label.trim()) },
+                                    mode = nfcMode,
+                                    durationMinutes = nfcDurationMinutes,
+                                )
+                                onSaveTrigger?.invoke(resolvedName, ProfileTrigger.Nfc(newNfc))
                                 onDismiss()
                             }
                         }
@@ -953,6 +1055,194 @@ private fun GeoEditorFields(
         ),
         modifier = Modifier.fillMaxWidth(),
     )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun NfcEditorFields(
+    nfcMode: NfcTriggerMode,
+    onNfcModeChange: (NfcTriggerMode) -> Unit,
+    nfcDurationMinutes: Int,
+    onNfcDurationMinutesChange: (Int) -> Unit,
+    nfcTags: List<NfcTagEntry>,
+    onTagLabelChange: (uid: String, label: String) -> Unit,
+    onRemoveTag: (uid: String) -> Unit,
+) {
+    Text(
+        text = "ACTIVATION MODE",
+        style = MaterialTheme.typography.labelMedium,
+        fontWeight = FontWeight.SemiBold,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+
+    Spacer(modifier = Modifier.height(8.dp))
+
+    SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+        SegmentedButton(
+            selected = nfcMode == NfcTriggerMode.TOGGLE_ON_TAP,
+            onClick = { onNfcModeChange(NfcTriggerMode.TOGGLE_ON_TAP) },
+            shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2),
+            modifier = Modifier.testTag(ProfilesTestTags.TRIGGER_EDITOR_NFC_MODE_TOGGLE),
+        ) {
+            Text("Toggle on tap")
+        }
+
+        SegmentedButton(
+            selected = nfcMode == NfcTriggerMode.TIMED_SESSION,
+            onClick = { onNfcModeChange(NfcTriggerMode.TIMED_SESSION) },
+            shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2),
+            modifier = Modifier.testTag(ProfilesTestTags.TRIGGER_EDITOR_NFC_MODE_TIMED),
+        ) {
+            Text("Timed session")
+        }
+    }
+
+    Spacer(modifier = Modifier.height(6.dp))
+
+    Text(
+        text = when (nfcMode) {
+            NfcTriggerMode.TOGGLE_ON_TAP ->
+                "Tap a registered tag to latch this trigger ON; tap again to turn OFF."
+            NfcTriggerMode.TIMED_SESSION ->
+                "Tap a registered tag to activate for the selected duration, or tap again early to turn OFF."
+        },
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+
+    if (nfcMode == NfcTriggerMode.TIMED_SESSION) {
+        Spacer(modifier = Modifier.height(16.dp))
+
+        Text(
+            text = "SESSION DURATION",
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            NfcTrigger.DURATION_PRESETS_MINUTES.forEach { presetMinutes ->
+                val isSelected = nfcDurationMinutes == presetMinutes
+                FilterChip(
+                    selected = isSelected,
+                    onClick = { onNfcDurationMinutesChange(presetMinutes) },
+                    label = {
+                        Text(
+                            text = NfcTrigger.formatDuration(presetMinutes),
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                        )
+                    },
+                    modifier = Modifier
+                        .weight(1f)
+                        .testTag(ProfilesTestTags.triggerEditorNfcDuration(presetMinutes)),
+                    shape = RoundedCornerShape(4.dp),
+                    colors = FilterChipDefaults.filterChipColors(
+                        containerColor = MaterialTheme.colorScheme.surface,
+                        labelColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                        selectedContainerColor = MaterialTheme.colorScheme.primary,
+                        selectedLabelColor = MaterialTheme.colorScheme.onPrimary,
+                    ),
+                    border = FilterChipDefaults.filterChipBorder(
+                        enabled = true,
+                        selected = isSelected,
+                        borderColor = MaterialTheme.colorScheme.outlineVariant,
+                        selectedBorderColor = MaterialTheme.colorScheme.primary,
+                    ),
+                )
+            }
+        }
+    }
+
+    Spacer(modifier = Modifier.height(16.dp))
+
+    Text(
+        text = "REGISTERED TAGS",
+        style = MaterialTheme.typography.labelMedium,
+        fontWeight = FontWeight.SemiBold,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+
+    Spacer(modifier = Modifier.height(8.dp))
+
+    ListItem(
+        leadingContent = {
+            Icon(
+                imageVector = ThresholdIcons.Nfc,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(22.dp),
+            )
+        },
+        headlineContent = {
+            Text(
+                text = "Hold an NFC tag against your phone",
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.SemiBold,
+            )
+        },
+        supportingContent = {
+            Text(
+                text = if (nfcTags.isEmpty()) {
+                    "Scan at least one NFC tag to create this trigger."
+                } else {
+                    "Scan additional NFC tags to bind them to this same trigger."
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        },
+        colors = ListItemDefaults.colors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+        ),
+        modifier = Modifier.fillMaxWidth(),
+    )
+
+    if (nfcTags.isNotEmpty()) {
+        Spacer(modifier = Modifier.height(12.dp))
+
+        nfcTags.forEachIndexed { index, tagEntry ->
+            if (index > 0) {
+                Spacer(modifier = Modifier.height(8.dp))
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                OutlinedTextField(
+                    value = tagEntry.label,
+                    onValueChange = { onTagLabelChange(tagEntry.uid, it) },
+                    label = { Text("Tag ${tagEntry.uid}") },
+                    placeholder = { Text("Optional label (e.g. Bedside)") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(
+                        capitalization = KeyboardCapitalization.Words,
+                        imeAction = ImeAction.Done,
+                    ),
+                    modifier = Modifier
+                        .weight(1f)
+                        .testTag(ProfilesTestTags.triggerEditorNfcTagLabel(tagEntry.uid)),
+                )
+
+                IconButton(
+                    onClick = { onRemoveTag(tagEntry.uid) },
+                    modifier = Modifier.testTag(ProfilesTestTags.triggerEditorNfcTagRemove(tagEntry.uid)),
+                ) {
+                    Icon(
+                        imageVector = ThresholdIcons.Delete,
+                        contentDescription = "Remove NFC tag ${tagEntry.uid}",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        }
+    }
 }
 
 private fun DayOfWeek.displayName(): String = name.lowercase().replaceFirstChar { it.uppercase() }

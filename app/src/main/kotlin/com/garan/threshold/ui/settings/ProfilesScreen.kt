@@ -71,6 +71,9 @@ import com.garan.threshold.core.model.DayOfWeek
 import com.garan.threshold.core.model.GeoTrigger
 import com.garan.threshold.core.model.GeoTriggerMode
 import com.garan.threshold.core.model.LocationFix
+import com.garan.threshold.core.model.NfcTagEntry
+import com.garan.threshold.core.model.NfcTrigger
+import com.garan.threshold.core.model.NfcTriggerMode
 import com.garan.threshold.core.model.ProfileTrigger
 import com.garan.threshold.core.model.SavedTrigger
 import com.garan.threshold.core.model.ScheduleTrigger
@@ -98,6 +101,9 @@ object ProfilesTestTags {
     const val TRIGGER_EDITOR_NAME_INPUT = "trigger_editor_name_input"
     const val TRIGGER_EDITOR_TYPE_SCHEDULE = "trigger_editor_type_schedule"
     const val TRIGGER_EDITOR_TYPE_GEO = "trigger_editor_type_geo"
+    const val TRIGGER_EDITOR_TYPE_NFC = "trigger_editor_type_nfc"
+    const val TRIGGER_EDITOR_NFC_MODE_TOGGLE = "trigger_editor_nfc_mode_toggle"
+    const val TRIGGER_EDITOR_NFC_MODE_TIMED = "trigger_editor_nfc_mode_timed"
     const val TRIGGER_EDITOR_SAVE_BUTTON = "trigger_editor_save_button"
     const val TRIGGER_EDITOR_CANCEL_BUTTON = "trigger_editor_cancel_button"
 
@@ -123,6 +129,11 @@ object ProfilesTestTags {
         "profile_rule_${ruleIndex}_remove_$triggerId"
 
     fun triggerPickerItem(triggerId: String): String = "trigger_picker_item_$triggerId"
+
+    fun triggerEditorNfcDuration(minutes: Int): String = "trigger_editor_nfc_duration_$minutes"
+    fun triggerEditorNfcTagLabel(uid: String): String = "trigger_editor_nfc_tag_label_${NfcTagEntry.normalizeUid(uid)}"
+    fun triggerEditorNfcTagRemove(uid: String): String =
+        "trigger_editor_nfc_tag_remove_${NfcTagEntry.normalizeUid(uid)}"
 }
 
 private enum class ProfilesTab {
@@ -161,6 +172,7 @@ fun ProfilesScreen(
     savedTriggers: List<SavedTrigger> = emptyList(),
     onSaveTrigger: ((SavedTrigger) -> Unit)? = null,
     onDeleteTrigger: ((String) -> Unit)? = null,
+    onRegisterNfcScanListener: (((String) -> Unit)?) -> Unit = {},
 ) {
     BackHandler(onBack = onBack)
 
@@ -567,6 +579,7 @@ fun ProfilesScreen(
             hapticEngine = hapticEngine,
             onUseCurrentLocation = onUseCurrentLocation,
             onOpenMapApp = onOpenMapApp,
+            onRegisterNfcScanListener = onRegisterNfcScanListener,
             onSaveTrigger = { trigger ->
                 persistTrigger(trigger)
                 checkPermissionsForTriggers(listOf(trigger.trigger))
@@ -600,6 +613,7 @@ fun ProfilesScreen(
             hapticEngine = hapticEngine,
             onUseCurrentLocation = onUseCurrentLocation,
             onOpenMapApp = onOpenMapApp,
+            onRegisterNfcScanListener = onRegisterNfcScanListener,
             onSaveTrigger = { trigger ->
                 persistTrigger(trigger)
                 checkPermissionsForTriggers(listOf(trigger.trigger))
@@ -634,6 +648,7 @@ fun ProfilesScreen(
             currentLocation = currentLocation,
             onUseCurrentLocation = onUseCurrentLocation,
             onOpenMapApp = onOpenMapApp,
+            onRegisterNfcScanListener = onRegisterNfcScanListener,
             hapticEngine = hapticEngine,
             onSaveTrigger = { updatedName, updatedTrigger ->
                 persistTrigger(
@@ -657,6 +672,7 @@ fun ProfilesScreen(
             currentLocation = currentLocation,
             onUseCurrentLocation = onUseCurrentLocation,
             onOpenMapApp = onOpenMapApp,
+            onRegisterNfcScanListener = onRegisterNfcScanListener,
             hapticEngine = hapticEngine,
             onSaveTrigger = { name, trigger ->
                 val created = SavedTrigger(
@@ -836,6 +852,7 @@ fun ProfileRulesEditorSheet(
     onSaveProfileRules: (name: String, rules: List<TriggerRule>) -> Unit,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
+    onRegisterNfcScanListener: (((String) -> Unit)?) -> Unit = {},
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var profileName by remember { mutableStateOf(initialName) }
@@ -1037,6 +1054,7 @@ fun ProfileRulesEditorSheet(
                                         Icon(
                                             imageVector = when (saved?.trigger) {
                                                 is ProfileTrigger.Geo -> ThresholdIcons.LocationOn
+                                                is ProfileTrigger.Nfc -> ThresholdIcons.Nfc
                                                 is ProfileTrigger.Schedule, null -> ThresholdIcons.Schedule
                                             },
                                             contentDescription = null,
@@ -1230,6 +1248,7 @@ fun ProfileRulesEditorSheet(
                                 imageVector = when (existing.trigger) {
                                     is ProfileTrigger.Schedule -> ThresholdIcons.Schedule
                                     is ProfileTrigger.Geo -> ThresholdIcons.LocationOn
+                                    is ProfileTrigger.Nfc -> ThresholdIcons.Nfc
                                 },
                                 contentDescription = null,
                                 tint = MaterialTheme.colorScheme.primary,
@@ -1302,6 +1321,7 @@ fun ProfileRulesEditorSheet(
             currentLocation = currentLocation,
             onUseCurrentLocation = onUseCurrentLocation,
             onOpenMapApp = onOpenMapApp,
+            onRegisterNfcScanListener = onRegisterNfcScanListener,
             hapticEngine = hapticEngine,
             onSaveTrigger = { triggerName, profileTrigger ->
                 val created = SavedTrigger(
@@ -1327,6 +1347,7 @@ fun ProfileRulesEditorSheet(
             currentLocation = currentLocation,
             onUseCurrentLocation = onUseCurrentLocation,
             onOpenMapApp = onOpenMapApp,
+            onRegisterNfcScanListener = onRegisterNfcScanListener,
             hapticEngine = hapticEngine,
             onSaveTrigger = { updatedName, updatedTrigger ->
                 val updated = existing.copy(
@@ -1373,10 +1394,12 @@ private fun TriggerCard(
                     imageVector = when (savedTrigger.trigger) {
                         is ProfileTrigger.Schedule -> ThresholdIcons.Schedule
                         is ProfileTrigger.Geo -> ThresholdIcons.LocationOn
+                        is ProfileTrigger.Nfc -> ThresholdIcons.Nfc
                     },
                     contentDescription = when (savedTrigger.trigger) {
                         is ProfileTrigger.Schedule -> "Schedule trigger"
                         is ProfileTrigger.Geo -> "Geo trigger"
+                        is ProfileTrigger.Nfc -> "NFC trigger"
                     },
                     tint = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.size(22.dp),
@@ -1447,6 +1470,7 @@ private fun ProfileCard(
     val resolvedTriggers = profile.resolvedTriggers(savedTriggersById)
     val hasSchedule = resolvedTriggers.any { it is ProfileTrigger.Schedule }
     val hasGeo = resolvedTriggers.any { it is ProfileTrigger.Geo }
+    val hasNfc = resolvedTriggers.any { it is ProfileTrigger.Nfc }
 
     val triggerSummary = formatProfileRulesSummary(
         profile = profile,
@@ -1455,8 +1479,9 @@ private fun ProfileCard(
     )
 
     val editButtonLabel = when {
-        hasSchedule && !hasGeo && profile.referencedTriggerIds.size <= 1 -> "Schedule"
-        hasGeo && !hasSchedule && profile.referencedTriggerIds.size <= 1 -> "Location"
+        hasSchedule && !hasGeo && !hasNfc && profile.referencedTriggerIds.size <= 1 -> "Schedule"
+        hasGeo && !hasSchedule && !hasNfc && profile.referencedTriggerIds.size <= 1 -> "Location"
+        hasNfc && !hasSchedule && !hasGeo && profile.referencedTriggerIds.size <= 1 -> "NFC"
         else -> "Triggers"
     }
 
@@ -1496,7 +1521,7 @@ private fun ProfileCard(
                         } else {
                             MaterialTheme.colorScheme.onSurfaceVariant
                         }
-                        if (hasSchedule || (!hasSchedule && !hasGeo)) {
+                        if (hasSchedule || (!hasSchedule && !hasGeo && !hasNfc)) {
                             Icon(
                                 imageVector = ThresholdIcons.Schedule,
                                 contentDescription = "Schedule profile",
@@ -1508,6 +1533,14 @@ private fun ProfileCard(
                             Icon(
                                 imageVector = ThresholdIcons.LocationOn,
                                 contentDescription = "Geo profile",
+                                modifier = Modifier.size(22.dp),
+                                tint = iconTint,
+                            )
+                        }
+                        if (hasNfc) {
+                            Icon(
+                                imageVector = ThresholdIcons.Nfc,
+                                contentDescription = "NFC profile",
                                 modifier = Modifier.size(22.dp),
                                 tint = iconTint,
                             )
@@ -1707,6 +1740,30 @@ internal fun formatProfileRulesSummary(
 internal fun formatTriggerDetail(trigger: ProfileTrigger, currentLocation: LocationFix?): String = when (trigger) {
     is ProfileTrigger.Schedule -> formatScheduleSummary(trigger.schedule)
     is ProfileTrigger.Geo -> formatGeoSummary(trigger.geo, currentLocation)
+    is ProfileTrigger.Nfc -> formatNfcSummary(trigger.nfc)
+}
+
+internal fun formatNfcSummary(nfc: NfcTrigger): String {
+    val modeText = when (nfc.mode) {
+        NfcTriggerMode.TOGGLE_ON_TAP -> "Toggle on tap"
+        NfcTriggerMode.TIMED_SESSION -> "Timed session (${NfcTrigger.formatDuration(nfc.durationMinutes)})"
+    }
+    return when {
+        nfc.tags.isEmpty() -> "$modeText · No tags registered"
+        nfc.tags.size == 1 -> {
+            val single = nfc.tags.first()
+            val tagDesc = if (single.label.isNotBlank()) "${single.label} (${single.uid})" else single.uid
+            "$modeText · $tagDesc"
+        }
+        else -> {
+            val labeled = nfc.tags.mapNotNull { it.label.takeIf { l -> l.isNotBlank() } }
+            if (labeled.isNotEmpty()) {
+                "$modeText · ${nfc.tags.size} tags (${labeled.joinToString(", ")})"
+            } else {
+                "$modeText · ${nfc.tags.size} tags"
+            }
+        }
+    }
 }
 
 internal fun formatGeoSummary(geo: GeoTrigger, currentLocation: LocationFix?): String {
