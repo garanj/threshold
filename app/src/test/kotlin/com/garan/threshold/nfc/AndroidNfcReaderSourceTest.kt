@@ -3,6 +3,7 @@ package com.garan.threshold.nfc
 import android.app.Activity
 import android.nfc.NfcAdapter
 import android.os.Bundle
+import android.os.Looper
 import androidx.test.core.app.ApplicationProvider
 import com.garan.threshold.core.port.HapticEngine
 import com.google.common.truth.Truth.assertThat
@@ -15,6 +16,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.Robolectric
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -91,6 +93,44 @@ class AndroidNfcReaderSourceTest {
             assertThat(registeredUid).isEqualTo("04:B1:22:99")
             assertThat(relaySnapCount).isEqualTo(1)
         }
+
+    @Test
+    fun onTagIdDiscovered_fromBackgroundBinderThread_marshalsRegistrationListenerOntoMainThread() {
+        val fakeGateway = FakeNfcAdapterGateway(isEnabled = true)
+        var relaySnapCount = 0
+        val fakeHaptic = object : HapticEngine {
+            override fun rotaryDetent() = Unit
+            override fun targetSnap() = Unit
+            override fun resistanceDetent() = Unit
+            override fun relaySnap() {
+                relaySnapCount++
+            }
+        }
+        val source = AndroidNfcReaderSource(
+            context = ApplicationProvider.getApplicationContext(),
+            hapticEngine = fakeHaptic,
+            adapterGateway = fakeGateway,
+        )
+
+        var callbackThread: Thread? = null
+        var registeredUid: String? = null
+        source.activeRegistrationListener = { uid ->
+            callbackThread = Thread.currentThread()
+            registeredUid = uid
+        }
+
+        val binderThread = Thread {
+            source.onTagIdDiscovered(byteArrayOf(0x04, 0xC1.toByte(), 0xD2.toByte(), 0xE3.toByte()))
+        }
+        binderThread.start()
+        binderThread.join()
+
+        shadowOf(Looper.getMainLooper()).idle()
+
+        assertThat(registeredUid).isEqualTo("04:C1:D2:E3")
+        assertThat(callbackThread).isSameInstanceAs(Looper.getMainLooper().thread)
+        assertThat(relaySnapCount).isEqualTo(1)
+    }
 
     private class FakeNfcAdapterGateway(override var isEnabled: Boolean) : NfcAdapterGateway {
         var enableCount = 0

@@ -17,6 +17,7 @@ import com.garan.threshold.core.model.FrictionChoice
 import com.garan.threshold.core.model.GeneralSettings
 import com.garan.threshold.core.model.GeoTrigger
 import com.garan.threshold.core.model.GeoTriggerMode
+import com.garan.threshold.core.model.NfcLatchState
 import com.garan.threshold.core.model.NfcTagEntry
 import com.garan.threshold.core.model.NfcTrigger
 import com.garan.threshold.core.model.NfcTriggerMode
@@ -65,6 +66,7 @@ class AndroidSettingsRepository(
         val APP_ASSIGNMENTS = stringPreferencesKey("app_assignments")
         val CUSTOM_PROFILES = stringPreferencesKey("custom_profiles")
         val SAVED_TRIGGERS = stringPreferencesKey("saved_triggers")
+        val NFC_LATCHES = stringPreferencesKey("nfc_latches")
     }
 
     override fun observeSettings(): Flow<ThresholdSettings> = dataStore.data
@@ -156,6 +158,20 @@ class AndroidSettingsRepository(
                     current + trigger
                 }
                 prefs[Keys.SAVED_TRIGGERS] = serializeSavedTriggers(updated)
+
+                val existingLatch = currentSettings.nfcLatches[trigger.id]
+                if (existingLatch != null) {
+                    val updatedLatches = LinkedHashMap(currentSettings.nfcLatches)
+                    val reconciled = (trigger.trigger as? ProfileTrigger.Nfc)
+                        ?.nfc
+                        ?.let { existingLatch.reconcileWith(it, nowEpochMillis = 0L) }
+                    if (reconciled == null) {
+                        updatedLatches.remove(trigger.id)
+                    } else {
+                        updatedLatches[trigger.id] = reconciled
+                    }
+                    prefs[Keys.NFC_LATCHES] = serializeNfcLatches(updatedLatches)
+                }
             }
         }
     }
@@ -174,6 +190,18 @@ class AndroidSettingsRepository(
                 }
                 prefs[Keys.SAVED_TRIGGERS] = serializeSavedTriggers(updatedTriggers)
                 prefs[Keys.CUSTOM_PROFILES] = serializeCustomProfiles(updatedProfiles)
+                if (triggerId in currentSettings.nfcLatches) {
+                    val updatedLatches = currentSettings.nfcLatches - triggerId
+                    prefs[Keys.NFC_LATCHES] = serializeNfcLatches(updatedLatches)
+                }
+            }
+        }
+    }
+
+    override suspend fun updateNfcLatches(latches: Map<String, NfcLatchState>) {
+        withContext(ioDispatcher) {
+            dataStore.edit { prefs ->
+                prefs[Keys.NFC_LATCHES] = serializeNfcLatches(latches)
             }
         }
     }
@@ -239,6 +267,9 @@ class AndroidSettingsRepository(
         val customProfilesRaw = prefs[Keys.CUSTOM_PROFILES].orEmpty()
         val rawCustomProfiles = deserializeCustomProfiles(customProfilesRaw)
 
+        val nfcLatchesRaw = prefs[Keys.NFC_LATCHES].orEmpty()
+        val nfcLatches = deserializeNfcLatches(nfcLatchesRaw)
+
         // Legacy migration: any profile that has an inline `trigger` and no `activationRules`
         // gets a synthesized SavedTrigger and a single-trigger TriggerRule.
         val migratedTriggers = rawSavedTriggers.toMutableList()
@@ -278,6 +309,7 @@ class AndroidSettingsRepository(
             ),
             customProfiles = migratedProfiles,
             savedTriggers = migratedTriggers,
+            nfcLatches = nfcLatches,
         )
     }
 
@@ -341,6 +373,55 @@ class AndroidSettingsRepository(
             jsonArray.put(obj)
         }
         return jsonArray.toString()
+    }
+
+    private fun serializeNfcLatches(latches: Map<String, NfcLatchState>): String {
+        if (latches.isEmpty()) return ""
+        val jsonArray = JSONArray()
+        for (latch in latches.values) {
+            val obj = JSONObject()
+            obj.put("triggerId", latch.triggerId)
+            obj.put("latchedAtEpochMillis", latch.latchedAtEpochMillis)
+            if (latch.expiresAtEpochMillis != null) {
+                obj.put("expiresAtEpochMillis", latch.expiresAtEpochMillis)
+            }
+            if (latch.latchedByTagUid != null) {
+                obj.put("latchedByTagUid", latch.latchedByTagUid)
+            }
+            jsonArray.put(obj)
+        }
+        return jsonArray.toString()
+    }
+
+    private fun deserializeNfcLatches(raw: String): Map<String, NfcLatchState> {
+        if (raw.isBlank()) return emptyMap()
+        return runCatching {
+            val jsonArray = JSONArray(raw)
+            val map = LinkedHashMap<String, NfcLatchState>()
+            for (i in 0 until jsonArray.length()) {
+                val obj = jsonArray.optJSONObject(i) ?: continue
+                val triggerId = obj.optString("triggerId", "")
+                if (triggerId.isBlank()) continue
+                val latchedAt = obj.optLong("latchedAtEpochMillis", 0L)
+                val expiresAt = if (obj.has("expiresAtEpochMillis") && !obj.isNull("expiresAtEpochMillis")) {
+                    obj.getLong("expiresAtEpochMillis")
+                } else {
+                    null
+                }
+                val latchedByTagUid = if (obj.has("latchedByTagUid") && !obj.isNull("latchedByTagUid")) {
+                    NfcTagEntry.normalizeUid(obj.optString("latchedByTagUid", "")).ifBlank { null }
+                } else {
+                    null
+                }
+                map[triggerId] = NfcLatchState(
+                    triggerId = triggerId,
+                    latchedAtEpochMillis = latchedAt,
+                    expiresAtEpochMillis = expiresAt,
+                    latchedByTagUid = latchedByTagUid,
+                )
+            }
+            map
+        }.getOrDefault(emptyMap())
     }
 
     private fun deserializeSavedTriggers(raw: String): List<SavedTrigger> {

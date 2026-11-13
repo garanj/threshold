@@ -8,6 +8,7 @@ import com.garan.threshold.core.model.CustomProfile
 import com.garan.threshold.core.model.DayOfWeek
 import com.garan.threshold.core.model.LocationFix
 import com.garan.threshold.core.model.NfcLatchState
+import com.garan.threshold.core.model.NfcTagEntry
 import com.garan.threshold.core.model.NfcTriggerMode
 import com.garan.threshold.core.model.Profile
 import com.garan.threshold.core.model.ProfileTrigger
@@ -106,6 +107,7 @@ class CascadingResolutionEngine {
         // 1. Evaluate ambient (non-NFC) triggers first
         val ambientActiveIds = LinkedHashSet<String>()
         val candidateNfcIds = LinkedHashSet<String>()
+        val validNfcTriggerIds = LinkedHashSet<String>()
 
         for (saved in savedTriggers) {
             when (val spec = saved.trigger) {
@@ -125,13 +127,16 @@ class CascadingResolutionEngine {
                     }
                 }
                 is ProfileTrigger.Nfc -> {
-                    val isLatchedAndValid = if (nfcLatchStates != null) {
-                        nfcLatchStates[saved.id]?.isActiveAt(nowEpochMillis) == true
-                    } else {
-                        saved.id in previouslyActiveTriggerIds
-                    }
-                    if (spec.nfc.tags.isNotEmpty() && isLatchedAndValid) {
-                        candidateNfcIds.add(saved.id)
+                    if (spec.nfc.tags.isNotEmpty()) {
+                        validNfcTriggerIds.add(saved.id)
+                        val isLatchedAndValid = if (nfcLatchStates != null) {
+                            nfcLatchStates[saved.id]?.reconcileWith(spec.nfc, nowEpochMillis) != null
+                        } else {
+                            saved.id in previouslyActiveTriggerIds
+                        }
+                        if (isLatchedAndValid) {
+                            candidateNfcIds.add(saved.id)
+                        }
                     }
                 }
             }
@@ -140,16 +145,18 @@ class CascadingResolutionEngine {
         if (candidateNfcIds.isEmpty()) return ambientActiveIds
 
         // 2. If customProfiles are provided, verify each candidate NFC trigger still has at least one
-        //    enabled profile rule whose companion conditions are satisfied; otherwise auto-unlatch it.
+        //    enabled profile rule whose ambient companion conditions (`Schedule` / `Geo`) are satisfied;
+        //    otherwise auto-unlatch it.
         val survivingNfcIds = if (customProfiles.isEmpty()) {
             candidateNfcIds
         } else {
-            val allCandidateIds = ambientActiveIds + candidateNfcIds
+            val eligibleIdsForNfcRetention = ambientActiveIds + validNfcTriggerIds
             candidateNfcIds.filterTo(linkedSetOf()) { nfcId ->
                 customProfiles.any { profile ->
                     profile.enabled &&
                         profile.activationRules.any { rule ->
-                            nfcId in rule.triggerIds && rule.triggerIds.all { it in allCandidateIds }
+                            nfcId in rule.triggerIds &&
+                                rule.triggerIds.all { it in eligibleIdsForNfcRetention }
                         }
                 }
             }
@@ -159,10 +166,32 @@ class CascadingResolutionEngine {
     }
 
     /**
+     * Reconciles [nfcLatchStates] against the current [savedTriggers] definitions and [activeTriggerIds],
+     * pruning expired or unreferenced latches and updating expiry timestamps if trigger mode/duration changed.
+     */
+    fun reconcileNfcLatches(
+        savedTriggers: List<SavedTrigger>,
+        activeTriggerIds: Set<String>,
+        nfcLatchStates: Map<String, NfcLatchState>?,
+        nowEpochMillis: Long,
+    ): Map<String, NfcLatchState> {
+        if (nfcLatchStates.isNullOrEmpty() || activeTriggerIds.isEmpty()) return emptyMap()
+        val triggersById = savedTriggers.associateBy { it.id }
+        val result = LinkedHashMap<String, NfcLatchState>()
+        for ((triggerId, latch) in nfcLatchStates) {
+            if (triggerId !in activeTriggerIds) continue
+            val nfcSpec = (triggersById[triggerId]?.trigger as? ProfileTrigger.Nfc)?.nfc ?: continue
+            val reconciled = latch.reconcileWith(nfcSpec, nowEpochMillis) ?: continue
+            result[triggerId] = reconciled
+        }
+        return result
+    }
+
+    /**
      * Processes a physical NFC tag tap for [rawTagUid] at [nowEpochMillis]:
      * - If any matching [ProfileTrigger.Nfc] is currently active, tapping unlatches it OFF.
      * - If matching [ProfileTrigger.Nfc] triggers are currently OFF, each trigger latches ON only if
-     *   at least one enabled profile's `AND` rule referencing it has all of its companion conditions
+     *   at least one enabled profile's `AND` rule referencing it has all of its ambient companion conditions
      *   currently satisfied ("no early taps").
      */
     fun processNfcTagTap(
@@ -177,9 +206,10 @@ class CascadingResolutionEngine {
         currentNfcLatches: Map<String, NfcLatchState> = emptyMap(),
         nowEpochMillis: Long = 0L,
     ): NfcTapResult {
+        val normalizedUid = NfcTagEntry.normalizeUid(rawTagUid)
         val matchingNfcTriggers = savedTriggers.filter { saved ->
             val nfcSpec = saved.trigger as? ProfileTrigger.Nfc ?: return@filter false
-            nfcSpec.nfc.matchesTagUid(rawTagUid)
+            nfcSpec.nfc.matchesTagUid(normalizedUid)
         }
         if (matchingNfcTriggers.isEmpty()) {
             return NfcTapResult(
@@ -200,7 +230,12 @@ class CascadingResolutionEngine {
             nfcLatchStates = currentNfcLatches,
             nowEpochMillis = nowEpochMillis,
         )
-        val validCurrentLatches = currentNfcLatches.filterKeys { it in currentlyActiveIds }
+        val validCurrentLatches = reconcileNfcLatches(
+            savedTriggers = savedTriggers,
+            activeTriggerIds = currentlyActiveIds,
+            nfcLatchStates = currentNfcLatches,
+            nowEpochMillis = nowEpochMillis,
+        )
 
         // If any matching NFC trigger is currently active -> toggle it OFF
         val activeMatches = matchingNfcTriggers.filter { it.id in currentlyActiveIds }
@@ -213,15 +248,19 @@ class CascadingResolutionEngine {
             )
         }
 
-        // Otherwise, matching NFC triggers are currently OFF -> check if companion AND conditions allow latching
-        val matchingIds = matchingNfcTriggers.mapTo(linkedSetOf()) { it.id }
-        val potentialActiveIds = currentlyActiveIds + matchingIds
+        // Otherwise, matching NFC triggers are currently OFF -> check if ambient companion AND conditions allow latching
+        val validNfcTriggerIds = savedTriggers.mapNotNullTo(linkedSetOf()) { saved ->
+            val nfcSpec = saved.trigger as? ProfileTrigger.Nfc ?: return@mapNotNullTo null
+            if (nfcSpec.nfc.tags.isNotEmpty()) saved.id else null
+        }
+        val eligibleIdsForLatching = currentlyActiveIds + validNfcTriggerIds
 
         val latchableTriggers = matchingNfcTriggers.filter { nfcTrigger ->
             customProfiles.any { profile ->
                 profile.enabled &&
                     profile.activationRules.any { rule ->
-                        nfcTrigger.id in rule.triggerIds && rule.triggerIds.all { it in potentialActiveIds }
+                        nfcTrigger.id in rule.triggerIds &&
+                            rule.triggerIds.all { it in eligibleIdsForLatching }
                     }
             }
         }
@@ -245,6 +284,7 @@ class CascadingResolutionEngine {
                 triggerId = saved.id,
                 latchedAtEpochMillis = nowEpochMillis,
                 expiresAtEpochMillis = expiresAt,
+                latchedByTagUid = normalizedUid,
             )
             newlyLatchedIds.add(saved.id)
         }
@@ -382,7 +422,12 @@ class CascadingResolutionEngine {
             nfcLatchStates = nfcLatchStates,
             nowEpochMillis = nowEpochMillis,
         )
-        val activeNfcLatches = nfcLatchStates?.filterKeys { it in activeTriggerIds }.orEmpty()
+        val activeNfcLatches = reconcileNfcLatches(
+            savedTriggers = savedTriggers,
+            activeTriggerIds = activeTriggerIds,
+            nfcLatchStates = nfcLatchStates,
+            nowEpochMillis = nowEpochMillis,
+        )
 
         val activeProfiles = customProfiles
             .filter {

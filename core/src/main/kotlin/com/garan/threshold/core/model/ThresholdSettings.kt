@@ -9,6 +9,7 @@ data class ThresholdSettings(
     val baseProfile: BaseProfileSettings = BaseProfileSettings(),
     val customProfiles: List<CustomProfile> = emptyList(),
     val savedTriggers: List<SavedTrigger> = emptyList(),
+    val nfcLatches: Map<String, NfcLatchState> = emptyMap(),
 ) {
     val savedTriggersById: Map<String, SavedTrigger>
         get() = savedTriggers.associateBy { it.id }

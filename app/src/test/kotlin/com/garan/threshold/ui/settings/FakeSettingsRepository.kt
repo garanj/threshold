@@ -3,6 +3,8 @@ package com.garan.threshold.ui.settings
 import com.garan.threshold.core.model.BaseProfileSettings
 import com.garan.threshold.core.model.ComponentKey
 import com.garan.threshold.core.model.GeneralSettings
+import com.garan.threshold.core.model.NfcLatchState
+import com.garan.threshold.core.model.ProfileTrigger
 import com.garan.threshold.core.model.SavedTrigger
 import com.garan.threshold.core.model.ThresholdSettings
 import com.garan.threshold.core.port.SettingsRepository
@@ -87,7 +89,25 @@ class FakeSettingsRepository(initialSettings: ThresholdSettings = ThresholdSetti
             } else {
                 current.savedTriggers + trigger
             }
-            current.copy(savedTriggers = updated)
+            val existingLatch = current.nfcLatches[trigger.id]
+            val updatedLatches = if (existingLatch != null) {
+                val mutableLatches = LinkedHashMap(current.nfcLatches)
+                val reconciled = (trigger.trigger as? ProfileTrigger.Nfc)
+                    ?.nfc
+                    ?.let { existingLatch.reconcileWith(it, nowEpochMillis = 0L) }
+                if (reconciled == null) {
+                    mutableLatches.remove(trigger.id)
+                } else {
+                    mutableLatches[trigger.id] = reconciled
+                }
+                mutableLatches
+            } else {
+                current.nfcLatches
+            }
+            current.copy(
+                savedTriggers = updated,
+                nfcLatches = updatedLatches,
+            )
         }
     }
 
@@ -104,7 +124,12 @@ class FakeSettingsRepository(initialSettings: ThresholdSettings = ThresholdSetti
             current.copy(
                 savedTriggers = updatedTriggers,
                 customProfiles = updatedProfiles,
+                nfcLatches = current.nfcLatches - triggerId,
             )
         }
+    }
+
+    override suspend fun updateNfcLatches(latches: Map<String, NfcLatchState>) {
+        _settings.update { it.copy(nfcLatches = latches) }
     }
 }

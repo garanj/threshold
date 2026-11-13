@@ -5,6 +5,8 @@ import android.content.Context
 import android.nfc.NfcAdapter
 import android.nfc.Tag
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import com.garan.threshold.core.model.NfcTagEntry
 import com.garan.threshold.core.port.HapticEngine
 import com.garan.threshold.core.port.NfcReaderSource
@@ -64,6 +66,14 @@ class AndroidNfcReaderSource(
     context: Context,
     private val hapticEngine: HapticEngine = NoOpHapticEngine,
     private val adapterGateway: NfcAdapterGateway = SystemNfcAdapterGateway(context),
+    private val mainThreadPoster: (() -> Unit) -> Unit = { block ->
+        val mainLooper = Looper.getMainLooper()
+        if (mainLooper == null || Looper.myLooper() == mainLooper) {
+            block()
+        } else {
+            Handler(mainLooper).post(block)
+        }
+    },
 ) : NfcReaderSource {
 
     private val _tagScans = MutableSharedFlow<String>(extraBufferCapacity = 8)
@@ -125,8 +135,13 @@ class AndroidNfcReaderSource(
         if (normalized.isBlank()) return
         val listener = activeRegistrationListener
         if (listener != null) {
-            hapticEngine.relaySnap()
-            listener(normalized)
+            mainThreadPoster {
+                val activeListener = activeRegistrationListener
+                if (activeListener != null) {
+                    hapticEngine.relaySnap()
+                    activeListener(normalized)
+                }
+            }
         } else {
             _tagScans.tryEmit(normalized)
         }

@@ -105,12 +105,33 @@ data class NfcTrigger(
  * @property triggerId The ID of the [SavedTrigger] currently latched ON.
  * @property latchedAtEpochMillis Wall-clock epoch milliseconds when the tag was tapped.
  * @property expiresAtEpochMillis Optional wall-clock epoch milliseconds when a [NfcTriggerMode.TIMED_SESSION] expires.
+ * @property latchedByTagUid Optional normalized hardware UID of the physical tag that initiated this latch.
  */
 data class NfcLatchState(
     val triggerId: String,
     val latchedAtEpochMillis: Long,
     val expiresAtEpochMillis: Long? = null,
+    val latchedByTagUid: String? = null,
 ) {
     fun isActiveAt(nowEpochMillis: Long): Boolean =
         expiresAtEpochMillis == null || nowEpochMillis < expiresAtEpochMillis
+
+    /**
+     * Reconciles this latch state against a potentially updated [NfcTrigger] definition at [nowEpochMillis].
+     * Returns `null` if the trigger no longer has tags, no longer includes [latchedByTagUid], or has expired.
+     */
+    fun reconcileWith(nfc: NfcTrigger, nowEpochMillis: Long): NfcLatchState? {
+        if (nfc.tags.isEmpty()) return null
+        if (latchedByTagUid != null && !nfc.matchesTagUid(latchedByTagUid)) return null
+        val effectiveExpiresAt = when (nfc.mode) {
+            NfcTriggerMode.TOGGLE_ON_TAP -> null
+            NfcTriggerMode.TIMED_SESSION -> latchedAtEpochMillis + nfc.durationMinutes * 60_000L
+        }
+        if (effectiveExpiresAt != null && nowEpochMillis >= effectiveExpiresAt) return null
+        return if (effectiveExpiresAt == expiresAtEpochMillis) {
+            this
+        } else {
+            copy(expiresAtEpochMillis = effectiveExpiresAt)
+        }
+    }
 }

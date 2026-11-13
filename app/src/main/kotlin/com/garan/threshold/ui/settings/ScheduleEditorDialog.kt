@@ -259,17 +259,13 @@ fun ProfileEditorSheet(
         mutableIntStateOf(seedNfc?.durationMinutes ?: NfcTrigger.DEFAULT_DURATION_MINUTES)
     }
     var nfcTags by remember { mutableStateOf(seedNfc?.tags ?: emptyList()) }
-    val currentHapticEngine by rememberUpdatedState(hapticEngine)
 
     DisposableEffect(selectedKind, onRegisterNfcScanListener) {
         if (selectedKind == EditorTriggerKind.NFC) {
             onRegisterNfcScanListener { rawUid ->
                 val normalized = NfcTagEntry.normalizeUid(rawUid)
-                if (normalized.isNotEmpty()) {
-                    currentHapticEngine.relaySnap()
-                    if (nfcTags.none { it.uid == normalized }) {
-                        nfcTags = nfcTags + NfcTagEntry(uid = normalized)
-                    }
+                if (normalized.isNotEmpty() && nfcTags.none { it.uid == normalized }) {
+                    nfcTags = nfcTags + NfcTagEntry(uid = normalized)
                 }
             }
         } else {
@@ -486,7 +482,7 @@ fun ProfileEditorSheet(
             Spacer(modifier = Modifier.height(16.dp))
 
             val canSubmit = when (selectedKind) {
-                EditorTriggerKind.SCHEDULE -> true
+                EditorTriggerKind.SCHEDULE -> selectedDays.isNotEmpty()
                 EditorTriggerKind.GEO -> parsedFix != null
                 EditorTriggerKind.NFC -> nfcTags.isNotEmpty()
             }
@@ -669,7 +665,9 @@ private fun ScheduleEditorFields(
                         fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
                     )
                 },
-                modifier = Modifier.weight(1f),
+                modifier = Modifier
+                    .weight(1f)
+                    .testTag(ProfilesTestTags.triggerEditorScheduleDay(day)),
                 shape = RoundedCornerShape(4.dp),
                 colors = FilterChipDefaults.filterChipColors(
                     containerColor = MaterialTheme.colorScheme.surface,
