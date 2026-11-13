@@ -98,7 +98,7 @@ class CascadingResolutionEngine {
         previouslyActiveTriggerIds: Set<String> = emptySet(),
         customProfiles: List<CustomProfile> = emptyList(),
         previouslyActiveProfileIds: Set<String> = emptySet(),
-        nfcLatchStates: Map<String, NfcLatchState> = emptyMap(),
+        nfcLatchStates: Map<String, NfcLatchState>? = null,
         nowEpochMillis: Long = 0L,
     ): Set<String> {
         if (savedTriggers.isEmpty()) return emptySet()
@@ -125,7 +125,7 @@ class CascadingResolutionEngine {
                     }
                 }
                 is ProfileTrigger.Nfc -> {
-                    val isLatchedAndValid = if (nfcLatchStates.isNotEmpty()) {
+                    val isLatchedAndValid = if (nfcLatchStates != null) {
                         nfcLatchStates[saved.id]?.isActiveAt(nowEpochMillis) == true
                     } else {
                         saved.id in previouslyActiveTriggerIds
@@ -147,9 +147,10 @@ class CascadingResolutionEngine {
             val allCandidateIds = ambientActiveIds + candidateNfcIds
             candidateNfcIds.filterTo(linkedSetOf()) { nfcId ->
                 customProfiles.any { profile ->
-                    profile.enabled && profile.activationRules.any { rule ->
-                        nfcId in rule.triggerIds && rule.triggerIds.all { it in allCandidateIds }
-                    }
+                    profile.enabled &&
+                        profile.activationRules.any { rule ->
+                            nfcId in rule.triggerIds && rule.triggerIds.all { it in allCandidateIds }
+                        }
                 }
             }
         }
@@ -218,9 +219,10 @@ class CascadingResolutionEngine {
 
         val latchableTriggers = matchingNfcTriggers.filter { nfcTrigger ->
             customProfiles.any { profile ->
-                profile.enabled && profile.activationRules.any { rule ->
-                    nfcTrigger.id in rule.triggerIds && rule.triggerIds.all { it in potentialActiveIds }
-                }
+                profile.enabled &&
+                    profile.activationRules.any { rule ->
+                        nfcTrigger.id in rule.triggerIds && rule.triggerIds.all { it in potentialActiveIds }
+                    }
             }
         }
 
@@ -265,7 +267,7 @@ class CascadingResolutionEngine {
         previouslyActiveProfileIds: Set<String> = emptySet(),
         savedTriggers: List<SavedTrigger> = emptyList(),
         previouslyActiveTriggerIds: Set<String> = emptySet(),
-        nfcLatchStates: Map<String, NfcLatchState> = emptyMap(),
+        nfcLatchStates: Map<String, NfcLatchState>? = null,
         nowEpochMillis: Long = 0L,
     ): List<CustomProfile> {
         val activeTriggerIds = evaluateActiveTriggerIds(
@@ -306,7 +308,7 @@ class CascadingResolutionEngine {
         previouslyActiveProfileIds: Set<String> = emptySet(),
         savedTriggers: List<SavedTrigger> = emptyList(),
         previouslyActiveTriggerIds: Set<String> = emptySet(),
-        nfcLatchStates: Map<String, NfcLatchState> = emptyMap(),
+        nfcLatchStates: Map<String, NfcLatchState>? = null,
         nowEpochMillis: Long = 0L,
         random: Random = Random.Default,
     ): AppAccessState {
@@ -365,7 +367,7 @@ class CascadingResolutionEngine {
         previouslyActiveProfileIds: Set<String> = emptySet(),
         savedTriggers: List<SavedTrigger> = emptyList(),
         previouslyActiveTriggerIds: Set<String> = emptySet(),
-        nfcLatchStates: Map<String, NfcLatchState> = emptyMap(),
+        nfcLatchStates: Map<String, NfcLatchState>? = null,
         nowEpochMillis: Long = 0L,
         random: Random = Random.Default,
     ): ResolvedWorkingSet {
@@ -380,7 +382,7 @@ class CascadingResolutionEngine {
             nfcLatchStates = nfcLatchStates,
             nowEpochMillis = nowEpochMillis,
         )
-        val activeNfcLatches = nfcLatchStates.filterKeys { it in activeTriggerIds }
+        val activeNfcLatches = nfcLatchStates?.filterKeys { it in activeTriggerIds }.orEmpty()
 
         val activeProfiles = customProfiles
             .filter {
