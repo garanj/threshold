@@ -1,10 +1,10 @@
-# Current Task: Issue #82 — Prevent Status Row Vertical Layout Shift on Profile/Fault Badge Appearance
+# Current Task: Issue #84 — Increase Location Cache Freshness Window to 2m & Eliminate Double Registration
 
-- **Issue:** [#82](https://github.com/garanj/threshold/issues/82)
-- **Branch:** `fix/82-status-row-layout-shift-lock`
+- **Issue:** [#84](https://github.com/garanj/threshold/issues/84)
+- **Branch:** `fix/84-location-cache-and-single-registration`
 - **Status:** Ready for Review
 
 ## Checklist
-- [x] `:app` (TDD Red): Add Compose layout test in `ThresholdHomeCanvasTest` verifying that `content()` vertical position does not shift when `activeProfiles` transitions from empty to non-empty (at 1.0x and 2.0x font scale)
-- [x] `:app` (TDD Green): Implement `Layout` with unplaced reference badge measurement and `defaultMinSize` in `ThresholdHomeCanvas.kt`
-- [x] `:app` Screenshots & Tests: Verify Roborazzi goldens and `./gradlew test` pass
+- [x] `:data` (TDD Red): Update `AndroidLocationSourceTest` to assert that a 60s-old fix (minute tick) is a cache hit and >120s-old fix triggers a single active refresh
+- [x] `:data` (TDD Green): Update `STALE_FIX_THRESHOLD_MS = 120_000L` and use a single `requestLocationUpdates` registration in `AndroidLocationSource.kt`
+- [x] Verify all unit tests and `spotlessCheck` pass
