@@ -3,12 +3,14 @@ package com.garan.threshold.ui.search
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.garan.threshold.core.cascading.CascadingResolutionEngine
+import com.garan.threshold.core.cascading.NfcTapOutcome
 import com.garan.threshold.core.gatekeeper.IntentGatekeeper
 import com.garan.threshold.core.model.AppAccessState
 import com.garan.threshold.core.model.ComponentKey
 import com.garan.threshold.core.model.CustomProfile
 import com.garan.threshold.core.model.FrictionPolicy
 import com.garan.threshold.core.model.GeneralSettings
+import com.garan.threshold.core.model.NfcLatchState
 import com.garan.threshold.core.model.Profile
 import com.garan.threshold.core.model.ProfileCapabilityIssue
 import com.garan.threshold.core.model.ProfileTrigger
@@ -17,7 +19,9 @@ import com.garan.threshold.core.port.ClockSource
 import com.garan.threshold.core.port.HapticEngine
 import com.garan.threshold.core.port.LaunchResult
 import com.garan.threshold.core.port.LocationSource
+import com.garan.threshold.core.port.NfcReaderSource
 import com.garan.threshold.core.port.NoOpHapticEngine
+import com.garan.threshold.core.port.NoOpNfcReaderSource
 import com.garan.threshold.core.port.NoOpScheduleAlarmScheduler
 import com.garan.threshold.core.port.PackageChangeEvent
 import com.garan.threshold.core.port.PackageIndexSource
@@ -92,6 +96,8 @@ class SearchViewModel(
     private val scheduleAlarmScheduler: ScheduleAlarmScheduler = NoOpScheduleAlarmScheduler,
     private val capabilityChecker: ProfileCapabilityChecker = ProfileCapabilityChecker { true },
     private val locationSource: LocationSource? = null,
+    private val nfcReaderSource: NfcReaderSource = NoOpNfcReaderSource,
+    private val nowEpochMillisProvider: () -> Long = { System.currentTimeMillis() },
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
     private val random: Random = Random.Default,
 ) : ViewModel() {
@@ -113,6 +119,9 @@ class SearchViewModel(
 
     @Volatile
     private var previouslyActiveTriggerIds: Set<String> = emptySet()
+
+    @Volatile
+    private var currentNfcLatches: Map<String, NfcLatchState> = emptyMap()
 
     init {
         if (settingsRepository != null) {
@@ -139,6 +148,11 @@ class SearchViewModel(
                         }
                     }
                 }
+            }
+        }
+        viewModelScope.launch(ioDispatcher) {
+            nfcReaderSource.tagScans.collect { rawUid ->
+                processScannedNfcTag(rawUid)
             }
         }
     }
@@ -212,6 +226,51 @@ class SearchViewModel(
         }
     }
 
+    fun onNfcTagScanned(rawUid: String) {
+        viewModelScope.launch(ioDispatcher) {
+            processScannedNfcTag(rawUid)
+        }
+    }
+
+    internal suspend fun processScannedNfcTag(rawUid: String) {
+        val effective = lastObservedSettings ?: settingsRepository?.getSettings() ?: return
+        if (hasEnabledGeoProfiles(effective) && locationSource?.currentLocation?.value == null) {
+            locationSource?.refreshLocation()
+        }
+        reconcileMutex.withLock {
+            lastObservedSettings = effective
+            val now = clockSource.now()
+            val nowMillis = nowEpochMillisProvider()
+            val currentLocation = locationSource?.currentLocation?.value
+            val tapResult = cascadingEngine.processNfcTagTap(
+                rawTagUid = rawUid,
+                customProfiles = effective.customProfiles,
+                savedTriggers = effective.savedTriggers,
+                currentDay = now.dayOfWeek,
+                currentTime = now.timeOfDay,
+                currentLocation = currentLocation,
+                previouslyActiveTriggerIds = previouslyActiveTriggerIds,
+                previouslyActiveProfileIds = previouslyActiveProfileIds,
+                currentNfcLatches = currentNfcLatches,
+                nowEpochMillis = nowMillis,
+            )
+            currentNfcLatches = tapResult.updatedLatches
+            when (tapResult.outcome) {
+                NfcTapOutcome.LATCHED_ON,
+                NfcTapOutcome.UNLATCHED_OFF,
+                -> hapticEngine.relaySnap()
+                NfcTapOutcome.COMPANION_CONDITIONS_NOT_MET -> hapticEngine.resistanceDetent()
+                NfcTapOutcome.UNRECOGNIZED_TAG -> Unit
+            }
+            scheduleAlarmScheduler.syncNextScheduleAlarm(
+                profiles = effective.customProfiles,
+                savedTriggers = effective.savedTriggers,
+                nfcLatches = currentNfcLatches,
+            )
+            reconcileWorkingSetLocked(effective)
+        }
+    }
+
     internal suspend fun reconcileForTesting(settings: ThresholdSettings? = null) {
         if (candidates.isEmpty()) {
             val apps = packageIndexSource.getInstalledApps()
@@ -226,11 +285,12 @@ class SearchViewModel(
         }
         reconcileMutex.withLock {
             lastObservedSettings = effective
+            reconcileWorkingSetLocked(effective)
             scheduleAlarmScheduler.syncNextScheduleAlarm(
                 profiles = effective.customProfiles,
                 savedTriggers = effective.savedTriggers,
+                nfcLatches = currentNfcLatches,
             )
-            reconcileWorkingSetLocked(effective)
         }
     }
 
@@ -298,6 +358,8 @@ class SearchViewModel(
                 previouslyActiveProfileIds = previouslyActiveProfileIds,
                 savedTriggers = settings.savedTriggers,
                 previouslyActiveTriggerIds = previouslyActiveTriggerIds,
+                nfcLatchStates = currentNfcLatches,
+                nowEpochMillis = nowEpochMillisProvider(),
                 random = random,
             )
         } else {
@@ -330,17 +392,20 @@ class SearchViewModel(
         }
         reconcileMutex.withLock {
             lastObservedSettings = settings
+            reconcileWorkingSetLocked(settings)
             scheduleAlarmScheduler.syncNextScheduleAlarm(
                 profiles = settings.customProfiles,
                 savedTriggers = settings.savedTriggers,
+                nfcLatches = currentNfcLatches,
             )
-            reconcileWorkingSetLocked(settings)
         }
     }
 
     private suspend fun reconcileWorkingSetLocked(settings: ThresholdSettings) {
         val now = clockSource.now()
+        val nowMillis = nowEpochMillisProvider()
         val currentLocation = locationSource?.currentLocation?.value
+        val previousLatches = currentNfcLatches
         val workingSet = cascadingEngine.resolveWorkingSet(
             baseProfile = settings.baseProfile,
             customProfiles = settings.customProfiles,
@@ -352,11 +417,21 @@ class SearchViewModel(
             previouslyActiveProfileIds = previouslyActiveProfileIds,
             savedTriggers = settings.savedTriggers,
             previouslyActiveTriggerIds = previouslyActiveTriggerIds,
+            nfcLatchStates = previousLatches,
+            nowEpochMillis = nowMillis,
             random = random,
         )
         activeProfile = workingSet.effectiveProfile
         previouslyActiveProfileIds = workingSet.activeProfiles.map { it.id }.toSet()
         previouslyActiveTriggerIds = workingSet.activeTriggerIds
+        currentNfcLatches = workingSet.activeNfcLatches
+        if (currentNfcLatches != previousLatches) {
+            scheduleAlarmScheduler.syncNextScheduleAlarm(
+                profiles = settings.customProfiles,
+                savedTriggers = settings.savedTriggers,
+                nfcLatches = currentNfcLatches,
+            )
+        }
 
         val quickKeys = settings.baseProfile.quickActions
         val quickItems = quickKeys.mapIndexedNotNull { index, comp ->
@@ -375,6 +450,8 @@ class SearchViewModel(
                     previouslyActiveProfileIds = previouslyActiveProfileIds,
                     savedTriggers = settings.savedTriggers,
                     previouslyActiveTriggerIds = previouslyActiveTriggerIds,
+                    nfcLatchStates = currentNfcLatches,
+                    nowEpochMillis = nowMillis,
                     random = random,
                 )
             QuickActionUiItem(
@@ -461,6 +538,8 @@ class SearchViewModel(
                     previouslyActiveProfileIds = previouslyActiveProfileIds,
                     savedTriggers = settings.savedTriggers,
                     previouslyActiveTriggerIds = previouslyActiveTriggerIds,
+                    nfcLatchStates = currentNfcLatches,
+                    nowEpochMillis = nowEpochMillisProvider(),
                     random = random,
                 )
             } else {

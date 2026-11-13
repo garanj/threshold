@@ -8,11 +8,14 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performSemanticsAction
+import androidx.compose.ui.test.performTextInput
 import com.garan.threshold.core.model.CustomProfile
 import com.garan.threshold.core.model.DayOfWeek
 import com.garan.threshold.core.model.GeoTrigger
 import com.garan.threshold.core.model.GeoTriggerMode
 import com.garan.threshold.core.model.LocationFix
+import com.garan.threshold.core.model.NfcTagEntry
+import com.garan.threshold.core.model.NfcTriggerMode
 import com.garan.threshold.core.model.ProfileTrigger
 import com.garan.threshold.core.model.SavedTrigger
 import com.garan.threshold.core.model.ScheduleTrigger
@@ -545,5 +548,90 @@ class ProfilesScreenTest {
 
         composeTestRule.onNodeWithTag(ProfilesTestTags.DELETE_CONFIRM_BUTTON).performClick()
         assertThat(deletedTriggerId).isEqualTo("t-work")
+    }
+
+    @Test
+    fun profilesScreen_creatingNfcProfileViaSegmentedTypeSelector_scansTagSelectsTimedSessionAndSaves() {
+        val savedProfiles = mutableListOf<CustomProfile>()
+        val savedTriggers = mutableListOf<SavedTrigger>()
+        var activeScanListener: ((String) -> Unit)? = null
+
+        composeTestRule.setContent {
+            ThresholdTheme {
+                ProfilesScreen(
+                    profiles = emptyList(),
+                    onSaveProfile = { savedProfiles.add(it) },
+                    onDeleteProfile = {},
+                    onReorderProfiles = {},
+                    onConfigureProfileApps = {},
+                    onBack = {},
+                    onSaveTrigger = { savedTriggers.add(it) },
+                    onRegisterNfcScanListener = { listener -> activeScanListener = listener },
+                )
+            }
+        }
+
+        // Open New Profile sheet and tap Add Trigger to create an NFC trigger inline
+        composeTestRule.onNodeWithTag(ProfilesTestTags.ADD_PROFILE_BUTTON).performClick()
+        composeTestRule
+            .onNodeWithTag(ProfilesTestTags.PROFILE_EDITOR_ADD_FIRST_TRIGGER)
+            .performSemanticsAction(SemanticsActions.OnClick)
+
+        // Switch from Schedule to NFC via the segmented type selector
+        composeTestRule
+            .onNodeWithTag(ProfilesTestTags.TRIGGER_EDITOR_TYPE_NFC)
+            .performSemanticsAction(SemanticsActions.OnClick)
+        composeTestRule.waitForIdle()
+
+        // Listener should be registered while NFC editor is open
+        assertThat(activeScanListener).isNotNull()
+
+        // Simulate scanning two NFC tags
+        composeTestRule.runOnIdle {
+            activeScanListener?.invoke("04a23f8b1c9080")
+            activeScanListener?.invoke("04:11:22:33")
+        }
+        composeTestRule.waitForIdle()
+
+        // Label the first tag and remove the second tag
+        composeTestRule
+            .onNodeWithTag(ProfilesTestTags.triggerEditorNfcTagLabel("04:A2:3F:8B:1C:90:80"))
+            .performTextInput("Bedside")
+        composeTestRule
+            .onNodeWithTag(ProfilesTestTags.triggerEditorNfcTagRemove("04:11:22:33"))
+            .performSemanticsAction(SemanticsActions.OnClick)
+
+        // Select "Timed session" mode and "2h" duration preset (120 minutes)
+        composeTestRule
+            .onNodeWithTag(ProfilesTestTags.TRIGGER_EDITOR_NFC_MODE_TIMED)
+            .performSemanticsAction(SemanticsActions.OnClick)
+        composeTestRule
+            .onNodeWithTag(ProfilesTestTags.triggerEditorNfcDuration(120))
+            .performSemanticsAction(SemanticsActions.OnClick)
+
+        // Tap "Create" in TriggerEditorSheet
+        composeTestRule
+            .onNodeWithTag(ProfilesTestTags.TRIGGER_EDITOR_SAVE_BUTTON)
+            .performSemanticsAction(SemanticsActions.OnClick)
+
+        // Tap "Create" in ProfileRulesEditorSheet
+        composeTestRule
+            .onNodeWithTag(ProfilesTestTags.PROFILE_EDITOR_SAVE_BUTTON)
+            .performSemanticsAction(SemanticsActions.OnClick)
+
+        assertThat(savedTriggers).hasSize(1)
+        val createdTrigger = savedTriggers.single()
+        val nfc = (createdTrigger.trigger as ProfileTrigger.Nfc).nfc
+        assertThat(nfc.mode).isEqualTo(NfcTriggerMode.TIMED_SESSION)
+        assertThat(nfc.durationMinutes).isEqualTo(120)
+        assertThat(nfc.tags).containsExactly(
+            NfcTagEntry(uid = "04:A2:3F:8B:1C:90:80", label = "Bedside"),
+        )
+
+        assertThat(savedProfiles).hasSize(1)
+        assertThat(savedProfiles.single().activationRules).containsExactly(
+            TriggerRule(listOf(createdTrigger.id)),
+        )
+        assertThat(activeScanListener).isNull()
     }
 }

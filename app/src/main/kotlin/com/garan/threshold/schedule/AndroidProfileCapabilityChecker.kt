@@ -20,6 +20,7 @@ class AndroidProfileCapabilityChecker(
     private val context: Context,
     private val exactAlarmOverride: (() -> Boolean?)? = null,
     private val locationCapabilityOverride: (() -> Boolean?)? = null,
+    private val nfcCapabilityOverride: (() -> Boolean?)? = null,
 ) : ProfileCapabilityChecker {
 
     override fun isCapabilityGranted(capability: ProfileCapability): Boolean = when (capability) {
@@ -54,8 +55,13 @@ class AndroidProfileCapabilityChecker(
             }
         }
         ProfileCapability.NFC_HARDWARE_ENABLED -> {
-            val adapter = NfcAdapter.getDefaultAdapter(context)
-            adapter != null && adapter.isEnabled
+            val overrideValue = nfcCapabilityOverride?.invoke()
+            if (overrideValue != null) {
+                overrideValue
+            } else {
+                val adapter = NfcAdapter.getDefaultAdapter(context)
+                adapter != null && adapter.isEnabled
+            }
         }
     }
 }

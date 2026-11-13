@@ -422,4 +422,34 @@ class AndroidSettingsRepositoryTest {
         )
         assertThat(updatedMulti.enabled).isTrue()
     }
+
+    @Test
+    fun saveTrigger_persistsAndRestoresNfcTriggerWithTagsModeAndDuration() = runTest(testDispatcher) {
+        val nfcSavedTrigger = com.garan.threshold.core.model.SavedTrigger(
+            id = "t-desk-nfc",
+            name = "Desk NFC",
+            trigger = com.garan.threshold.core.model.ProfileTrigger.Nfc(
+                com.garan.threshold.core.model.NfcTrigger(
+                    tags = listOf(
+                        com.garan.threshold.core.model.NfcTagEntry(uid = "04:A2:3F:8B", label = "Desk Sticker"),
+                        com.garan.threshold.core.model.NfcTagEntry(uid = "04:B1:22:99", label = "Badge"),
+                    ),
+                    mode = com.garan.threshold.core.model.NfcTriggerMode.TIMED_SESSION,
+                    durationMinutes = 120,
+                ),
+            ),
+        )
+
+        repository.saveTrigger(nfcSavedTrigger)
+
+        val loaded = repository.getSettings().savedTriggers.single()
+        assertThat(loaded).isEqualTo(nfcSavedTrigger)
+        val loadedNfc = (loaded.trigger as com.garan.threshold.core.model.ProfileTrigger.Nfc).nfc
+        assertThat(loadedNfc.mode).isEqualTo(com.garan.threshold.core.model.NfcTriggerMode.TIMED_SESSION)
+        assertThat(loadedNfc.durationMinutes).isEqualTo(120)
+        assertThat(loadedNfc.tags).containsExactly(
+            com.garan.threshold.core.model.NfcTagEntry(uid = "04:A2:3F:8B", label = "Desk Sticker"),
+            com.garan.threshold.core.model.NfcTagEntry(uid = "04:B1:22:99", label = "Badge"),
+        ).inOrder()
+    }
 }

@@ -9,6 +9,7 @@ import com.garan.threshold.data.haptics.AndroidHapticEngine
 import com.garan.threshold.data.location.AndroidLocationSource
 import com.garan.threshold.data.packageindex.AndroidPackageIndexSource
 import com.garan.threshold.data.settings.AndroidSettingsRepository
+import com.garan.threshold.nfc.AndroidNfcReaderSource
 import com.garan.threshold.schedule.AndroidProfileCapabilityChecker
 import com.garan.threshold.schedule.AndroidScheduleAlarmScheduler
 import com.garan.threshold.ui.launcher.DialerPackageResolver
@@ -30,6 +31,7 @@ class ThresholdAppContainer(context: Context) {
     val settingsRepository by lazy { AndroidSettingsRepository(appContext) }
     val locationSource by lazy { AndroidLocationSource(appContext) }
     val antiMetricsRepository by lazy { AndroidAntiMetricsRepository(appContext) }
+    val nfcReaderSource by lazy { AndroidNfcReaderSource(appContext, hapticEngine) }
 
     @Volatile
     var clockOverrideForTesting: ClockSource? = null
@@ -37,8 +39,18 @@ class ThresholdAppContainer(context: Context) {
     @Volatile
     var exactAlarmOverrideForTesting: Boolean? = null
 
+    @Volatile
+    var nfcCapabilityOverrideForTesting: Boolean? = null
+
+    @Volatile
+    var nowEpochMillisOverrideForTesting: Long? = null
+
     val activeClockSource: ClockSource = ClockSource {
         clockOverrideForTesting?.now() ?: SystemClockSource.now()
+    }
+
+    val activeNowEpochMillisProvider: () -> Long = {
+        nowEpochMillisOverrideForTesting ?: System.currentTimeMillis()
     }
 
     val scheduleAlarmScheduler by lazy {
@@ -52,6 +64,7 @@ class ThresholdAppContainer(context: Context) {
         AndroidProfileCapabilityChecker(
             context = appContext,
             exactAlarmOverride = { exactAlarmOverrideForTesting },
+            nfcCapabilityOverride = { nfcCapabilityOverrideForTesting },
         )
     }
 

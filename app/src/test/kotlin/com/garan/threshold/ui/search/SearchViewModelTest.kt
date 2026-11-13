@@ -865,6 +865,128 @@ class SearchViewModelTest {
         assertThat(vm.uiState.value.quickActions.first().accessState).isEqualTo(AppAccessState.Direct)
     }
 
+    @Test
+    fun nfcTagScans_enforcesNoEarlyTapForAndRuleLatchesWithRelaySnapAndAutoUnlatchesOnCompanionLoss() =
+        runTest(testDispatcher) {
+            val lateNight = com.garan.threshold.core.model.SavedTrigger(
+                id = "t-late",
+                name = "Late Night",
+                trigger = com.garan.threshold.core.model.ProfileTrigger.Schedule(
+                    com.garan.threshold.core.model.ScheduleTrigger(
+                        days = setOf(com.garan.threshold.core.model.DayOfWeek.MONDAY),
+                        startTime = com.garan.threshold.core.model.TimeOfDay(22, 0),
+                        endTime = com.garan.threshold.core.model.TimeOfDay(23, 59),
+                    ),
+                ),
+            )
+            val bedsideNfc = com.garan.threshold.core.model.SavedTrigger(
+                id = "t-bedside",
+                name = "Bedside Tag",
+                trigger = com.garan.threshold.core.model.ProfileTrigger.Nfc(
+                    com.garan.threshold.core.model.NfcTrigger(
+                        tags = listOf(
+                            com.garan.threshold.core.model.NfcTagEntry(
+                                uid = "04:A2:3F:8B:1C:90:80",
+                                label = "Bedside",
+                            ),
+                        ),
+                        mode = com.garan.threshold.core.model.NfcTriggerMode.TOGGLE_ON_TAP,
+                    ),
+                ),
+            )
+            val sleepProfile = com.garan.threshold.core.model.CustomProfile(
+                id = "sleep",
+                name = "Sleep",
+                enabled = true,
+                trigger = null,
+                activationRules = listOf(
+                    com.garan.threshold.core.model.TriggerRule(listOf("t-late", "t-bedside")),
+                ),
+                appAssignments = mapOf(
+                    socialComponent to com.garan.threshold.core.model.AppAssignment.Blocked,
+                ),
+            )
+
+            val fakeRepo = com.garan.threshold.ui.settings.FakeSettingsRepository(
+                com.garan.threshold.core.model.ThresholdSettings(
+                    baseProfile = com.garan.threshold.core.model.BaseProfileSettings(
+                        quickActions = listOf(socialComponent),
+                        appAssignments = mapOf(
+                            socialComponent to com.garan.threshold.core.model.AppAssignment.Standard,
+                        ),
+                    ),
+                    customProfiles = listOf(sleepProfile),
+                    savedTriggers = listOf(lateNight, bedsideNfc),
+                ),
+            )
+
+            var currentDayTime = com.garan.threshold.core.port.LocalDayTime(
+                com.garan.threshold.core.model.DayOfWeek.MONDAY,
+                com.garan.threshold.core.model.TimeOfDay(21, 0),
+            )
+            var currentMillis = 1_700_000_000_000L
+            val nfcScansFlow = kotlinx.coroutines.flow.MutableSharedFlow<String>(extraBufferCapacity = 4)
+            val fakeNfcReader = object : com.garan.threshold.core.port.NfcReaderSource {
+                override val tagScans = nfcScansFlow
+            }
+            val haptic = TestHapticEngine()
+
+            val vm = SearchViewModel(
+                packageIndexSource = fakePackageIndexSource,
+                hapticEngine = haptic,
+                settingsRepository = fakeRepo,
+                clockSource = { currentDayTime },
+                nfcReaderSource = fakeNfcReader,
+                nowEpochMillisProvider = { currentMillis },
+                ioDispatcher = testDispatcher,
+            ).apply {
+                ensureIndexLoaded()
+            }
+            advanceUntilIdle()
+
+            // 1. Early tap at 21:00 (before Late Night starts at 22:00) -> rejected with resistanceDetent
+            nfcScansFlow.tryEmit("04a23f8b1c9080")
+            advanceUntilIdle()
+            assertThat(vm.uiState.value.activeProfiles).isEmpty()
+            assertThat(haptic.resistanceDetentCount).isEqualTo(1)
+            assertThat(haptic.relaySnapCount).isEqualTo(0)
+
+            // 2. Advance to 22:05 (inside Late Night) -> still inactive until tag is tapped
+            currentDayTime = com.garan.threshold.core.port.LocalDayTime(
+                com.garan.threshold.core.model.DayOfWeek.MONDAY,
+                com.garan.threshold.core.model.TimeOfDay(22, 5),
+            )
+            vm.refreshScheduleEvaluation()
+            advanceUntilIdle()
+            assertThat(vm.uiState.value.activeProfiles).isEmpty()
+
+            // 3. Tap Bedside Tag at 22:05 -> latches ON, fires relaySnap, activates Sleep profile
+            nfcScansFlow.tryEmit("04:A2:3F:8B:1C:90:80")
+            advanceUntilIdle()
+            assertThat(vm.uiState.value.activeProfiles).containsExactly(sleepProfile)
+            assertThat(vm.uiState.value.quickActions.first().accessState).isEqualTo(AppAccessState.Blocked)
+            assertThat(haptic.relaySnapCount).isEqualTo(1)
+
+            // 4. Advance past Late Night window (Tuesday 07:00) -> auto-unlatches NFC trigger
+            currentDayTime = com.garan.threshold.core.port.LocalDayTime(
+                com.garan.threshold.core.model.DayOfWeek.TUESDAY,
+                com.garan.threshold.core.model.TimeOfDay(7, 0),
+            )
+            vm.refreshScheduleEvaluation()
+            advanceUntilIdle()
+            assertThat(vm.uiState.value.activeProfiles).isEmpty()
+            assertThat(vm.uiState.value.quickActions.first().accessState).isEqualTo(AppAccessState.Direct)
+
+            // 5. Next Monday 22:10 -> remains inactive (must tap again because previous latch was auto-cleared)
+            currentDayTime = com.garan.threshold.core.port.LocalDayTime(
+                com.garan.threshold.core.model.DayOfWeek.MONDAY,
+                com.garan.threshold.core.model.TimeOfDay(22, 10),
+            )
+            vm.refreshScheduleEvaluation()
+            advanceUntilIdle()
+            assertThat(vm.uiState.value.activeProfiles).isEmpty()
+        }
+
     private class TestHapticEngine : HapticEngine {
         var rotaryDetentCount = 0
             private set

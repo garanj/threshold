@@ -469,4 +469,56 @@ object ThresholdIcons {
             }
         }.build()
     }
+
+    /**
+     * Canonical Material NFC coil icon representing NFC triggers.
+     */
+    val Nfc: ImageVector by lazy {
+        ImageVector.Builder(
+            name = "Nfc",
+            defaultWidth = 24.dp,
+            defaultHeight = 24.dp,
+            viewportWidth = 24f,
+            viewportHeight = 24f,
+        ).apply {
+            path(fill = SolidColor(Color.White)) {
+                moveTo(20f, 2f)
+                horizontalLineTo(4f)
+                curveTo(2.9f, 2f, 2f, 2.9f, 2f, 4f)
+                verticalLineTo(20f)
+                curveTo(2f, 21.1f, 2.9f, 22f, 4f, 22f)
+                horizontalLineTo(20f)
+                curveTo(21.1f, 22f, 22f, 21.1f, 22f, 20f)
+                verticalLineTo(4f)
+                curveTo(22f, 2.9f, 21.1f, 2f, 20f, 2f)
+                close()
+                moveTo(20f, 20f)
+                horizontalLineTo(4f)
+                verticalLineTo(4f)
+                horizontalLineTo(20f)
+                verticalLineTo(20f)
+                close()
+                moveTo(18f, 6f)
+                horizontalLineTo(13f)
+                curveTo(11.9f, 6f, 11f, 6.9f, 11f, 8f)
+                verticalLineTo(10.28f)
+                curveTo(10.4f, 10.63f, 10f, 11.26f, 10f, 12f)
+                curveTo(10f, 13.1f, 10.9f, 14f, 12f, 14f)
+                curveTo(13.1f, 14f, 14f, 13.1f, 14f, 12f)
+                curveTo(14f, 11.26f, 13.6f, 10.63f, 13f, 10.28f)
+                verticalLineTo(8f)
+                horizontalLineTo(16f)
+                verticalLineTo(16f)
+                horizontalLineTo(8f)
+                verticalLineTo(8f)
+                horizontalLineTo(10f)
+                verticalLineTo(6f)
+                horizontalLineTo(6f)
+                verticalLineTo(18f)
+                horizontalLineTo(18f)
+                verticalLineTo(6f)
+                close()
+            }
+        }.build()
+    }
 }

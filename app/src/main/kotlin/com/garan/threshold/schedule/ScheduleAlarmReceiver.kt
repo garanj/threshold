@@ -5,6 +5,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.location.LocationManager
+import android.nfc.NfcAdapter
 import com.garan.threshold.ThresholdAppContainer
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -52,6 +53,7 @@ class ScheduleAlarmReceiver : BroadcastReceiver() {
             Intent.ACTION_TIMEZONE_CHANGED,
             LocationManager.PROVIDERS_CHANGED_ACTION,
             LocationManager.MODE_CHANGED_ACTION,
+            NfcAdapter.ACTION_ADAPTER_STATE_CHANGED,
         )
     }
 }

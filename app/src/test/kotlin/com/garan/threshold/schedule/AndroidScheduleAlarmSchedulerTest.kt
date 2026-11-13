@@ -7,6 +7,10 @@ import androidx.test.core.app.ApplicationProvider
 import com.garan.threshold.core.model.CustomProfile
 import com.garan.threshold.core.model.DayOfWeek
 import com.garan.threshold.core.model.GeoTrigger
+import com.garan.threshold.core.model.NfcLatchState
+import com.garan.threshold.core.model.NfcTagEntry
+import com.garan.threshold.core.model.NfcTrigger
+import com.garan.threshold.core.model.NfcTriggerMode
 import com.garan.threshold.core.model.ProfileTrigger
 import com.garan.threshold.core.model.SavedTrigger
 import com.garan.threshold.core.model.ScheduleTrigger
@@ -165,6 +169,65 @@ class AndroidScheduleAlarmSchedulerTest {
             )
             assertThat(transitionCount).isEqualTo(2)
 
+            // NFC adapter state changed -> emits transition event
+            receiver.onReceive(
+                context,
+                Intent("android.nfc.action.ADAPTER_STATE_CHANGED"),
+            )
+            assertThat(transitionCount).isEqualTo(3)
+
             job.cancel()
         }
+
+    @Test
+    fun syncNextScheduleAlarm_withActiveTimedNfcLatch_schedulesAlarmAtLatchExpiry() {
+        val baseMillis = 1_700_000_000_000L
+        val scheduler = AndroidScheduleAlarmScheduler(
+            context = context,
+            clockSource = {
+                LocalDayTime(
+                    dayOfWeek = DayOfWeek.MONDAY,
+                    timeOfDay = TimeOfDay(8, 30),
+                )
+            },
+            nowEpochMillisProvider = { baseMillis },
+        )
+
+        val nfcTrigger = SavedTrigger(
+            id = "t-nfc",
+            name = "Desk Tag",
+            trigger = ProfileTrigger.Nfc(
+                NfcTrigger(
+                    tags = listOf(NfcTagEntry(uid = "04:A2:3F:8B", label = "Desk")),
+                    mode = NfcTriggerMode.TIMED_SESSION,
+                    durationMinutes = 30,
+                ),
+            ),
+        )
+        val nfcProfile = CustomProfile(
+            id = "deep-focus",
+            name = "Deep Focus",
+            enabled = true,
+            trigger = null,
+            activationRules = listOf(TriggerRule(listOf("t-nfc"))),
+        )
+        val latchExpiryMillis = baseMillis + 15 * 60_000L
+
+        scheduler.syncNextScheduleAlarm(
+            profiles = listOf(nfcProfile),
+            savedTriggers = listOf(nfcTrigger),
+            nfcLatches = mapOf(
+                "t-nfc" to NfcLatchState(
+                    triggerId = "t-nfc",
+                    latchedAtEpochMillis = baseMillis,
+                    expiresAtEpochMillis = latchExpiryMillis,
+                ),
+            ),
+        )
+
+        val shadowAlarmManager = shadowOf(alarmManager)
+        val alarms = shadowAlarmManager.scheduledAlarms
+        assertThat(alarms).hasSize(1)
+        assertThat(alarms.first().triggerAtMs).isEqualTo(latchExpiryMillis)
+    }
 }
