@@ -544,9 +544,9 @@ class ThresholdHomeScreenTest {
             }
         }
 
-        // Hold for >= 3,000ms (default node longClick reads viewConfiguration.longPressTimeoutMillis + 100L = 3,100ms)
+        // Hold for >= 3,000ms
         composeTestRule.onNodeWithText("THRESHOLD").performTouchInput {
-            longClick()
+            longClick(durationMillis = 3_100L)
         }
         composeTestRule.waitForIdle()
 
