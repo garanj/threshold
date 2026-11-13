@@ -2,12 +2,22 @@ package com.garan.threshold.ui.home
 
 import android.content.Context
 import android.content.Intent
+import androidx.compose.material3.Text
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.unit.Density
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.LifecycleRegistry
@@ -131,5 +141,79 @@ class ThresholdHomeCanvasTest {
 
         composeTestRule.onNodeWithContentDescription("Missing profile permissions").performClick()
         assertThat(faultClicked).isTrue()
+    }
+
+    @Test
+    fun canvas_statusRowBadgeAppearance_doesNotShiftBelowContentVerticallyAtDefaultOrLargeFontScale() {
+        val workProfile = CustomProfile(id = "work", name = "Work Focus", colorIndex = 0)
+        var profiles by mutableStateOf(persistentListOf<CustomProfile>())
+        var faultIssues by mutableStateOf(false)
+        var fontScale by mutableStateOf(1.0f)
+
+        composeTestRule.setContent {
+            CompositionLocalProvider(
+                LocalDensity provides Density(density = 3.0f, fontScale = fontScale),
+            ) {
+                ThresholdTheme {
+                    ThresholdHomeCanvas(
+                        timeText = "22:24",
+                        dateText = "Friday, November 13",
+                        statusText = "REST 3M  •  80 UNLOCKS",
+                        activeProfiles = profiles,
+                        hasCapabilityIssues = faultIssues,
+                    ) {
+                        Text(
+                            text = "Type to launch...",
+                            modifier = Modifier.testTag("below_status_content"),
+                        )
+                    }
+                }
+            }
+        }
+
+        // 1. At 1.0x font scale: measure top coordinate before and after badges appear
+        val topWithoutBadges1x = composeTestRule
+            .onNodeWithTag("below_status_content")
+            .getUnclippedBoundsInRoot()
+            .top
+
+        composeTestRule.runOnIdle {
+            profiles = persistentListOf(workProfile)
+            faultIssues = true
+        }
+        composeTestRule.waitForIdle()
+
+        val topWithBadges1x = composeTestRule
+            .onNodeWithTag("below_status_content")
+            .getUnclippedBoundsInRoot()
+            .top
+
+        assertThat(topWithBadges1x).isEqualTo(topWithoutBadges1x)
+
+        // 2. At 2.0x accessibility font scale: measure top coordinate before and after badges appear
+        composeTestRule.runOnIdle {
+            fontScale = 2.0f
+            profiles = persistentListOf()
+            faultIssues = false
+        }
+        composeTestRule.waitForIdle()
+
+        val topWithoutBadges2x = composeTestRule
+            .onNodeWithTag("below_status_content")
+            .getUnclippedBoundsInRoot()
+            .top
+
+        composeTestRule.runOnIdle {
+            profiles = persistentListOf(workProfile)
+            faultIssues = true
+        }
+        composeTestRule.waitForIdle()
+
+        val topWithBadges2x = composeTestRule
+            .onNodeWithTag("below_status_content")
+            .getUnclippedBoundsInRoot()
+            .top
+
+        assertThat(topWithBadges2x).isEqualTo(topWithoutBadges2x)
     }
 }
