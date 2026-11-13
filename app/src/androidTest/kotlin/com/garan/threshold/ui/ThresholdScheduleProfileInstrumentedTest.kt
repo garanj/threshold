@@ -322,9 +322,25 @@ class ThresholdScheduleProfileInstrumentedTest {
         device.waitForIdle()
         assertThat(device.waitUntilGoneFresh(By.desc("Active profile: Sleep Mode"), 0L)).isTrue()
 
-        // 3. Simulate NFC tap at Monday 22:15 -> latches ON, activates Sleep Mode, blocks target app
+        // 3. Simulate 1st NFC tap at Monday 22:15 -> latches ON, activates Sleep Mode, blocks target app
         scenario?.onActivity { activity ->
             activity.simulateNfcTapForTesting("04a23f8b1c9080")
+        }
+        device.waitForIdle()
+        assertThat(device.waitForFresh(By.desc("Active profile: Sleep Mode"), 5000L)).isNotNull()
+        assertThat(device.waitUntilGoneFresh(By.text(targetLabel), 5000L)).isTrue()
+
+        // 3b. Simulate 2nd NFC tap at Monday 22:16 -> unlatches OFF, deactivates Sleep Mode, restores target app
+        scenario?.onActivity { activity ->
+            activity.simulateNfcTapForTesting("04:A2:3F:8B:1C:90:80")
+        }
+        device.waitForIdle()
+        assertThat(device.waitUntilGoneFresh(By.desc("Active profile: Sleep Mode"), 5000L)).isTrue()
+        assertThat(device.waitForFresh(By.text(targetLabel), 5000L)).isNotNull()
+
+        // 3c. Simulate 3rd NFC tap at Monday 22:17 -> latches ON again before testing schedule auto-unlatch
+        scenario?.onActivity { activity ->
+            activity.simulateNfcTapForTesting("04:A2:3F:8B:1C:90:80")
         }
         device.waitForIdle()
         assertThat(device.waitForFresh(By.desc("Active profile: Sleep Mode"), 5000L)).isNotNull()

@@ -1,12 +1,11 @@
-# Current Task: Issue #78 — NFC Triggers, `AND`/`OR` Latch Semantics & Foreground NFC Reader
+# Current Task: Issue #80 — Fix 2nd-Tap NFC Unlatch & Abstract `NfcAdapter.enableReaderMode`
 
-- **Issue:** [#78](https://github.com/garanj/threshold/issues/78)
-- **Branch:** `feat/78-nfc-triggers-foreground-reader`
+- **Issue:** [#80](https://github.com/garanj/threshold/issues/80)
+- **Branch:** `fix/80-nfc-toggle-off-and-reader-abstraction`
 - **Status:** Ready for Review
 
 ## Checklist
-- [x] `:core` (TDD): Implement `NfcTagEntry`, `NfcTriggerMode`, `NfcTrigger`, `ProfileTrigger.Nfc`, and `NfcLatchState` / `CascadingResolutionEngine` `AND`/`OR` latch & auto-unlatch semantics with unit tests (`NfcTriggerTest`, `CascadingResolutionEngineTest`)
-- [x] `:data` (TDD): Extend `AndroidSettingsRepository` for `ProfileTrigger.Nfc` persistence with unit tests (`AndroidSettingsRepositoryTest`)
-- [x] `:app` Hardware Adapter: Implement `AndroidNfcReaderSource` (`NfcAdapter.enableReaderMode` with `FLAG_READER_NO_PLATFORM_SOUNDS` + `HapticEngine.relaySnap()`) and timed-session alarm scheduling in `AndroidScheduleAlarmScheduler`
-- [x] `:app` ViewModel & UI: Wire NFC tap handling in `SearchViewModel`, add `NFC` tab (`Schedule | Geo | NFC`) and tag scanner/list UI in `ScheduleEditorDialog.kt` & `ProfilesScreen.kt` with deterministic `ProfilesTestTags`
-- [x] `:app` Tests: Add unit, Robolectric, screenshot, and end-to-end instrumented (`androidTest`) tests for NFC triggers and `AND`/`OR` latch rules
+- [x] `:core` (TDD): Write failing regression test for 2nd-tap toggle-off when `previouslyActiveTriggerIds` contains the unlatched NFC trigger ID, then fix `CascadingResolutionEngine` (`nfcLatchStates: Map<String, NfcLatchState>? = null`)
+- [x] `:app` ViewModel (TDD): Write failing regression test in `SearchViewModelTest` for 1st tap ON -> 2nd tap OFF -> 3rd tap ON, and verify fix
+- [x] `:app` Hardware Adapter (TDD): Abstract `NfcAdapter.enableReaderMode` / `disableReaderMode` behind `NfcAdapterGateway` in `AndroidNfcReaderSource` and add `AndroidNfcReaderSourceTest`
+- [x] `:app` Instrumented Test: Update `ThresholdScheduleProfileInstrumentedTest` to assert 2nd-tap toggle-off before re-latching and testing schedule auto-unlatch

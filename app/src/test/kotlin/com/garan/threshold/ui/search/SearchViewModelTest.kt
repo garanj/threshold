@@ -967,6 +967,20 @@ class SearchViewModelTest {
             assertThat(vm.uiState.value.quickActions.first().accessState).isEqualTo(AppAccessState.Blocked)
             assertThat(haptic.relaySnapCount).isEqualTo(1)
 
+            // 3b. Tap Bedside Tag a 2nd time at 22:06 -> unlatches OFF, fires relaySnap, deactivates Sleep profile
+            nfcScansFlow.tryEmit("04:A2:3F:8B:1C:90:80")
+            advanceUntilIdle()
+            assertThat(vm.uiState.value.activeProfiles).isEmpty()
+            assertThat(vm.uiState.value.quickActions.first().accessState).isEqualTo(AppAccessState.Direct)
+            assertThat(haptic.relaySnapCount).isEqualTo(2)
+
+            // 3c. Tap Bedside Tag a 3rd time at 22:07 -> latches ON again before testing schedule auto-unlatch
+            nfcScansFlow.tryEmit("04:A2:3F:8B:1C:90:80")
+            advanceUntilIdle()
+            assertThat(vm.uiState.value.activeProfiles).containsExactly(sleepProfile)
+            assertThat(vm.uiState.value.quickActions.first().accessState).isEqualTo(AppAccessState.Blocked)
+            assertThat(haptic.relaySnapCount).isEqualTo(3)
+
             // 4. Advance past Late Night window (Tuesday 07:00) -> auto-unlatches NFC trigger
             currentDayTime = com.garan.threshold.core.port.LocalDayTime(
                 com.garan.threshold.core.model.DayOfWeek.TUESDAY,

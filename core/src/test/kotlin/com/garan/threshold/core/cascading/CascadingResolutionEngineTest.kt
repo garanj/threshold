@@ -863,10 +863,29 @@ class CascadingResolutionEngineTest {
             customProfiles = profiles,
             currentDay = DayOfWeek.TUESDAY,
             currentTime = TimeOfDay(11, 0),
+            previouslyActiveTriggerIds = wsMidSession.activeTriggerIds,
+            previouslyActiveProfileIds = setOf(deepWork.id),
             currentNfcLatches = tapOn.updatedLatches,
             nowEpochMillis = t0 + 5 * 60_000L,
         )
         assertThat(tapAgain.outcome).isEqualTo(NfcTapOutcome.UNLATCHED_OFF)
         assertThat(tapAgain.updatedLatches).isEmpty()
+
+        // 5. Resolving working set after 2nd-tap unlatch must NOT re-activate from previouslyActiveTriggerIds
+        val wsAfterSecondTap = engine.resolveWorkingSet(
+            baseProfile = BaseProfileSettings(),
+            customProfiles = profiles,
+            currentDay = DayOfWeek.TUESDAY,
+            currentTime = TimeOfDay(11, 0),
+            defaultDialerPackage = dialerComponent.packageName,
+            previouslyActiveProfileIds = setOf(deepWork.id),
+            savedTriggers = savedTriggers,
+            previouslyActiveTriggerIds = wsMidSession.activeTriggerIds,
+            nfcLatchStates = tapAgain.updatedLatches,
+            nowEpochMillis = t0 + 5 * 60_000L,
+        )
+        assertThat(wsAfterSecondTap.activeTriggerIds).isEmpty()
+        assertThat(wsAfterSecondTap.activeProfiles).isEmpty()
+        assertThat(wsAfterSecondTap.activeNfcLatches).isEmpty()
     }
 }
