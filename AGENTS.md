@@ -44,6 +44,7 @@ Every line of code committed to Threshold must adhere to these non-negotiable bo
   - Use Jetpack Navigation 3 (`NavDisplay`, `@Serializable` `NavKey` routes, `rememberNavBackStack`) for all screen navigation.
   - Use canonical Material 3 components (`Scaffold` + `TopAppBar`, `ListItem`, `FilterChip`, `SingleChoiceSegmentedButtonRow`, `ModalBottomSheet`, `TimeInput`/`TimePicker`) and semantic `MaterialTheme.colorScheme` roles.
   - **Zero "AI-Slop" UI:** No inline `Color(0x...)` literals outside `Color.kt`, no ASCII characters (`"▲"`, `"▼"`, `"→"`) used as icons, no nested bordered box-in-a-box containers, no pinned `"Save"` footer buttons on settings screens, and no `Dialog`s for pickers, lists, or multi-field forms.
+  - **Deterministic UI Automation (`testTag` & `testTagsAsResourceId`):** Expose `Modifier.semantics { testTagsAsResourceId = true }` at the root composable and attach structured `Modifier.testTag(...)` identifiers (keyed by entity ID or rule index for repeating/nested items) to all primary interactive controls, tabs, sheets, and repeating list actions so both Compose tests (`onNodeWithTag`) and UiAutomator (`By.res`) can target elements without fragile text or index heuristics.
 - **Micro-Haptics (`VibrationEffect.Composition`):**
   - Use `PRIMITIVE_CLICK` / `PRIMITIVE_TICK` for rotary index detents.
   - Use `PRIMITIVE_HEAVY_CLICK` + delayed `PRIMITIVE_TICK` (30ms) for the physical "Relay Snap" on NFC tap.

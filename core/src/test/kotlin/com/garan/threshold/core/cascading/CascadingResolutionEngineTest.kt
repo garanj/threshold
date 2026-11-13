@@ -540,4 +540,159 @@ class CascadingResolutionEngineTest {
         )
         assertThat(wsOrRule.activeProfiles).containsExactly(focusProfile)
     }
+
+    @Test
+    fun reusableTriggers_missingTriggerInAndRuleFailsSafeWhileValidOrRuleStillActivates() {
+        val workHoursTrigger = SavedTrigger(
+            id = "t-work-hours",
+            name = "Work Hours",
+            trigger = ProfileTrigger.Schedule(weekdayDaySchedule),
+        )
+        val eveningTrigger = SavedTrigger(
+            id = "t-evening",
+            name = "Evening",
+            trigger = ProfileTrigger.Schedule(
+                ScheduleTrigger(
+                    days = setOf(DayOfWeek.MONDAY),
+                    startTime = TimeOfDay(19, 0),
+                    endTime = TimeOfDay(22, 0),
+                ),
+            ),
+        )
+
+        // Rule 1 has [t-work-hours AND t-missing]; Rule 2 has [t-evening]
+        val profile = CustomProfile(
+            id = "resilient",
+            name = "Resilient",
+            priority = 0,
+            enabled = true,
+            trigger = null,
+            activationRules = listOf(
+                TriggerRule(listOf("t-work-hours", "t-missing")),
+                TriggerRule(listOf("t-evening")),
+            ),
+            appAssignments = mapOf(socialComponent to AppAssignment.Blocked),
+        )
+
+        // Monday 10:00 -> t-work-hours is active, but t-missing is not -> Rule 1 is false -> inactive
+        val wsMorning = engine.resolveWorkingSet(
+            baseProfile = BaseProfileSettings(),
+            customProfiles = listOf(profile),
+            currentDay = DayOfWeek.MONDAY,
+            currentTime = TimeOfDay(10, 0),
+            defaultDialerPackage = dialerComponent.packageName,
+            savedTriggers = listOf(workHoursTrigger, eveningTrigger),
+        )
+        assertThat(wsMorning.activeProfiles).isEmpty()
+
+        // Monday 20:00 -> Rule 2 (t-evening) is satisfied -> profile activates
+        val wsEvening = engine.resolveWorkingSet(
+            baseProfile = BaseProfileSettings(),
+            customProfiles = listOf(profile),
+            currentDay = DayOfWeek.MONDAY,
+            currentTime = TimeOfDay(20, 0),
+            defaultDialerPackage = dialerComponent.packageName,
+            savedTriggers = listOf(workHoursTrigger, eveningTrigger),
+        )
+        assertThat(wsEvening.activeProfiles).containsExactly(profile)
+    }
+
+    @Test
+    fun reusableTriggers_sharedAcrossProfilesAndDualGeoAndRule_evaluatesPriorityAndSpatialExclusion() {
+        val campusCenter = LocationFix(latitude = 51.5074, longitude = -0.1278)
+        val breakRoomCenter = LocationFix(
+            latitude = campusCenter.latitude + (100.0 / 111_194.9266),
+            longitude = campusCenter.longitude,
+        )
+
+        val workHours = SavedTrigger(
+            id = "t-work",
+            name = "Work Hours",
+            trigger = ProfileTrigger.Schedule(weekdayDaySchedule),
+        )
+        val insideCampus = SavedTrigger(
+            id = "t-inside-campus",
+            name = "Inside Campus",
+            trigger = ProfileTrigger.Geo(
+                GeoTrigger(
+                    latitude = campusCenter.latitude,
+                    longitude = campusCenter.longitude,
+                    radiusMeters = 500,
+                    mode = GeoTriggerMode.INSIDE,
+                ),
+            ),
+        )
+        val outsideBreakRoom = SavedTrigger(
+            id = "t-outside-breakroom",
+            name = "Outside Break Room",
+            trigger = ProfileTrigger.Geo(
+                GeoTrigger(
+                    latitude = breakRoomCenter.latitude,
+                    longitude = breakRoomCenter.longitude,
+                    radiusMeters = 100,
+                    mode = GeoTriggerMode.OUTSIDE,
+                ),
+            ),
+        )
+
+        // Priority 0: Strict Desk Focus = Work Hours AND Inside Campus AND Outside Break Room -> Blocks social
+        val strictFocus = CustomProfile(
+            id = "strict-desk",
+            name = "Strict Desk",
+            priority = 0,
+            enabled = true,
+            trigger = null,
+            activationRules = listOf(
+                TriggerRule(listOf("t-work", "t-inside-campus", "t-outside-breakroom")),
+            ),
+            appAssignments = mapOf(socialComponent to AppAssignment.Blocked),
+        )
+
+        // Priority 1: General Work = Work Hours AND Inside Campus -> Guards social
+        val generalWork = CustomProfile(
+            id = "general-work",
+            name = "General Work",
+            priority = 1,
+            enabled = true,
+            trigger = null,
+            activationRules = listOf(
+                TriggerRule(listOf("t-work", "t-inside-campus")),
+            ),
+            appAssignments = mapOf(socialComponent to AppAssignment.Guarded()),
+        )
+
+        val triggers = listOf(workHours, insideCampus, outsideBreakRoom)
+
+        // 1. At campus center (100m from break room, wait: let's stand 300m south of campus center -> inside 500m campus, 400m from break room)
+        val deskLocation = LocationFix(
+            latitude = campusCenter.latitude - (200.0 / 111_194.9266),
+            longitude = campusCenter.longitude,
+        )
+        val wsAtDesk = engine.resolveWorkingSet(
+            baseProfile = BaseProfileSettings(),
+            customProfiles = listOf(strictFocus, generalWork),
+            currentDay = DayOfWeek.MONDAY,
+            currentTime = TimeOfDay(10, 0),
+            defaultDialerPackage = dialerComponent.packageName,
+            currentLocation = deskLocation,
+            savedTriggers = triggers,
+        )
+        // Both profiles active, Strict Desk (priority 0) wins and blocks socialComponent
+        assertThat(wsAtDesk.activeProfiles).containsExactly(strictFocus, generalWork).inOrder()
+        assertThat(wsAtDesk.blockedComponents).containsExactly(socialComponent)
+
+        // 2. Step into Break Room -> Outside Break Room becomes false -> Strict Desk deactivates, General Work remains active (Guarded)
+        val wsInBreakRoom = engine.resolveWorkingSet(
+            baseProfile = BaseProfileSettings(),
+            customProfiles = listOf(strictFocus, generalWork),
+            currentDay = DayOfWeek.MONDAY,
+            currentTime = TimeOfDay(10, 5),
+            defaultDialerPackage = dialerComponent.packageName,
+            currentLocation = breakRoomCenter,
+            savedTriggers = triggers,
+        )
+        assertThat(wsInBreakRoom.activeProfiles).containsExactly(generalWork)
+        assertThat(wsInBreakRoom.blockedComponents).isEmpty()
+        assertThat(wsInBreakRoom.effectiveProfile.appRules[socialComponent]).isNotNull()
+    }
 }

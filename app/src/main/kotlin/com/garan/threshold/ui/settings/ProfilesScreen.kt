@@ -53,9 +53,13 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.testTagsAsResourceId
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
@@ -77,6 +81,50 @@ import com.garan.threshold.core.port.NoOpHapticEngine
 import com.garan.threshold.ui.theme.profileBaseColor
 import java.util.UUID
 
+object ProfilesTestTags {
+    const val TAB_PROFILES = "profiles_tab_profiles"
+    const val TAB_TRIGGERS = "profiles_tab_triggers"
+    const val TOP_ADD_BUTTON = "profiles_top_add_button"
+    const val ADD_PROFILE_BUTTON = "profiles_add_profile_button"
+    const val ADD_TRIGGER_BUTTON = "profiles_add_trigger_button"
+
+    const val PROFILE_EDITOR_NAME_INPUT = "profile_editor_name_input"
+    const val PROFILE_EDITOR_ADD_FIRST_TRIGGER = "profile_editor_add_first_trigger"
+    const val PROFILE_EDITOR_ADD_OR_RULE = "profile_editor_add_or_rule"
+    const val PROFILE_EDITOR_SAVE_BUTTON = "profile_editor_save_button"
+    const val PROFILE_EDITOR_CANCEL_BUTTON = "profile_editor_cancel_button"
+
+    const val TRIGGER_PICKER_CREATE_NEW = "trigger_picker_create_new"
+    const val TRIGGER_EDITOR_NAME_INPUT = "trigger_editor_name_input"
+    const val TRIGGER_EDITOR_TYPE_SCHEDULE = "trigger_editor_type_schedule"
+    const val TRIGGER_EDITOR_TYPE_GEO = "trigger_editor_type_geo"
+    const val TRIGGER_EDITOR_SAVE_BUTTON = "trigger_editor_save_button"
+    const val TRIGGER_EDITOR_CANCEL_BUTTON = "trigger_editor_cancel_button"
+
+    const val DELETE_CONFIRM_BUTTON = "profiles_delete_confirm_button"
+    const val DELETE_CANCEL_BUTTON = "profiles_delete_cancel_button"
+
+    fun profileCard(id: String): String = "profile_card_$id"
+    fun profileToggle(id: String): String = "profile_toggle_$id"
+    fun profileMoveUp(id: String): String = "profile_move_up_$id"
+    fun profileMoveDown(id: String): String = "profile_move_down_$id"
+    fun profileEditRules(id: String): String = "profile_edit_rules_$id"
+    fun profileConfigureApps(id: String): String = "profile_configure_apps_$id"
+    fun profileDelete(id: String): String = "profile_delete_$id"
+
+    fun triggerCard(id: String): String = "trigger_card_$id"
+    fun triggerDelete(id: String): String = "trigger_delete_$id"
+
+    fun profileRuleCard(ruleIndex: Int): String = "profile_rule_card_$ruleIndex"
+    fun profileRuleAddAnd(ruleIndex: Int): String = "profile_rule_${ruleIndex}_add_and"
+    fun profileRuleTriggerRow(ruleIndex: Int, triggerId: String): String =
+        "profile_rule_${ruleIndex}_trigger_$triggerId"
+    fun profileRuleRemoveTrigger(ruleIndex: Int, triggerId: String): String =
+        "profile_rule_${ruleIndex}_remove_$triggerId"
+
+    fun triggerPickerItem(triggerId: String): String = "trigger_picker_item_$triggerId"
+}
+
 private enum class ProfilesTab {
     PROFILES,
     TRIGGERS,
@@ -92,7 +140,7 @@ private sealed interface TriggerAttachTarget {
  * with `AND`/`OR` trigger activation rules via [ProfileRulesEditorSheet], reusable trigger management
  * via [TriggerEditorSheet], and app overrides.
  */
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalComposeUiApi::class)
 @Composable
 fun ProfilesScreen(
     profiles: List<CustomProfile>,
@@ -193,6 +241,7 @@ fun ProfilesScreen(
     Scaffold(
         modifier = modifier
             .fillMaxSize()
+            .semantics { testTagsAsResourceId = true }
             .nestedScroll(scrollBehavior.nestedScrollConnection),
         topBar = {
             Column {
@@ -232,6 +281,7 @@ fun ProfilesScreen(
                                     isCreatingNewStandaloneTrigger = true
                                 }
                             },
+                            modifier = Modifier.testTag(ProfilesTestTags.TOP_ADD_BUTTON),
                         ) {
                             Icon(
                                 imageVector = ThresholdIcons.Add,
@@ -265,6 +315,7 @@ fun ProfilesScreen(
                             }
                         },
                         shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2),
+                        modifier = Modifier.testTag(ProfilesTestTags.TAB_PROFILES),
                     ) {
                         Text("Profiles")
                     }
@@ -277,6 +328,7 @@ fun ProfilesScreen(
                             }
                         },
                         shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2),
+                        modifier = Modifier.testTag(ProfilesTestTags.TAB_TRIGGERS),
                     ) {
                         Text("Triggers")
                     }
@@ -376,7 +428,8 @@ fun ProfilesScreen(
                             },
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(48.dp),
+                                .height(48.dp)
+                                .testTag(ProfilesTestTags.ADD_PROFILE_BUTTON),
                             shape = RoundedCornerShape(4.dp),
                             border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
                         ) {
@@ -473,7 +526,8 @@ fun ProfilesScreen(
                             },
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(48.dp),
+                                .height(48.dp)
+                                .testTag(ProfilesTestTags.ADD_TRIGGER_BUTTON),
                             shape = RoundedCornerShape(4.dp),
                             border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
                         ) {
@@ -689,6 +743,7 @@ fun ProfilesScreen(
                         onDeleteProfile(targetProfile.id)
                         profilePendingDeletion = null
                     },
+                    modifier = Modifier.testTag(ProfilesTestTags.DELETE_CONFIRM_BUTTON),
                 ) {
                     Text(
                         text = "Delete",
@@ -698,7 +753,10 @@ fun ProfilesScreen(
                 }
             },
             dismissButton = {
-                TextButton(onClick = { profilePendingDeletion = null }) {
+                TextButton(
+                    onClick = { profilePendingDeletion = null },
+                    modifier = Modifier.testTag(ProfilesTestTags.DELETE_CANCEL_BUTTON),
+                ) {
                     Text("Cancel")
                 }
             },
@@ -738,6 +796,7 @@ fun ProfilesScreen(
                         removeTrigger(targetTrigger.id)
                         triggerPendingDeletion = null
                     },
+                    modifier = Modifier.testTag(ProfilesTestTags.DELETE_CONFIRM_BUTTON),
                 ) {
                     Text(
                         text = "Delete",
@@ -747,7 +806,10 @@ fun ProfilesScreen(
                 }
             },
             dismissButton = {
-                TextButton(onClick = { triggerPendingDeletion = null }) {
+                TextButton(
+                    onClick = { triggerPendingDeletion = null },
+                    modifier = Modifier.testTag(ProfilesTestTags.DELETE_CANCEL_BUTTON),
+                ) {
                     Text("Cancel")
                 }
             },
@@ -855,7 +917,9 @@ fun ProfileRulesEditorSheet(
                     capitalization = KeyboardCapitalization.Words,
                     imeAction = ImeAction.Done,
                 ),
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag(ProfilesTestTags.PROFILE_EDITOR_NAME_INPUT),
             )
 
             Spacer(modifier = Modifier.height(20.dp))
@@ -884,7 +948,8 @@ fun ProfileRulesEditorSheet(
                     },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(48.dp),
+                        .height(48.dp)
+                        .testTag(ProfilesTestTags.PROFILE_EDITOR_ADD_FIRST_TRIGGER),
                     shape = RoundedCornerShape(4.dp),
                     border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
                 ) {
@@ -930,7 +995,9 @@ fun ProfileRulesEditorSheet(
                     }
 
                     Surface(
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag(ProfilesTestTags.profileRuleCard(ruleIndex)),
                         shape = RoundedCornerShape(8.dp),
                         color = MaterialTheme.colorScheme.surfaceContainerLow,
                         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
@@ -1004,6 +1071,9 @@ fun ProfileRulesEditorSheet(
                                                     }
                                                 }
                                             },
+                                            modifier = Modifier.testTag(
+                                                ProfilesTestTags.profileRuleRemoveTrigger(ruleIndex, triggerId),
+                                            ),
                                         ) {
                                             Icon(
                                                 imageVector = ThresholdIcons.Close,
@@ -1018,6 +1088,7 @@ fun ProfileRulesEditorSheet(
                                     ),
                                     modifier = Modifier
                                         .fillMaxWidth()
+                                        .testTag(ProfilesTestTags.profileRuleTriggerRow(ruleIndex, triggerId))
                                         .clickable(enabled = saved != null) {
                                             if (saved != null) {
                                                 editingInlineTrigger = saved
@@ -1039,7 +1110,8 @@ fun ProfileRulesEditorSheet(
                                 },
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(horizontal = 8.dp),
+                                    .padding(horizontal = 8.dp)
+                                    .testTag(ProfilesTestTags.profileRuleAddAnd(ruleIndex)),
                             ) {
                                 Icon(
                                     imageVector = ThresholdIcons.Add,
@@ -1066,7 +1138,8 @@ fun ProfileRulesEditorSheet(
                     },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(48.dp),
+                        .height(48.dp)
+                        .testTag(ProfilesTestTags.PROFILE_EDITOR_ADD_OR_RULE),
                     shape = RoundedCornerShape(4.dp),
                     border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
                 ) {
@@ -1091,7 +1164,10 @@ fun ProfileRulesEditorSheet(
                 horizontalArrangement = Arrangement.End,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                TextButton(onClick = onDismiss) {
+                TextButton(
+                    onClick = onDismiss,
+                    modifier = Modifier.testTag(ProfilesTestTags.PROFILE_EDITOR_CANCEL_BUTTON),
+                ) {
                     Text("Cancel")
                 }
                 Spacer(modifier = Modifier.width(8.dp))
@@ -1104,6 +1180,7 @@ fun ProfileRulesEditorSheet(
                         onSaveProfileRules(resolvedName, rules)
                     },
                     shape = RoundedCornerShape(4.dp),
+                    modifier = Modifier.testTag(ProfilesTestTags.PROFILE_EDITOR_SAVE_BUTTON),
                 ) {
                     Text(
                         text = if (isNewProfile) "Create" else "Save",
@@ -1177,6 +1254,7 @@ fun ProfileRulesEditorSheet(
                         ),
                         modifier = Modifier
                             .fillMaxWidth()
+                            .testTag(ProfilesTestTags.triggerPickerItem(existing.id))
                             .clickable {
                                 hapticEngine.rotaryDetent()
                                 attachTriggerIdToTarget(existing.id, target)
@@ -1195,7 +1273,8 @@ fun ProfileRulesEditorSheet(
                     },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(48.dp),
+                        .height(48.dp)
+                        .testTag(ProfilesTestTags.TRIGGER_PICKER_CREATE_NEW),
                     shape = RoundedCornerShape(4.dp),
                     border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
                 ) {
@@ -1325,7 +1404,10 @@ private fun TriggerCard(
                 }
             },
             trailingContent = {
-                IconButton(onClick = onDelete) {
+                IconButton(
+                    onClick = onDelete,
+                    modifier = Modifier.testTag(ProfilesTestTags.triggerDelete(savedTrigger.id)),
+                ) {
                     Icon(
                         imageVector = ThresholdIcons.Delete,
                         contentDescription = "Delete Trigger",
@@ -1338,6 +1420,7 @@ private fun TriggerCard(
             ),
             modifier = Modifier
                 .fillMaxWidth()
+                .testTag(ProfilesTestTags.triggerCard(savedTrigger.id))
                 .clickable(onClick = onEdit),
         )
     }
@@ -1394,7 +1477,9 @@ private fun ProfileCard(
         .compositeOver(MaterialTheme.colorScheme.outlineVariant)
 
     Surface(
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier
+            .fillMaxWidth()
+            .testTag(ProfilesTestTags.profileCard(profile.id)),
         shape = RoundedCornerShape(8.dp),
         color = cardBackground,
         border = BorderStroke(1.dp, cardBorder),
@@ -1436,7 +1521,9 @@ private fun ProfileCard(
                                 IconButton(
                                     onClick = onMoveUp,
                                     enabled = index > 0,
-                                    modifier = Modifier.size(28.dp),
+                                    modifier = Modifier
+                                        .size(28.dp)
+                                        .testTag(ProfilesTestTags.profileMoveUp(profile.id)),
                                 ) {
                                     Icon(
                                         imageVector = ThresholdIcons.KeyboardArrowUp,
@@ -1452,7 +1539,9 @@ private fun ProfileCard(
                                 IconButton(
                                     onClick = onMoveDown,
                                     enabled = index < totalProfiles - 1,
-                                    modifier = Modifier.size(28.dp),
+                                    modifier = Modifier
+                                        .size(28.dp)
+                                        .testTag(ProfilesTestTags.profileMoveDown(profile.id)),
                                 ) {
                                     Icon(
                                         imageVector = ThresholdIcons.KeyboardArrowDown,
@@ -1511,6 +1600,7 @@ private fun ProfileCard(
                     Switch(
                         checked = profile.enabled,
                         onCheckedChange = onToggleEnabled,
+                        modifier = Modifier.testTag(ProfilesTestTags.profileToggle(profile.id)),
                     )
                 },
                 colors = ListItemDefaults.colors(
@@ -1536,7 +1626,9 @@ private fun ProfileCard(
             ) {
                 OutlinedButton(
                     onClick = onEditProfile,
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier
+                        .weight(1f)
+                        .testTag(ProfilesTestTags.profileEditRules(profile.id)),
                     shape = RoundedCornerShape(4.dp),
                     border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
                     contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp),
@@ -1550,7 +1642,9 @@ private fun ProfileCard(
 
                 OutlinedButton(
                     onClick = onConfigureApps,
-                    modifier = Modifier.weight(1.25f),
+                    modifier = Modifier
+                        .weight(1.25f)
+                        .testTag(ProfilesTestTags.profileConfigureApps(profile.id)),
                     shape = RoundedCornerShape(4.dp),
                     border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
                     contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp),
@@ -1562,7 +1656,10 @@ private fun ProfileCard(
                     )
                 }
 
-                IconButton(onClick = onDelete) {
+                IconButton(
+                    onClick = onDelete,
+                    modifier = Modifier.testTag(ProfilesTestTags.profileDelete(profile.id)),
+                ) {
                     Icon(
                         imageVector = ThresholdIcons.Delete,
                         contentDescription = "Delete Profile",

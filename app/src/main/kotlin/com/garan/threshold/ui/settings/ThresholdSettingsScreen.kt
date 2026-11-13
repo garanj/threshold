@@ -33,10 +33,14 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.testTagsAsResourceId
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.garan.threshold.R
@@ -46,7 +50,13 @@ import com.garan.threshold.core.model.ComponentKey
 import com.garan.threshold.core.model.FrictionChoice
 import com.garan.threshold.ui.search.SearchKeyboardOptions
 
-@OptIn(ExperimentalMaterial3Api::class)
+object SettingsTestTags {
+    const val NAV_PROFILES = "settings_nav_profiles"
+    const val NAV_CONFIGURE_APPS = "settings_nav_configure_apps"
+    const val ADD_QUICK_ACTION = "settings_add_quick_action"
+}
+
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalComposeUiApi::class)
 @Composable
 fun ThresholdSettingsScreen(
     uiState: SettingsUiState,
@@ -72,6 +82,7 @@ fun ThresholdSettingsScreen(
     Scaffold(
         modifier = modifier
             .fillMaxSize()
+            .semantics { testTagsAsResourceId = true }
             .nestedScroll(scrollBehavior.nestedScrollConnection),
         topBar = {
             TopAppBar(
@@ -174,6 +185,7 @@ fun ThresholdSettingsScreen(
                         },
                         modifier = Modifier
                             .fillMaxWidth()
+                            .testTag(SettingsTestTags.ADD_QUICK_ACTION)
                             .clickable { showAddQuickActionSheet = true },
                     )
                 }
@@ -223,6 +235,7 @@ fun ThresholdSettingsScreen(
                     },
                     modifier = Modifier
                         .fillMaxWidth()
+                        .testTag(SettingsTestTags.NAV_PROFILES)
                         .clickable(onClick = onNavigateToProfiles),
                 )
             }
@@ -250,6 +263,7 @@ fun ThresholdSettingsScreen(
                     },
                     modifier = Modifier
                         .fillMaxWidth()
+                        .testTag(SettingsTestTags.NAV_CONFIGURE_APPS)
                         .clickable(onClick = onNavigateToConfigureApps),
                 )
             }

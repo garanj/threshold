@@ -24,6 +24,13 @@
    - **Dialog Restraint:** `AlertDialog` is strictly reserved for binary destructive confirmations. Never put scrollable lists, app pickers, schedule editors, or multi-field forms inside a `Dialog`.
    - **Edge-to-Edge Insets:** On `Scaffold` screens, pass `innerPadding` to `LazyColumn(contentPadding = innerPadding)` and `Modifier.consumeWindowInsets(innerPadding)`. Never apply `.windowInsetsPadding(WindowInsets.safeDrawing)` on the root container of a `Scaffold` screen.
    - **48dp Minimum Touch Targets:** Every interactive control must meet the `48.dp × 48.dp` accessibility touch target minimum.
+6. **UI Automation & Deterministic `testTag` Standards:**
+   - **Root `testTagsAsResourceId = true`:** Always enable `@OptIn(ExperimentalComposeUiApi::class) Modifier.semantics { testTagsAsResourceId = true }` at the root `ThresholdHomeScreen` container so every `Modifier.testTag(...)` is automatically exposed as an Android `resource-id` (`By.res(...)`) for UiAutomator instrumented tests (`androidTest`), Macrobenchmark, and `android layout` inspection.
+   - **When `Modifier.testTag(...)` Is Mandatory:**
+     1. **Nested Sheets / Dialogs:** Any action button or text field inside a `ModalBottomSheet` or `AlertDialog` that shares a label with an underlying screen/sheet (e.g., `"Create"` / `"Save"` / `"Name"` in `ProfileRulesEditorSheet` vs `TriggerEditorSheet`).
+     2. **Repeating Cards, Rows, and Rule Groups:** Controls inside a list of profiles, triggers, apps, or `AND`/`OR` rule groups MUST include the stable entity ID or rule index in the tag (e.g., `profile_toggle_<id>`, `profile_delete_<id>`, `profile_rule_<index>_add_and`, `profile_rule_<index>_remove_<triggerId>`). Never rely on `.onAllNodes(...)[index]` or `.onLast()` when a deterministic tag can be attached.
+     3. **Icon-Only & Non-Text Controls:** Switches, sliders, segmented tabs, reorder buttons, and icon buttons.
+   - **Shared `TestTags` Constants:** Define tag names and builder functions (`fun profileToggle(id: String) = "profile_toggle_$id"`) in `internal object` / `object` constants so production UI and tests share a single source of truth.
 
 ---
 

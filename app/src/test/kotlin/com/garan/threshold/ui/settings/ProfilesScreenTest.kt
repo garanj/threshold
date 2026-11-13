@@ -4,7 +4,7 @@ import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithContentDescription
-import androidx.compose.ui.test.onLast
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performSemanticsAction
@@ -107,19 +107,18 @@ class ProfilesScreenTest {
             }
         }
 
-        // Open new profile editor sheet, add a schedule trigger inline, and click Create
-        composeTestRule.onNodeWithText("Add Profile").performClick()
+        // Open new profile editor sheet, add a schedule trigger inline, and click Create using deterministic testTags
+        composeTestRule.onNodeWithTag(ProfilesTestTags.ADD_PROFILE_BUTTON).performClick()
         composeTestRule
-            .onNodeWithText("Add Trigger")
+            .onNodeWithTag(ProfilesTestTags.PROFILE_EDITOR_ADD_FIRST_TRIGGER)
             .performSemanticsAction(SemanticsActions.OnClick)
         // Create the inline schedule trigger inside TriggerEditorSheet
         composeTestRule
-            .onAllNodes(androidx.compose.ui.test.hasText("Create"))
-            .onLast()
+            .onNodeWithTag(ProfilesTestTags.TRIGGER_EDITOR_SAVE_BUTTON)
             .performSemanticsAction(SemanticsActions.OnClick)
         // Create the profile inside ProfileRulesEditorSheet
         composeTestRule
-            .onNodeWithText("Create")
+            .onNodeWithTag(ProfilesTestTags.PROFILE_EDITOR_SAVE_BUTTON)
             .performSemanticsAction(SemanticsActions.OnClick)
 
         assertThat(savedProfiles).hasSize(1)
@@ -162,13 +161,13 @@ class ProfilesScreenTest {
             }
         }
 
-        // Toggle the existing disabled profile ON via its Switch
+        // Toggle the existing disabled profile ON via its Switch testTag
         composeTestRule.onNodeWithText("Evening Wind Down").assertIsDisplayed()
         composeTestRule
-            .onAllNodesWithContentDescription("Delete Profile")[0] // verify card rendered
+            .onNodeWithTag(ProfilesTestTags.profileDelete("p1"))
             .assertIsDisplayed()
         composeTestRule
-            .onNode(androidx.compose.ui.test.isToggleable())
+            .onNodeWithTag(ProfilesTestTags.profileToggle("p1"))
             .performClick()
 
         assertThat(savedProfiles).hasSize(1)
@@ -207,22 +206,22 @@ class ProfilesScreenTest {
         assertThat(composeTestRule.onAllNodesWithContentDescription("Schedule profile").fetchSemanticsNodes())
             .hasSize(2)
 
-        // Click "Move profile down" on the first profile card
-        composeTestRule.onAllNodesWithContentDescription("Move profile down")[0].performClick()
+        // Click "Move profile down" on the first profile card via its keyed testTag
+        composeTestRule.onNodeWithTag(ProfilesTestTags.profileMoveDown("p1")).performClick()
         assertThat(reorderedList?.map { it.id }).containsExactly("p2", "p1").inOrder()
 
         // Click "Delete Profile" on the first profile card -> opens confirmation AlertDialog
-        composeTestRule.onAllNodesWithContentDescription("Delete Profile")[0].performClick()
+        composeTestRule.onNodeWithTag(ProfilesTestTags.profileDelete("p1")).performClick()
         composeTestRule.onNodeWithText("Delete profile?").assertIsDisplayed()
         assertThat(deletedId).isNull()
 
         // Clicking "Cancel" dismisses the dialog without deleting
-        composeTestRule.onNodeWithText("Cancel").performClick()
+        composeTestRule.onNodeWithTag(ProfilesTestTags.DELETE_CANCEL_BUTTON).performClick()
         assertThat(deletedId).isNull()
 
         // Click "Delete Profile" again and confirm "Delete"
-        composeTestRule.onAllNodesWithContentDescription("Delete Profile")[0].performClick()
-        composeTestRule.onNodeWithText("Delete").performClick()
+        composeTestRule.onNodeWithTag(ProfilesTestTags.profileDelete("p1")).performClick()
+        composeTestRule.onNodeWithTag(ProfilesTestTags.DELETE_CONFIRM_BUTTON).performClick()
         assertThat(deletedId).isEqualTo("p1")
     }
 
@@ -302,14 +301,14 @@ class ProfilesScreenTest {
         }
 
         // Open New Profile sheet and tap Add Trigger to create a Geo trigger inline
-        composeTestRule.onNodeWithText("Add Profile").performClick()
+        composeTestRule.onNodeWithTag(ProfilesTestTags.ADD_PROFILE_BUTTON).performClick()
         composeTestRule
-            .onNodeWithText("Add Trigger")
+            .onNodeWithTag(ProfilesTestTags.PROFILE_EDITOR_ADD_FIRST_TRIGGER)
             .performSemanticsAction(SemanticsActions.OnClick)
 
         // Switch from Schedule to Geo via the segmented type selector
         composeTestRule
-            .onNodeWithText("Geo")
+            .onNodeWithTag(ProfilesTestTags.TRIGGER_EDITOR_TYPE_GEO)
             .performSemanticsAction(SemanticsActions.OnClick)
 
         // Select "Outside zone" and "500m" radius preset
@@ -327,13 +326,12 @@ class ProfilesScreenTest {
 
         // Tap "Create" in TriggerEditorSheet
         composeTestRule
-            .onAllNodes(androidx.compose.ui.test.hasText("Create"))
-            .onLast()
+            .onNodeWithTag(ProfilesTestTags.TRIGGER_EDITOR_SAVE_BUTTON)
             .performSemanticsAction(SemanticsActions.OnClick)
 
         // Tap "Create" in ProfileRulesEditorSheet
         composeTestRule
-            .onNodeWithText("Create")
+            .onNodeWithTag(ProfilesTestTags.PROFILE_EDITOR_SAVE_BUTTON)
             .performSemanticsAction(SemanticsActions.OnClick)
 
         assertThat(savedTriggers).hasSize(1)
@@ -384,35 +382,35 @@ class ProfilesScreenTest {
         }
 
         // Open New Profile sheet
-        composeTestRule.onNodeWithText("Add Profile").performClick()
+        composeTestRule.onNodeWithTag(ProfilesTestTags.ADD_PROFILE_BUTTON).performClick()
 
         // Tap "Add Trigger" and pick "Work Hours"
         composeTestRule
-            .onNodeWithText("Add Trigger")
+            .onNodeWithTag(ProfilesTestTags.PROFILE_EDITOR_ADD_FIRST_TRIGGER)
             .performSemanticsAction(SemanticsActions.OnClick)
         composeTestRule
-            .onNodeWithText("Work Hours")
+            .onNodeWithTag(ProfilesTestTags.triggerPickerItem("t-work"))
             .performSemanticsAction(SemanticsActions.OnClick)
 
-        // Tap "Add AND trigger" on rule 1 and pick "At Office"
+        // Tap "Add AND trigger" on rule 0 and pick "At Office"
         composeTestRule
-            .onNodeWithText("Add AND trigger")
+            .onNodeWithTag(ProfilesTestTags.profileRuleAddAnd(0))
             .performSemanticsAction(SemanticsActions.OnClick)
         composeTestRule
-            .onNodeWithText("At Office")
+            .onNodeWithTag(ProfilesTestTags.triggerPickerItem("t-office"))
             .performSemanticsAction(SemanticsActions.OnClick)
 
         // Tap "Add OR condition" and pick "Late Night"
         composeTestRule
-            .onNodeWithText("Add OR condition")
+            .onNodeWithTag(ProfilesTestTags.PROFILE_EDITOR_ADD_OR_RULE)
             .performSemanticsAction(SemanticsActions.OnClick)
         composeTestRule
-            .onNodeWithText("Late Night")
+            .onNodeWithTag(ProfilesTestTags.triggerPickerItem("t-night"))
             .performSemanticsAction(SemanticsActions.OnClick)
 
         // Save profile
         composeTestRule
-            .onNodeWithText("Create")
+            .onNodeWithTag(ProfilesTestTags.PROFILE_EDITOR_SAVE_BUTTON)
             .performSemanticsAction(SemanticsActions.OnClick)
 
         assertThat(savedProfiles).hasSize(1)
@@ -420,6 +418,79 @@ class ProfilesScreenTest {
             TriggerRule(listOf("t-work", "t-office")),
             TriggerRule(listOf("t-night")),
         ).inOrder()
+    }
+
+    @Test
+    fun profilesScreen_editingExistingProfileRules_removesTriggerFromAndGroupAndRemovesOrGroupViaTestTags() {
+        val workHours = SavedTrigger(
+            id = "t-work",
+            name = "Work Hours",
+            trigger = ProfileTrigger.Schedule(),
+        )
+        val atOffice = SavedTrigger(
+            id = "t-office",
+            name = "At Office",
+            trigger = ProfileTrigger.Geo(GeoTrigger(latitude = 51.5, longitude = -0.1)),
+        )
+        val lateNight = SavedTrigger(
+            id = "t-night",
+            name = "Late Night",
+            trigger = ProfileTrigger.Schedule(),
+        )
+        val focusProfile = CustomProfile(
+            id = "p-focus",
+            name = "Focus",
+            enabled = true,
+            priority = 0,
+            trigger = null,
+            activationRules = listOf(
+                TriggerRule(listOf("t-work", "t-office")),
+                TriggerRule(listOf("t-night")),
+            ),
+        )
+        val savedProfiles = mutableListOf<CustomProfile>()
+
+        composeTestRule.setContent {
+            ThresholdTheme {
+                ProfilesScreen(
+                    profiles = listOf(focusProfile),
+                    savedTriggers = listOf(workHours, atOffice, lateNight),
+                    onSaveProfile = { savedProfiles.add(it) },
+                    onDeleteProfile = {},
+                    onReorderProfiles = {},
+                    onConfigureProfileApps = {},
+                    onBack = {},
+                )
+            }
+        }
+
+        // Verify card summary shows "Work Hours + At Office OR Late Night"
+        composeTestRule.onNodeWithText("Work Hours + At Office OR Late Night").assertIsDisplayed()
+
+        // Open Edit Profile sheet via the profile's edit rules button testTag
+        composeTestRule.onNodeWithTag(ProfilesTestTags.profileEditRules("p-focus")).performClick()
+
+        // Remove "At Office" from Rule 0 (leaving "Work Hours" in Rule 0)
+        composeTestRule
+            .onNodeWithTag(ProfilesTestTags.profileRuleRemoveTrigger(0, "t-office"))
+            .performSemanticsAction(SemanticsActions.OnClick)
+
+        // Remove "Late Night" from Rule 1 (which empties and removes Rule 1 completely)
+        composeTestRule
+            .onNodeWithTag(ProfilesTestTags.profileRuleRemoveTrigger(1, "t-night"))
+            .performSemanticsAction(SemanticsActions.OnClick)
+
+        // Save updated profile rules
+        composeTestRule
+            .onNodeWithTag(ProfilesTestTags.PROFILE_EDITOR_SAVE_BUTTON)
+            .performSemanticsAction(SemanticsActions.OnClick)
+
+        assertThat(savedProfiles).hasSize(1)
+        val updated = savedProfiles.single()
+        assertThat(updated.enabled).isTrue()
+        assertThat(updated.activationRules).containsExactly(
+            TriggerRule(listOf("t-work")),
+        )
     }
 
     @Test
@@ -454,24 +525,25 @@ class ProfilesScreenTest {
             }
         }
 
-        // Switch to "Triggers" tab in the top segmented button row
+        // Switch to "Triggers" tab in the top segmented button row via testTag
         composeTestRule
-            .onNodeWithText("Triggers")
+            .onNodeWithTag(ProfilesTestTags.TAB_TRIGGERS)
             .performSemanticsAction(SemanticsActions.OnClick)
 
         // Verify trigger card shows usage by "Deep Work"
+        composeTestRule.onNodeWithTag(ProfilesTestTags.triggerCard("t-work")).assertIsDisplayed()
         composeTestRule.onNodeWithText("Work Hours").assertIsDisplayed()
         composeTestRule.onNodeWithText("Used by: Deep Work").assertIsDisplayed()
 
-        // Click Delete Trigger -> shows warning naming "Deep Work"
-        composeTestRule.onAllNodesWithContentDescription("Delete Trigger")[0].performClick()
+        // Click Delete Trigger via keyed testTag -> shows warning naming "Deep Work"
+        composeTestRule.onNodeWithTag(ProfilesTestTags.triggerDelete("t-work")).performClick()
         composeTestRule.onNodeWithText("Delete trigger?").assertIsDisplayed()
         composeTestRule.onNodeWithText(
             "“Work Hours” is used by “Deep Work”. Deleting it will remove it from those profiles " +
                 "and disable any profile left with no triggers.",
         ).assertIsDisplayed()
 
-        composeTestRule.onNodeWithText("Delete").performClick()
+        composeTestRule.onNodeWithTag(ProfilesTestTags.DELETE_CONFIRM_BUTTON).performClick()
         assertThat(deletedTriggerId).isEqualTo("t-work")
     }
 }
