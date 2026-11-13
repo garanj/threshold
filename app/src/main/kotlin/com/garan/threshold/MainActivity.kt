@@ -28,6 +28,7 @@ import com.garan.threshold.core.model.CustomProfile
 import com.garan.threshold.core.model.DayOfWeek
 import com.garan.threshold.core.model.LocationFix
 import com.garan.threshold.core.model.ProfileCapability
+import com.garan.threshold.core.model.SavedTrigger
 import com.garan.threshold.core.model.TimeOfDay
 import com.garan.threshold.core.port.ClockSource
 import com.garan.threshold.core.port.LocalDayTime
@@ -124,9 +125,11 @@ class MainActivity : ComponentActivity() {
     suspend fun configureScheduleProfilesForTesting(
         baseProfile: BaseProfileSettings = BaseProfileSettings(),
         customProfiles: List<CustomProfile>,
+        savedTriggers: List<SavedTrigger> = emptyList(),
     ) {
         val repository = appContainer.settingsRepository
         repository.updateBaseProfile(baseProfile)
+        savedTriggers.forEach { repository.saveTrigger(it) }
         repository.updateCustomProfiles(customProfiles)
         if (::searchViewModel.isInitialized) {
             searchViewModel.reconcileForTesting(repository.getSettings())
@@ -379,6 +382,9 @@ class MainActivity : ComponentActivity() {
                                 onEnsureLocationPermissionForProfile = {
                                     requestLocationOrRefresh()
                                 },
+                                savedTriggers = settingsUiState.savedTriggers,
+                                onSaveTrigger = settingsViewModel::saveTrigger,
+                                onDeleteTrigger = settingsViewModel::deleteTrigger,
                             )
                         }
 

@@ -9,6 +9,7 @@ import android.os.Build
 import android.provider.Settings
 import com.garan.threshold.core.cascading.ScheduleHorizonCalculator
 import com.garan.threshold.core.model.CustomProfile
+import com.garan.threshold.core.model.SavedTrigger
 import com.garan.threshold.core.port.ClockSource
 import com.garan.threshold.core.port.ScheduleAlarmScheduler
 import com.garan.threshold.core.port.SystemClockSource
@@ -60,6 +61,10 @@ class AndroidScheduleAlarmScheduler(
     }
 
     override fun syncNextScheduleAlarm(profiles: List<CustomProfile>) {
+        syncNextScheduleAlarm(profiles = profiles, savedTriggers = emptyList())
+    }
+
+    override fun syncNextScheduleAlarm(profiles: List<CustomProfile>, savedTriggers: List<SavedTrigger>) {
         val manager = alarmManager ?: return
         val pendingIntent = createAlarmPendingIntent(context)
         val now = clockSource.now()
@@ -67,6 +72,7 @@ class AndroidScheduleAlarmScheduler(
             customProfiles = profiles,
             currentDay = now.dayOfWeek,
             currentTime = now.timeOfDay,
+            savedTriggers = savedTriggers,
         )
 
         if (nextTransition == null) {

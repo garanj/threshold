@@ -2,12 +2,15 @@ package com.garan.threshold.core.port
 
 import com.garan.threshold.core.model.BaseProfileSettings
 import com.garan.threshold.core.model.ComponentKey
+import com.garan.threshold.core.model.CustomProfile
 import com.garan.threshold.core.model.GeneralSettings
+import com.garan.threshold.core.model.SavedTrigger
 import com.garan.threshold.core.model.ThresholdSettings
 import kotlinx.coroutines.flow.Flow
 
 /**
- * Port for observing and persisting user settings, base app assignments, and quick actions.
+ * Port for observing and persisting user settings, base app assignments, quick actions,
+ * reusable triggers, and custom profiles.
  */
 interface SettingsRepository {
 
@@ -42,17 +45,28 @@ interface SettingsRepository {
     suspend fun removeApps(keys: Set<ComponentKey>)
 
     /**
-     * Updates the full ordered list of [com.garan.threshold.core.model.CustomProfile]s.
+     * Updates the full ordered list of [CustomProfile]s.
      */
-    suspend fun updateCustomProfiles(profiles: List<com.garan.threshold.core.model.CustomProfile>)
+    suspend fun updateCustomProfiles(profiles: List<CustomProfile>)
 
     /**
-     * Adds or updates a single [com.garan.threshold.core.model.CustomProfile].
+     * Adds or updates a single [CustomProfile].
      */
-    suspend fun saveCustomProfile(profile: com.garan.threshold.core.model.CustomProfile)
+    suspend fun saveCustomProfile(profile: CustomProfile)
 
     /**
-     * Deletes a [com.garan.threshold.core.model.CustomProfile] by its ID.
+     * Deletes a [CustomProfile] by its ID.
      */
     suspend fun deleteCustomProfile(profileId: String)
+
+    /**
+     * Adds or updates a reusable [SavedTrigger].
+     */
+    suspend fun saveTrigger(trigger: SavedTrigger) {}
+
+    /**
+     * Deletes a reusable [SavedTrigger] by its ID, stripping it from all profile activation rules
+     * and disabling any profile left with zero triggers.
+     */
+    suspend fun deleteTrigger(triggerId: String) {}
 }

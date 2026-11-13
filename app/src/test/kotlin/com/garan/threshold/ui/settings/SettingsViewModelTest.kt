@@ -183,4 +183,37 @@ class SettingsViewModelTest {
         val saved = viewModel.uiState.value.customProfiles.first { it.id == "work" }
         assertThat(saved.appAssignments[socialComponent]).isEqualTo(AppAssignment.Blocked)
     }
+
+    @Test
+    fun savedTriggers_saveAndDelete_updatesStateAndStripsFromProfiles() = runTest(testDispatcher) {
+        advanceUntilIdle()
+
+        val trigger = com.garan.threshold.core.model.SavedTrigger(
+            id = "t-work",
+            name = "Work Hours",
+            trigger = com.garan.threshold.core.model.ProfileTrigger.Schedule(),
+        )
+        viewModel.saveTrigger(trigger)
+        val profile = com.garan.threshold.core.model.CustomProfile(
+            id = "work",
+            name = "Work",
+            enabled = true,
+            priority = 0,
+            activationRules = listOf(com.garan.threshold.core.model.TriggerRule(listOf("t-work"))),
+            trigger = null,
+        )
+        viewModel.saveCustomProfile(profile)
+        advanceUntilIdle()
+
+        assertThat(viewModel.uiState.value.savedTriggers).containsExactly(trigger)
+        assertThat(viewModel.uiState.value.customProfiles.single().enabled).isTrue()
+
+        viewModel.deleteTrigger("t-work")
+        advanceUntilIdle()
+
+        assertThat(viewModel.uiState.value.savedTriggers).isEmpty()
+        val updatedProfile = viewModel.uiState.value.customProfiles.single()
+        assertThat(updatedProfile.activationRules).isEmpty()
+        assertThat(updatedProfile.enabled).isFalse()
+    }
 }

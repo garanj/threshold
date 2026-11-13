@@ -18,10 +18,12 @@ import com.garan.threshold.core.model.GeneralSettings
 import com.garan.threshold.core.model.GeoTrigger
 import com.garan.threshold.core.model.GeoTriggerMode
 import com.garan.threshold.core.model.ProfileTrigger
+import com.garan.threshold.core.model.SavedTrigger
 import com.garan.threshold.core.model.ScheduleTrigger
 import com.garan.threshold.core.model.ThresholdSettings
 import com.garan.threshold.core.model.TimeOfDay
 import com.garan.threshold.core.model.TimeWindow
+import com.garan.threshold.core.model.TriggerRule
 import com.garan.threshold.core.port.SettingsRepository
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
@@ -59,6 +61,7 @@ class AndroidSettingsRepository(
         val QUICK_ACTIONS = stringPreferencesKey("quick_actions")
         val APP_ASSIGNMENTS = stringPreferencesKey("app_assignments")
         val CUSTOM_PROFILES = stringPreferencesKey("custom_profiles")
+        val SAVED_TRIGGERS = stringPreferencesKey("saved_triggers")
     }
 
     override fun observeSettings(): Flow<ThresholdSettings> = dataStore.data
@@ -138,6 +141,40 @@ class AndroidSettingsRepository(
         }
     }
 
+    override suspend fun saveTrigger(trigger: SavedTrigger) {
+        withContext(ioDispatcher) {
+            dataStore.edit { prefs ->
+                val currentSettings = mapToSettings(prefs)
+                val current = currentSettings.savedTriggers
+                val existingIndex = current.indexOfFirst { it.id == trigger.id }
+                val updated = if (existingIndex >= 0) {
+                    current.toMutableList().apply { set(existingIndex, trigger) }
+                } else {
+                    current + trigger
+                }
+                prefs[Keys.SAVED_TRIGGERS] = serializeSavedTriggers(updated)
+            }
+        }
+    }
+
+    override suspend fun deleteTrigger(triggerId: String) {
+        withContext(ioDispatcher) {
+            dataStore.edit { prefs ->
+                val currentSettings = mapToSettings(prefs)
+                val updatedTriggers = currentSettings.savedTriggers.filter { it.id != triggerId }
+                val updatedProfiles = currentSettings.customProfiles.map { profile ->
+                    if (triggerId in profile.referencedTriggerIds) {
+                        profile.withoutTrigger(triggerId)
+                    } else {
+                        profile
+                    }
+                }
+                prefs[Keys.SAVED_TRIGGERS] = serializeSavedTriggers(updatedTriggers)
+                prefs[Keys.CUSTOM_PROFILES] = serializeCustomProfiles(updatedProfiles)
+            }
+        }
+    }
+
     override suspend fun removeApps(keys: Set<ComponentKey>) {
         if (keys.isEmpty()) return
         withContext(ioDispatcher) {
@@ -193,8 +230,36 @@ class AndroidSettingsRepository(
         val appAssignmentsRaw = prefs[Keys.APP_ASSIGNMENTS].orEmpty()
         val appAssignments = deserializeAppAssignments(appAssignmentsRaw)
 
+        val savedTriggersRaw = prefs[Keys.SAVED_TRIGGERS].orEmpty()
+        val rawSavedTriggers = deserializeSavedTriggers(savedTriggersRaw)
+
         val customProfilesRaw = prefs[Keys.CUSTOM_PROFILES].orEmpty()
-        val customProfiles = deserializeCustomProfiles(customProfilesRaw)
+        val rawCustomProfiles = deserializeCustomProfiles(customProfilesRaw)
+
+        // Legacy migration: any profile that has an inline `trigger` and no `activationRules`
+        // gets a synthesized SavedTrigger and a single-trigger TriggerRule.
+        val migratedTriggers = rawSavedTriggers.toMutableList()
+        val existingTriggerIds = migratedTriggers.map { it.id }.toMutableSet()
+        val migratedProfiles = rawCustomProfiles.map { profile ->
+            val inlineTrigger = profile.trigger
+            if (profile.activationRules.isEmpty() && inlineTrigger != null) {
+                val migratedTriggerId = "trigger-${profile.id}"
+                if (existingTriggerIds.add(migratedTriggerId)) {
+                    migratedTriggers.add(
+                        SavedTrigger(
+                            id = migratedTriggerId,
+                            name = profile.name,
+                            trigger = inlineTrigger,
+                        ),
+                    )
+                }
+                profile.copy(
+                    activationRules = listOf(TriggerRule(listOf(migratedTriggerId))),
+                )
+            } else {
+                profile
+            }
+        }
 
         return ThresholdSettings(
             general = GeneralSettings(
@@ -208,7 +273,8 @@ class AndroidSettingsRepository(
                 appAssignments = appAssignments,
                 quickActions = quickActions,
             ),
-            customProfiles = customProfiles,
+            customProfiles = migratedProfiles,
+            savedTriggers = migratedTriggers,
         )
     }
 
@@ -262,6 +328,149 @@ class AndroidSettingsRepository(
         return map
     }
 
+    private fun serializeSavedTriggers(triggers: List<SavedTrigger>): String {
+        val jsonArray = JSONArray()
+        for (saved in triggers) {
+            val obj = JSONObject()
+            obj.put("id", saved.id)
+            obj.put("name", saved.name)
+            obj.put("trigger", serializeProfileTrigger(saved.trigger))
+            jsonArray.put(obj)
+        }
+        return jsonArray.toString()
+    }
+
+    private fun deserializeSavedTriggers(raw: String): List<SavedTrigger> {
+        if (raw.isBlank()) return emptyList()
+        return runCatching {
+            val jsonArray = JSONArray(raw)
+            val list = mutableListOf<SavedTrigger>()
+            for (i in 0 until jsonArray.length()) {
+                val obj = jsonArray.getJSONObject(i)
+                val id = obj.getString("id")
+                val name = obj.getString("name")
+                val trigger = deserializeProfileTrigger(obj.optJSONObject("trigger"))
+                    ?: ProfileTrigger.Schedule()
+                list.add(SavedTrigger(id = id, name = name, trigger = trigger))
+            }
+            list
+        }.getOrDefault(emptyList())
+    }
+
+    private fun serializeProfileTrigger(trigger: ProfileTrigger): JSONObject {
+        val triggerObj = JSONObject()
+        when (trigger) {
+            is ProfileTrigger.Schedule -> {
+                val schedule = trigger.schedule
+                triggerObj.put("type", "SCHEDULE")
+                triggerObj.put("sameScheduleEveryDay", schedule.sameScheduleEveryDay)
+                val dailyWindowsObj = JSONObject()
+                schedule.dailyWindows.forEach { (day, window) ->
+                    val windowObj = JSONObject()
+                    windowObj.put("startHour", window.startTime.hour)
+                    windowObj.put("startMinute", window.startTime.minute)
+                    windowObj.put("endHour", window.endTime.hour)
+                    windowObj.put("endMinute", window.endTime.minute)
+                    dailyWindowsObj.put(day.name, windowObj)
+                }
+                triggerObj.put("dailyWindows", dailyWindowsObj)
+
+                // Legacy fallback fields
+                val daysArray = JSONArray()
+                schedule.days.forEach { daysArray.put(it.name) }
+                triggerObj.put("days", daysArray)
+                triggerObj.put("startHour", schedule.startTime.hour)
+                triggerObj.put("startMinute", schedule.startTime.minute)
+                triggerObj.put("endHour", schedule.endTime.hour)
+                triggerObj.put("endMinute", schedule.endTime.minute)
+            }
+            is ProfileTrigger.Geo -> {
+                val geo = trigger.geo
+                triggerObj.put("type", "GEO")
+                triggerObj.put("latitude", geo.latitude)
+                triggerObj.put("longitude", geo.longitude)
+                triggerObj.put("radiusMeters", geo.radiusMeters)
+                triggerObj.put("mode", geo.mode.name)
+            }
+        }
+        return triggerObj
+    }
+
+    private fun deserializeProfileTrigger(triggerObj: JSONObject?): ProfileTrigger? {
+        if (triggerObj == null) return null
+        return when (triggerObj.optString("type")) {
+            "SCHEDULE" -> {
+                val sameScheduleEveryDay = triggerObj.optBoolean("sameScheduleEveryDay", true)
+                val dailyWindowsObj = triggerObj.optJSONObject("dailyWindows")
+                if (dailyWindowsObj != null) {
+                    val dailyWindows = mutableMapOf<DayOfWeek, TimeWindow>()
+                    val keys = dailyWindowsObj.keys()
+                    while (keys.hasNext()) {
+                        val dayKey = keys.next()
+                        val day = runCatching { DayOfWeek.valueOf(dayKey) }.getOrNull()
+                        val windowObj = dailyWindowsObj.optJSONObject(dayKey)
+                        if (day != null && windowObj != null) {
+                            val startHour = windowObj.optInt("startHour", 9)
+                            val startMinute = windowObj.optInt("startMinute", 0)
+                            val endHour = windowObj.optInt("endHour", 17)
+                            val endMinute = windowObj.optInt("endMinute", 0)
+                            dailyWindows[day] = TimeWindow(
+                                startTime = TimeOfDay(startHour, startMinute),
+                                endTime = TimeOfDay(endHour, endMinute),
+                            )
+                        }
+                    }
+                    ProfileTrigger.Schedule(
+                        ScheduleTrigger(
+                            dailyWindows = dailyWindows,
+                            sameScheduleEveryDay = sameScheduleEveryDay,
+                        ),
+                    )
+                } else {
+                    val daysArray = triggerObj.optJSONArray("days")
+                    val days = mutableSetOf<DayOfWeek>()
+                    if (daysArray != null) {
+                        for (j in 0 until daysArray.length()) {
+                            runCatching { DayOfWeek.valueOf(daysArray.getString(j)) }
+                                .getOrNull()
+                                ?.let { days.add(it) }
+                        }
+                    }
+                    val startHour = triggerObj.optInt("startHour", 9)
+                    val startMinute = triggerObj.optInt("startMinute", 0)
+                    val endHour = triggerObj.optInt("endHour", 17)
+                    val endMinute = triggerObj.optInt("endMinute", 0)
+                    ProfileTrigger.Schedule(
+                        ScheduleTrigger(
+                            days = days,
+                            startTime = TimeOfDay(startHour, startMinute),
+                            endTime = TimeOfDay(endHour, endMinute),
+                            sameScheduleEveryDay = sameScheduleEveryDay,
+                        ),
+                    )
+                }
+            }
+            "GEO" -> {
+                val latitude = triggerObj.optDouble("latitude", 0.0).coerceIn(-90.0, 90.0)
+                val longitude = triggerObj.optDouble("longitude", 0.0).coerceIn(-180.0, 180.0)
+                val radiusMeters = triggerObj.optInt("radiusMeters", GeoTrigger.DEFAULT_RADIUS_METERS)
+                    .coerceAtLeast(1)
+                val mode = runCatching {
+                    GeoTriggerMode.valueOf(triggerObj.optString("mode", GeoTriggerMode.INSIDE.name))
+                }.getOrDefault(GeoTriggerMode.INSIDE)
+                ProfileTrigger.Geo(
+                    GeoTrigger(
+                        latitude = latitude,
+                        longitude = longitude,
+                        radiusMeters = radiusMeters,
+                        mode = mode,
+                    ),
+                )
+            }
+            else -> null
+        }
+    }
+
     private fun serializeCustomProfiles(profiles: List<CustomProfile>): String {
         val jsonArray = JSONArray()
         for (profile in profiles) {
@@ -273,42 +482,15 @@ class AndroidSettingsRepository(
             obj.put("colorIndex", profile.colorIndex)
             profile.frictionOverride?.let { obj.put("frictionOverride", it.name) }
 
-            val triggerObj = JSONObject()
-            when (val trigger = profile.trigger) {
-                is ProfileTrigger.Schedule -> {
-                    val schedule = trigger.schedule
-                    triggerObj.put("type", "SCHEDULE")
-                    triggerObj.put("sameScheduleEveryDay", schedule.sameScheduleEveryDay)
-                    val dailyWindowsObj = JSONObject()
-                    schedule.dailyWindows.forEach { (day, window) ->
-                        val windowObj = JSONObject()
-                        windowObj.put("startHour", window.startTime.hour)
-                        windowObj.put("startMinute", window.startTime.minute)
-                        windowObj.put("endHour", window.endTime.hour)
-                        windowObj.put("endMinute", window.endTime.minute)
-                        dailyWindowsObj.put(day.name, windowObj)
-                    }
-                    triggerObj.put("dailyWindows", dailyWindowsObj)
-
-                    // Legacy fallback fields
-                    val daysArray = JSONArray()
-                    schedule.days.forEach { daysArray.put(it.name) }
-                    triggerObj.put("days", daysArray)
-                    triggerObj.put("startHour", schedule.startTime.hour)
-                    triggerObj.put("startMinute", schedule.startTime.minute)
-                    triggerObj.put("endHour", schedule.endTime.hour)
-                    triggerObj.put("endMinute", schedule.endTime.minute)
-                }
-                is ProfileTrigger.Geo -> {
-                    val geo = trigger.geo
-                    triggerObj.put("type", "GEO")
-                    triggerObj.put("latitude", geo.latitude)
-                    triggerObj.put("longitude", geo.longitude)
-                    triggerObj.put("radiusMeters", geo.radiusMeters)
-                    triggerObj.put("mode", geo.mode.name)
-                }
+            val rulesArray = JSONArray()
+            for (rule in profile.activationRules) {
+                val ruleIdsArray = JSONArray()
+                rule.triggerIds.forEach { ruleIdsArray.put(it) }
+                rulesArray.put(ruleIdsArray)
             }
-            obj.put("trigger", triggerObj)
+            obj.put("activationRules", rulesArray)
+
+            profile.trigger?.let { obj.put("trigger", serializeProfileTrigger(it)) }
             obj.put("appAssignments", serializeAppAssignments(profile.appAssignments))
             jsonArray.put(obj)
         }
@@ -333,76 +515,27 @@ class AndroidSettingsRepository(
                     null
                 }
 
-                val triggerObj = obj.optJSONObject("trigger")
-                val trigger = if (triggerObj != null && triggerObj.optString("type") == "SCHEDULE") {
-                    val sameScheduleEveryDay = triggerObj.optBoolean("sameScheduleEveryDay", true)
-                    val dailyWindowsObj = triggerObj.optJSONObject("dailyWindows")
-                    if (dailyWindowsObj != null) {
-                        val dailyWindows = mutableMapOf<DayOfWeek, TimeWindow>()
-                        val keys = dailyWindowsObj.keys()
-                        while (keys.hasNext()) {
-                            val dayKey = keys.next()
-                            val day = runCatching { DayOfWeek.valueOf(dayKey) }.getOrNull()
-                            val windowObj = dailyWindowsObj.optJSONObject(dayKey)
-                            if (day != null && windowObj != null) {
-                                val startHour = windowObj.optInt("startHour", 9)
-                                val startMinute = windowObj.optInt("startMinute", 0)
-                                val endHour = windowObj.optInt("endHour", 17)
-                                val endMinute = windowObj.optInt("endMinute", 0)
-                                dailyWindows[day] = TimeWindow(
-                                    startTime = TimeOfDay(startHour, startMinute),
-                                    endTime = TimeOfDay(endHour, endMinute),
-                                )
+                val activationRules = mutableListOf<TriggerRule>()
+                val rulesArray = obj.optJSONArray("activationRules")
+                if (rulesArray != null) {
+                    for (r in 0 until rulesArray.length()) {
+                        val ruleIdsArray = rulesArray.optJSONArray(r)
+                        if (ruleIdsArray != null) {
+                            val triggerIds = mutableListOf<String>()
+                            for (t in 0 until ruleIdsArray.length()) {
+                                val triggerId = ruleIdsArray.optString(t)
+                                if (triggerId.isNotBlank()) {
+                                    triggerIds.add(triggerId)
+                                }
+                            }
+                            if (triggerIds.isNotEmpty()) {
+                                activationRules.add(TriggerRule(triggerIds))
                             }
                         }
-                        ProfileTrigger.Schedule(
-                            ScheduleTrigger(
-                                dailyWindows = dailyWindows,
-                                sameScheduleEveryDay = sameScheduleEveryDay,
-                            ),
-                        )
-                    } else {
-                        val daysArray = triggerObj.optJSONArray("days")
-                        val days = mutableSetOf<DayOfWeek>()
-                        if (daysArray != null) {
-                            for (j in 0 until daysArray.length()) {
-                                runCatching { DayOfWeek.valueOf(daysArray.getString(j)) }
-                                    .getOrNull()
-                                    ?.let { days.add(it) }
-                            }
-                        }
-                        val startHour = triggerObj.optInt("startHour", 9)
-                        val startMinute = triggerObj.optInt("startMinute", 0)
-                        val endHour = triggerObj.optInt("endHour", 17)
-                        val endMinute = triggerObj.optInt("endMinute", 0)
-                        ProfileTrigger.Schedule(
-                            ScheduleTrigger(
-                                days = days,
-                                startTime = TimeOfDay(startHour, startMinute),
-                                endTime = TimeOfDay(endHour, endMinute),
-                                sameScheduleEveryDay = sameScheduleEveryDay,
-                            ),
-                        )
                     }
-                } else if (triggerObj != null && triggerObj.optString("type") == "GEO") {
-                    val latitude = triggerObj.optDouble("latitude", 0.0).coerceIn(-90.0, 90.0)
-                    val longitude = triggerObj.optDouble("longitude", 0.0).coerceIn(-180.0, 180.0)
-                    val radiusMeters = triggerObj.optInt("radiusMeters", GeoTrigger.DEFAULT_RADIUS_METERS)
-                        .coerceAtLeast(1)
-                    val mode = runCatching {
-                        GeoTriggerMode.valueOf(triggerObj.optString("mode", GeoTriggerMode.INSIDE.name))
-                    }.getOrDefault(GeoTriggerMode.INSIDE)
-                    ProfileTrigger.Geo(
-                        GeoTrigger(
-                            latitude = latitude,
-                            longitude = longitude,
-                            radiusMeters = radiusMeters,
-                            mode = mode,
-                        ),
-                    )
-                } else {
-                    ProfileTrigger.Schedule()
                 }
+
+                val trigger = deserializeProfileTrigger(obj.optJSONObject("trigger"))
 
                 val appAssignmentsRaw = obj.optString("appAssignments", "")
                 val appAssignments = deserializeAppAssignments(appAssignmentsRaw)
@@ -413,6 +546,7 @@ class AndroidSettingsRepository(
                         name = name,
                         enabled = enabled,
                         priority = priority,
+                        activationRules = activationRules,
                         trigger = trigger,
                         appAssignments = appAssignments,
                         frictionOverride = frictionOverride,

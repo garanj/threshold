@@ -89,6 +89,57 @@ private sealed interface TimeEditTarget {
 }
 
 /**
+ * Cohesive Material 3 [ModalBottomSheet] for creating or editing a reusable [ProfileTrigger]
+ * (Schedule or Geo) with its user-defined name.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun TriggerEditorSheet(
+    initialName: String,
+    initialTrigger: ProfileTrigger = ProfileTrigger.Schedule(
+        ScheduleTrigger(
+            days = setOf(
+                DayOfWeek.MONDAY,
+                DayOfWeek.TUESDAY,
+                DayOfWeek.WEDNESDAY,
+                DayOfWeek.THURSDAY,
+                DayOfWeek.FRIDAY,
+            ),
+            startTime = TimeOfDay(9, 0),
+            endTime = TimeOfDay(17, 0),
+        ),
+    ),
+    isNewTrigger: Boolean,
+    onSaveTrigger: (name: String, trigger: ProfileTrigger) -> Unit,
+    onDismiss: () -> Unit,
+    modifier: Modifier = Modifier,
+    hapticEngine: HapticEngine = NoOpHapticEngine,
+    currentLocation: LocationFix? = null,
+    onUseCurrentLocation: ((onLocationResolved: (LocationFix) -> Unit) -> Unit)? = null,
+    onOpenMapApp: (LocationFix?) -> Unit = {},
+) {
+    ProfileEditorSheet(
+        initialName = initialName,
+        initialTrigger = initialTrigger,
+        isNewProfile = isNewTrigger,
+        onSaveTrigger = onSaveTrigger,
+        onDismiss = onDismiss,
+        modifier = modifier,
+        hapticEngine = hapticEngine,
+        currentLocation = currentLocation,
+        onUseCurrentLocation = onUseCurrentLocation,
+        onOpenMapApp = onOpenMapApp,
+        nameFieldLabel = "Trigger name",
+        newTitle = "New Trigger",
+        editTitle = "Edit Trigger",
+        editGeoTitle = "Edit Location Trigger",
+        typeSectionLabel = "TRIGGER TYPE",
+        scheduleDefaultName = "Schedule Trigger",
+        geoDefaultName = "Geo Trigger",
+    )
+}
+
+/**
  * Cohesive Material 3 [ModalBottomSheet] for creating or editing a custom profile's
  * name and either a temporal [ScheduleTrigger] or a spatial [GeoTrigger].
  *
@@ -116,11 +167,18 @@ fun ProfileEditorSheet(
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
     hapticEngine: HapticEngine = NoOpHapticEngine,
-    initialTrigger: ProfileTrigger = ProfileTrigger.Schedule(initialSchedule),
+    initialTrigger: ProfileTrigger? = ProfileTrigger.Schedule(initialSchedule),
     currentLocation: LocationFix? = null,
     onUseCurrentLocation: ((onLocationResolved: (LocationFix) -> Unit) -> Unit)? = null,
     onOpenMapApp: (LocationFix?) -> Unit = {},
     onSaveTrigger: ((name: String, trigger: ProfileTrigger) -> Unit)? = null,
+    nameFieldLabel: String = "Profile name",
+    newTitle: String = "New Profile",
+    editTitle: String = "Edit Profile",
+    editGeoTitle: String = "Edit Location Profile",
+    typeSectionLabel: String = "PROFILE TYPE",
+    scheduleDefaultName: String = "Custom Profile",
+    geoDefaultName: String = "Geo Profile",
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var profileName by remember { mutableStateOf(initialName) }
@@ -128,8 +186,8 @@ fun ProfileEditorSheet(
     var selectedKind by remember {
         mutableStateOf(
             when (initialTrigger) {
-                is ProfileTrigger.Schedule -> EditorTriggerKind.SCHEDULE
                 is ProfileTrigger.Geo -> EditorTriggerKind.GEO
+                is ProfileTrigger.Schedule, null -> EditorTriggerKind.SCHEDULE
             },
         )
     }
@@ -194,9 +252,9 @@ fun ProfileEditorSheet(
         ) {
             Text(
                 text = when {
-                    isNewProfile -> "New Profile"
-                    selectedKind == EditorTriggerKind.GEO -> "Edit Location Profile"
-                    else -> "Edit Profile"
+                    isNewProfile -> newTitle
+                    selectedKind == EditorTriggerKind.GEO -> editGeoTitle
+                    else -> editTitle
                 },
                 style = MaterialTheme.typography.titleLarge,
                 color = MaterialTheme.colorScheme.onSurface,
@@ -207,7 +265,7 @@ fun ProfileEditorSheet(
             OutlinedTextField(
                 value = profileName,
                 onValueChange = { profileName = it },
-                label = { Text("Profile name") },
+                label = { Text(nameFieldLabel) },
                 placeholder = {
                     Text(
                         if (selectedKind == EditorTriggerKind.GEO) {
@@ -229,7 +287,7 @@ fun ProfileEditorSheet(
                 Spacer(modifier = Modifier.height(16.dp))
 
                 Text(
-                    text = "PROFILE TYPE",
+                    text = typeSectionLabel,
                     style = MaterialTheme.typography.labelMedium,
                     fontWeight = FontWeight.SemiBold,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -349,9 +407,9 @@ fun ProfileEditorSheet(
                 Button(
                     onClick = {
                         val defaultFallbackName = if (selectedKind == EditorTriggerKind.GEO) {
-                            "Geo Profile"
+                            geoDefaultName
                         } else {
-                            "Custom Profile"
+                            scheduleDefaultName
                         }
                         val resolvedName = profileName.trim().ifBlank { defaultFallbackName }
 

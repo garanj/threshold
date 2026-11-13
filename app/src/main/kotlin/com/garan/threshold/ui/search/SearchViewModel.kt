@@ -111,6 +111,9 @@ class SearchViewModel(
     @Volatile
     private var previouslyActiveProfileIds: Set<String> = emptySet()
 
+    @Volatile
+    private var previouslyActiveTriggerIds: Set<String> = emptySet()
+
     init {
         if (settingsRepository != null) {
             viewModelScope.launch(ioDispatcher) {
@@ -223,13 +226,21 @@ class SearchViewModel(
         }
         reconcileMutex.withLock {
             lastObservedSettings = effective
-            scheduleAlarmScheduler.syncNextScheduleAlarm(effective.customProfiles)
+            scheduleAlarmScheduler.syncNextScheduleAlarm(
+                profiles = effective.customProfiles,
+                savedTriggers = effective.savedTriggers,
+            )
             reconcileWorkingSetLocked(effective)
         }
     }
 
-    private fun hasEnabledGeoProfiles(settings: ThresholdSettings?): Boolean =
-        settings?.customProfiles?.any { it.enabled && it.trigger is ProfileTrigger.Geo } == true
+    private fun hasEnabledGeoProfiles(settings: ThresholdSettings?): Boolean {
+        if (settings == null) return false
+        val triggersById = settings.savedTriggersById
+        return settings.customProfiles.any { profile ->
+            profile.enabled && profile.resolvedTriggers(triggersById).any { it is ProfileTrigger.Geo }
+        }
+    }
 
     fun activateSearch() {
         ensureIndexLoaded()
@@ -285,6 +296,8 @@ class SearchViewModel(
                 isDefaultDialer = isDefaultDialer,
                 currentLocation = locationSource?.currentLocation?.value,
                 previouslyActiveProfileIds = previouslyActiveProfileIds,
+                savedTriggers = settings.savedTriggers,
+                previouslyActiveTriggerIds = previouslyActiveTriggerIds,
                 random = random,
             )
         } else {
@@ -317,7 +330,10 @@ class SearchViewModel(
         }
         reconcileMutex.withLock {
             lastObservedSettings = settings
-            scheduleAlarmScheduler.syncNextScheduleAlarm(settings.customProfiles)
+            scheduleAlarmScheduler.syncNextScheduleAlarm(
+                profiles = settings.customProfiles,
+                savedTriggers = settings.savedTriggers,
+            )
             reconcileWorkingSetLocked(settings)
         }
     }
@@ -334,10 +350,13 @@ class SearchViewModel(
             additionalComponents = settings.baseProfile.quickActions,
             currentLocation = currentLocation,
             previouslyActiveProfileIds = previouslyActiveProfileIds,
+            savedTriggers = settings.savedTriggers,
+            previouslyActiveTriggerIds = previouslyActiveTriggerIds,
             random = random,
         )
         activeProfile = workingSet.effectiveProfile
         previouslyActiveProfileIds = workingSet.activeProfiles.map { it.id }.toSet()
+        previouslyActiveTriggerIds = workingSet.activeTriggerIds
 
         val quickKeys = settings.baseProfile.quickActions
         val quickItems = quickKeys.mapIndexedNotNull { index, comp ->
@@ -354,6 +373,8 @@ class SearchViewModel(
                     isDefaultDialer = (comp.packageName == resolvedDialerPackage),
                     currentLocation = currentLocation,
                     previouslyActiveProfileIds = previouslyActiveProfileIds,
+                    savedTriggers = settings.savedTriggers,
+                    previouslyActiveTriggerIds = previouslyActiveTriggerIds,
                     random = random,
                 )
             QuickActionUiItem(
@@ -365,7 +386,7 @@ class SearchViewModel(
         }.toImmutableList()
 
         val capabilityIssues = capabilityChecker
-            .findCapabilityIssues(settings.customProfiles)
+            .findCapabilityIssues(settings.customProfiles, settings.savedTriggers)
             .toImmutableList()
 
         val snapshotCandidates = candidates
@@ -436,6 +457,10 @@ class SearchViewModel(
                     currentDay = now.dayOfWeek,
                     currentTime = now.timeOfDay,
                     isDefaultDialer = isDefaultDialer,
+                    currentLocation = locationSource?.currentLocation?.value,
+                    previouslyActiveProfileIds = previouslyActiveProfileIds,
+                    savedTriggers = settings.savedTriggers,
+                    previouslyActiveTriggerIds = previouslyActiveTriggerIds,
                     random = random,
                 )
             } else {

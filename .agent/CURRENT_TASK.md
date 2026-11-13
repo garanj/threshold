@@ -1,19 +1,10 @@
-# Active Task: Issue #64 & #68 — Prevent ViewModel Factories from Capturing MainActivity Across Recreation
+# Current Task: Issue #73 — Decouple Reusable Triggers from Profiles with AND/OR Activation Rules
 
-- **Issues:** [#64](https://github.com/garanj/threshold/issues/64), [#68](https://github.com/garanj/threshold/issues/68)
-- **Branch:** `fix/64-viewmodel-activity-leak`
+- **Issue:** [#73](https://github.com/garanj/threshold/issues/73)
+- **Branch:** `feat/73-reusable-triggers-and-or-rules`
 - **Status:** Ready for Review
 
 ## Checklist
-- [x] **1. TDD Red Phase:**
-  - Added recreation tests in `ThresholdHomeScreenTest.kt` verifying:
-    1. Zero `MainActivity` instances are reachable from `searchViewModel` or `settingsViewModel` object graphs across `recreate()`.
-    2. `MainActivity.locationSource` is the same shared instance across `recreate()`.
-    3. `setClockAndTriggerAlarmForTesting` and `setExactAlarmPermissionForTesting` work on the recreated `MainActivity` instance.
-  - Confirmed all 3 failed on the pre-fix code.
-- [x] **2. TDD Green Phase:**
-  - Introduced process-scoped `ThresholdAppContainer` (and `ThresholdApplication : Application` registered in `AndroidManifest.xml`) holding `packageIndexSource`, `hapticEngine`, `settingsRepository`, `locationSource`, `antiMetricsRepository`, `scheduleAlarmScheduler`, `capabilityChecker`, `dialerPackageResolver`, and test overrides (`clockOverrideForTesting`, `exactAlarmOverrideForTesting`).
-  - Refactored `MainActivity` and `ScheduleAlarmReceiver` to delegate to `ThresholdAppContainer` so `ViewModelProvider.Factory` lambdas never capture `MainActivity`.
-- [x] **3. Verification:**
-  - Verified all unit & screenshot tests pass (`./gradlew spotlessApply test`).
-  - Added `ActivityScenario.recreate()` verification to `ThresholdScheduleProfileInstrumentedTest` and verified post-GC `Activities: 1` after 5x `font_scale` recreation and release PSS (`26,322 KB <= 35,000 KB`).
+- [x] Phase 1 (`:core`): Add `SavedTrigger` and `TriggerRule` (`AND` within a rule, `OR` across rules), update `CustomProfile`, `ThresholdSettings`, `CascadingResolutionEngine`, `ScheduleHorizonCalculator`, `ProfileCapabilityChecker`, `ScheduleAlarmScheduler`, and `SettingsRepository`, and add unit tests.
+- [x] Phase 2 (`:data`): Persist `savedTriggers` and `CustomProfile.activationRules` in `AndroidSettingsRepository`, auto-migrate legacy inline profile triggers, implement `saveTrigger` and `deleteTrigger` (stripping deleted trigger IDs from profiles and auto-disabling profiles left with zero triggers), and add unit tests.
+- [x] Phase 3 (`:app`): Add `Profiles | Triggers` segmented view in `ProfilesScreen`, `TriggerCard` + `TriggerEditorSheet` with deletion warning dialog, `ProfileRulesEditorSheet` (`AND` rows + `OR` conditions + inline trigger creation/editing), update `SearchViewModel` / `SettingsViewModel` / `AndroidScheduleAlarmScheduler`, update Roborazzi golden, and add Compose UI tests.

@@ -9,6 +9,7 @@ import com.garan.threshold.core.model.ComponentKey
 import com.garan.threshold.core.model.FrictionChoice
 import com.garan.threshold.core.model.GeneralSettings
 import com.garan.threshold.core.model.InstalledApp
+import com.garan.threshold.core.model.SavedTrigger
 import com.garan.threshold.core.port.PackageIndexSource
 import com.garan.threshold.core.port.SettingsRepository
 import kotlinx.collections.immutable.ImmutableList
@@ -27,6 +28,7 @@ data class SettingsUiState(
     val general: GeneralSettings = GeneralSettings(),
     val baseProfile: BaseProfileSettings = BaseProfileSettings(),
     val customProfiles: ImmutableList<com.garan.threshold.core.model.CustomProfile> = persistentListOf(),
+    val savedTriggers: ImmutableList<SavedTrigger> = persistentListOf(),
     val availableApps: ImmutableList<InstalledApp> = persistentListOf(),
     val isLoading: Boolean = true,
 )
@@ -51,6 +53,7 @@ class SettingsViewModel(
                         general = settings.general,
                         baseProfile = settings.baseProfile,
                         customProfiles = settings.customProfiles.toImmutableList(),
+                        savedTriggers = settings.savedTriggers.toImmutableList(),
                     )
                 }
             }
@@ -171,6 +174,18 @@ class SettingsViewModel(
             val target = current.firstOrNull { it.id == profileId } ?: return@launch
             val updated = target.copy(appAssignments = assignments)
             settingsRepository.saveCustomProfile(updated)
+        }
+    }
+
+    fun saveTrigger(trigger: SavedTrigger) {
+        viewModelScope.launch(ioDispatcher) {
+            settingsRepository.saveTrigger(trigger)
+        }
+    }
+
+    fun deleteTrigger(triggerId: String) {
+        viewModelScope.launch(ioDispatcher) {
+            settingsRepository.deleteTrigger(triggerId)
         }
     }
 }

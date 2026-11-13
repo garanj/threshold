@@ -286,4 +286,140 @@ class AndroidSettingsRepositoryTest {
         assertThat(geo.radiusMeters).isEqualTo(500)
         assertThat(geo.mode).isEqualTo(com.garan.threshold.core.model.GeoTriggerMode.OUTSIDE)
     }
+
+    @Test
+    fun saveTrigger_persistsAndUpdatesScheduleAndGeoTriggers() = runTest(testDispatcher) {
+        val workHours = com.garan.threshold.core.model.SavedTrigger(
+            id = "t-work-hours",
+            name = "Work Hours",
+            trigger = com.garan.threshold.core.model.ProfileTrigger.Schedule(
+                com.garan.threshold.core.model.ScheduleTrigger(
+                    days = setOf(com.garan.threshold.core.model.DayOfWeek.MONDAY),
+                    startTime = com.garan.threshold.core.model.TimeOfDay(9, 0),
+                    endTime = com.garan.threshold.core.model.TimeOfDay(17, 0),
+                ),
+            ),
+        )
+        val atOffice = com.garan.threshold.core.model.SavedTrigger(
+            id = "t-office",
+            name = "At Office",
+            trigger = com.garan.threshold.core.model.ProfileTrigger.Geo(
+                com.garan.threshold.core.model.GeoTrigger(
+                    latitude = 51.5,
+                    longitude = -0.1,
+                    radiusMeters = 250,
+                    mode = com.garan.threshold.core.model.GeoTriggerMode.INSIDE,
+                ),
+            ),
+        )
+
+        repository.saveTrigger(workHours)
+        repository.saveTrigger(atOffice)
+
+        val settings = repository.getSettings()
+        assertThat(settings.savedTriggers).containsExactly(workHours, atOffice).inOrder()
+
+        val renamedOffice = atOffice.copy(name = "HQ Office")
+        repository.saveTrigger(renamedOffice)
+        assertThat(repository.getSettings().savedTriggers)
+            .containsExactly(workHours, renamedOffice)
+            .inOrder()
+    }
+
+    @Test
+    fun customProfiles_activationRulesAndOrPersistedCorrectly() = runTest(testDispatcher) {
+        val profile = com.garan.threshold.core.model.CustomProfile(
+            id = "focus",
+            name = "Focus",
+            enabled = true,
+            priority = 0,
+            activationRules = listOf(
+                com.garan.threshold.core.model.TriggerRule(listOf("t-work-hours", "t-office")),
+                com.garan.threshold.core.model.TriggerRule(listOf("t-late-night")),
+            ),
+            trigger = null,
+            appAssignments = mapOf(socialKey to AppAssignment.Blocked),
+        )
+
+        repository.saveCustomProfile(profile)
+
+        val loaded = repository.getSettings().customProfiles.single()
+        assertThat(loaded.trigger).isNull()
+        assertThat(loaded.activationRules).containsExactly(
+            com.garan.threshold.core.model.TriggerRule(listOf("t-work-hours", "t-office")),
+            com.garan.threshold.core.model.TriggerRule(listOf("t-late-night")),
+        ).inOrder()
+    }
+
+    @Test
+    fun legacyInlineTrigger_autoMigratesToSavedTriggerAndActivationRule() = runTest(testDispatcher) {
+        val legacyProfile = com.garan.threshold.core.model.CustomProfile(
+            id = "legacy-work",
+            name = "Legacy Work",
+            enabled = true,
+            priority = 0,
+            trigger = com.garan.threshold.core.model.ProfileTrigger.Schedule(),
+        )
+
+        repository.saveCustomProfile(legacyProfile)
+
+        val settings = repository.getSettings()
+        val migratedProfile = settings.customProfiles.single()
+        assertThat(migratedProfile.activationRules).containsExactly(
+            com.garan.threshold.core.model.TriggerRule(listOf("trigger-legacy-work")),
+        )
+        assertThat(settings.savedTriggers.map { it.id }).containsExactly("trigger-legacy-work")
+        assertThat(settings.savedTriggers.single().name).isEqualTo("Legacy Work")
+    }
+
+    @Test
+    fun deleteTrigger_stripsFromProfileRulesAndAutoDisablesWhenNoTriggersRemain() = runTest(testDispatcher) {
+        val t1 = com.garan.threshold.core.model.SavedTrigger(
+            id = "t1",
+            name = "Work Hours",
+            trigger = com.garan.threshold.core.model.ProfileTrigger.Schedule(),
+        )
+        val t2 = com.garan.threshold.core.model.SavedTrigger(
+            id = "t2",
+            name = "At Office",
+            trigger = com.garan.threshold.core.model.ProfileTrigger.Geo(
+                com.garan.threshold.core.model.GeoTrigger(latitude = 51.5, longitude = -0.1),
+            ),
+        )
+        repository.saveTrigger(t1)
+        repository.saveTrigger(t2)
+
+        val singleTriggerProfile = com.garan.threshold.core.model.CustomProfile(
+            id = "p-single",
+            name = "Single Trigger",
+            enabled = true,
+            priority = 0,
+            activationRules = listOf(com.garan.threshold.core.model.TriggerRule(listOf("t1"))),
+            trigger = null,
+        )
+        val multiTriggerProfile = com.garan.threshold.core.model.CustomProfile(
+            id = "p-multi",
+            name = "Multi Trigger",
+            enabled = true,
+            priority = 1,
+            activationRules = listOf(com.garan.threshold.core.model.TriggerRule(listOf("t1", "t2"))),
+            trigger = null,
+        )
+        repository.updateCustomProfiles(listOf(singleTriggerProfile, multiTriggerProfile))
+
+        repository.deleteTrigger("t1")
+
+        val settings = repository.getSettings()
+        assertThat(settings.savedTriggers).containsExactly(t2)
+
+        val updatedSingle = settings.customProfiles.first { it.id == "p-single" }
+        assertThat(updatedSingle.activationRules).isEmpty()
+        assertThat(updatedSingle.enabled).isFalse()
+
+        val updatedMulti = settings.customProfiles.first { it.id == "p-multi" }
+        assertThat(updatedMulti.activationRules).containsExactly(
+            com.garan.threshold.core.model.TriggerRule(listOf("t2")),
+        )
+        assertThat(updatedMulti.enabled).isTrue()
+    }
 }
