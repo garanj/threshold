@@ -32,12 +32,15 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.compositeOver
+import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
@@ -53,6 +56,7 @@ import java.time.format.DateTimeFormatter
 
 private val TIME_FORMATTER: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
 private val DATE_FORMATTER: DateTimeFormatter = DateTimeFormatter.ofPattern("EEEE, MMMM d")
+private val SizerReferenceProfile = CustomProfile(id = "__sizer__", name = "M", colorIndex = 0)
 
 /**
  * Clean typographic home display for Threshold.
@@ -197,20 +201,18 @@ fun ThresholdHomeCanvas(
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            // Ambient status readout + right-justified active profile & capability fault square indicators
-            Row(
+            // Ambient status readout + right-justified active profile & capability fault square indicators.
+            // Uses Layout to measure an unplaced reference badge when no badges are active so the row's
+            // vertical height never shifts when badges appear/disappear (at any font scale).
+            Layout(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    text = upperStatusText,
-                    style = statusTextStyle,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.weight(1f, fill = false),
-                )
+                content = {
+                    Text(
+                        text = upperStatusText,
+                        style = statusTextStyle,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
 
-                if (hasCapabilityIssues || activeProfiles.isNotEmpty()) {
                     Row(
                         horizontalArrangement = Arrangement.spacedBy(6.dp),
                         verticalAlignment = Alignment.CenterVertically,
@@ -221,6 +223,36 @@ fun ThresholdHomeCanvas(
                         activeProfiles.forEach { profile ->
                             ActiveProfileSquareBadge(profile = profile)
                         }
+                    }
+
+                    ActiveProfileSquareBadge(
+                        profile = SizerReferenceProfile,
+                        modifier = Modifier.clearAndSetSemantics {},
+                    )
+                },
+            ) { measurables, constraints ->
+                val badgesPlaceable = measurables[1].measure(constraints.copy(minWidth = 0))
+                val sizerHeight = if (badgesPlaceable.width == 0) {
+                    measurables[2].measure(Constraints()).height
+                } else {
+                    0
+                }
+                val textMaxWidth = (constraints.maxWidth - badgesPlaceable.width).coerceAtLeast(0)
+                val textPlaceable = measurables[0].measure(
+                    constraints.copy(minWidth = 0, maxWidth = textMaxWidth),
+                )
+
+                val rowHeight = maxOf(textPlaceable.height, badgesPlaceable.height, sizerHeight)
+                layout(constraints.maxWidth, rowHeight) {
+                    textPlaceable.placeRelative(
+                        x = 0,
+                        y = Alignment.CenterVertically.align(textPlaceable.height, rowHeight),
+                    )
+                    if (badgesPlaceable.width > 0) {
+                        badgesPlaceable.placeRelative(
+                            x = constraints.maxWidth - badgesPlaceable.width,
+                            y = Alignment.CenterVertically.align(badgesPlaceable.height, rowHeight),
+                        )
                     }
                 }
             }

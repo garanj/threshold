@@ -1,11 +1,10 @@
-# Current Task: Issue #80 — Fix 2nd-Tap NFC Unlatch & Abstract `NfcAdapter.enableReaderMode`
+# Current Task: Issue #82 — Prevent Status Row Vertical Layout Shift on Profile/Fault Badge Appearance
 
-- **Issue:** [#80](https://github.com/garanj/threshold/issues/80)
-- **Branch:** `fix/80-nfc-toggle-off-and-reader-abstraction`
+- **Issue:** [#82](https://github.com/garanj/threshold/issues/82)
+- **Branch:** `fix/82-status-row-layout-shift-lock`
 - **Status:** Ready for Review
 
 ## Checklist
-- [x] `:core` (TDD): Write failing regression test for 2nd-tap toggle-off when `previouslyActiveTriggerIds` contains the unlatched NFC trigger ID, then fix `CascadingResolutionEngine` (`nfcLatchStates: Map<String, NfcLatchState>? = null`)
-- [x] `:app` ViewModel (TDD): Write failing regression test in `SearchViewModelTest` for 1st tap ON -> 2nd tap OFF -> 3rd tap ON, and verify fix
-- [x] `:app` Hardware Adapter (TDD): Abstract `NfcAdapter.enableReaderMode` / `disableReaderMode` behind `NfcAdapterGateway` in `AndroidNfcReaderSource` and add `AndroidNfcReaderSourceTest`
-- [x] `:app` Instrumented Test: Update `ThresholdScheduleProfileInstrumentedTest` to assert 2nd-tap toggle-off before re-latching and testing schedule auto-unlatch
+- [x] `:app` (TDD Red): Add Compose layout test in `ThresholdHomeCanvasTest` verifying that `content()` vertical position does not shift when `activeProfiles` transitions from empty to non-empty (at 1.0x and 2.0x font scale)
+- [x] `:app` (TDD Green): Implement `Layout` with unplaced reference badge measurement and `defaultMinSize` in `ThresholdHomeCanvas.kt`
+- [x] `:app` Screenshots & Tests: Verify Roborazzi goldens and `./gradlew test` pass
