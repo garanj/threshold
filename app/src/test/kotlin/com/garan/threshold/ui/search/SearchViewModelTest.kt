@@ -731,6 +731,140 @@ class SearchViewModelTest {
         assertThat(vm.uiState.value.quickActions.first().accessState).isEqualTo(AppAccessState.Direct)
     }
 
+    @Test
+    fun reusableTriggersWithAndOrRules_reconcilesAcrossClockLocationAndLiveTriggerDeletion() = runTest(testDispatcher) {
+        val center = com.garan.threshold.core.model.LocationFix(51.5074, -0.1278)
+        val insideOffice = com.garan.threshold.core.model.LocationFix(
+            latitude = center.latitude + (50.0 / 111_194.9266),
+            longitude = center.longitude,
+        )
+        val outsideOffice = com.garan.threshold.core.model.LocationFix(
+            latitude = center.latitude + (500.0 / 111_194.9266),
+            longitude = center.longitude,
+        )
+
+        val workHours = com.garan.threshold.core.model.SavedTrigger(
+            id = "t-work",
+            name = "Work Hours",
+            trigger = com.garan.threshold.core.model.ProfileTrigger.Schedule(
+                com.garan.threshold.core.model.ScheduleTrigger(
+                    days = setOf(com.garan.threshold.core.model.DayOfWeek.MONDAY),
+                    startTime = com.garan.threshold.core.model.TimeOfDay(9, 0),
+                    endTime = com.garan.threshold.core.model.TimeOfDay(17, 0),
+                ),
+            ),
+        )
+        val atOffice = com.garan.threshold.core.model.SavedTrigger(
+            id = "t-office",
+            name = "At Office",
+            trigger = com.garan.threshold.core.model.ProfileTrigger.Geo(
+                com.garan.threshold.core.model.GeoTrigger(
+                    latitude = center.latitude,
+                    longitude = center.longitude,
+                    radiusMeters = 250,
+                    mode = com.garan.threshold.core.model.GeoTriggerMode.INSIDE,
+                ),
+            ),
+        )
+        val lateNight = com.garan.threshold.core.model.SavedTrigger(
+            id = "t-night",
+            name = "Late Night",
+            trigger = com.garan.threshold.core.model.ProfileTrigger.Schedule(
+                com.garan.threshold.core.model.ScheduleTrigger(
+                    days = setOf(com.garan.threshold.core.model.DayOfWeek.MONDAY),
+                    startTime = com.garan.threshold.core.model.TimeOfDay(22, 0),
+                    endTime = com.garan.threshold.core.model.TimeOfDay(23, 30),
+                ),
+            ),
+        )
+
+        // Activates when (Work Hours AND At Office) OR Late Night
+        val focusProfile = com.garan.threshold.core.model.CustomProfile(
+            id = "focus",
+            name = "Focus",
+            enabled = true,
+            priority = 0,
+            trigger = null,
+            activationRules = listOf(
+                com.garan.threshold.core.model.TriggerRule(listOf("t-work", "t-office")),
+                com.garan.threshold.core.model.TriggerRule(listOf("t-night")),
+            ),
+            appAssignments = mapOf(
+                socialComponent to com.garan.threshold.core.model.AppAssignment.Blocked,
+            ),
+        )
+
+        val fakeRepo = com.garan.threshold.ui.settings.FakeSettingsRepository(
+            com.garan.threshold.core.model.ThresholdSettings(
+                baseProfile = com.garan.threshold.core.model.BaseProfileSettings(
+                    quickActions = listOf(socialComponent),
+                    appAssignments = mapOf(
+                        socialComponent to com.garan.threshold.core.model.AppAssignment.Standard,
+                    ),
+                ),
+                customProfiles = listOf(focusProfile),
+                savedTriggers = listOf(workHours, atOffice, lateNight),
+            ),
+        )
+
+        var currentDayTime = com.garan.threshold.core.port.LocalDayTime(
+            com.garan.threshold.core.model.DayOfWeek.MONDAY,
+            com.garan.threshold.core.model.TimeOfDay(10, 0),
+        )
+        val locationFlow =
+            kotlinx.coroutines.flow.MutableStateFlow<com.garan.threshold.core.model.LocationFix?>(outsideOffice)
+        val fakeLocationSource = object : com.garan.threshold.core.port.LocationSource {
+            override val currentLocation = locationFlow
+            override suspend fun refreshLocation() = locationFlow.value
+        }
+
+        val vm = SearchViewModel(
+            packageIndexSource = fakePackageIndexSource,
+            settingsRepository = fakeRepo,
+            clockSource = { currentDayTime },
+            locationSource = fakeLocationSource,
+            ioDispatcher = testDispatcher,
+        ).apply {
+            ensureIndexLoaded()
+        }
+        advanceUntilIdle()
+
+        // 1. Monday 10:00, outside office -> AND rule not satisfied -> inactive
+        assertThat(vm.uiState.value.activeProfiles).isEmpty()
+        assertThat(vm.uiState.value.quickActions.first().accessState).isEqualTo(AppAccessState.Direct)
+
+        // 2. Monday 10:00, move inside office -> (Work Hours AND At Office) satisfied -> active
+        locationFlow.value = insideOffice
+        advanceUntilIdle()
+        assertThat(vm.uiState.value.activeProfiles).containsExactly(focusProfile)
+        assertThat(vm.uiState.value.quickActions.first().accessState).isEqualTo(AppAccessState.Blocked)
+
+        // 3. Monday 18:00 (after Work Hours), still inside office -> AND rule broken -> inactive
+        currentDayTime = com.garan.threshold.core.port.LocalDayTime(
+            com.garan.threshold.core.model.DayOfWeek.MONDAY,
+            com.garan.threshold.core.model.TimeOfDay(18, 0),
+        )
+        vm.refreshScheduleEvaluation()
+        advanceUntilIdle()
+        assertThat(vm.uiState.value.activeProfiles).isEmpty()
+
+        // 4. Monday 22:30, outside office -> OR rule (Late Night) satisfied -> active
+        locationFlow.value = outsideOffice
+        currentDayTime = com.garan.threshold.core.port.LocalDayTime(
+            com.garan.threshold.core.model.DayOfWeek.MONDAY,
+            com.garan.threshold.core.model.TimeOfDay(22, 30),
+        )
+        vm.refreshScheduleEvaluation()
+        advanceUntilIdle()
+        assertThat(vm.uiState.value.activeProfiles).containsExactly(focusProfile)
+
+        // 5. Delete "t-night" trigger while active at 22:30 -> strips OR rule and immediately deactivates
+        fakeRepo.deleteTrigger("t-night")
+        advanceUntilIdle()
+        assertThat(vm.uiState.value.activeProfiles).isEmpty()
+        assertThat(vm.uiState.value.quickActions.first().accessState).isEqualTo(AppAccessState.Direct)
+    }
+
     private class TestHapticEngine : HapticEngine {
         var rotaryDetentCount = 0
             private set

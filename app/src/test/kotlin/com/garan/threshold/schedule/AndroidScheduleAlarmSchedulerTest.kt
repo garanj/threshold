@@ -6,9 +6,12 @@ import android.content.Intent
 import androidx.test.core.app.ApplicationProvider
 import com.garan.threshold.core.model.CustomProfile
 import com.garan.threshold.core.model.DayOfWeek
+import com.garan.threshold.core.model.GeoTrigger
 import com.garan.threshold.core.model.ProfileTrigger
+import com.garan.threshold.core.model.SavedTrigger
 import com.garan.threshold.core.model.ScheduleTrigger
 import com.garan.threshold.core.model.TimeOfDay
+import com.garan.threshold.core.model.TriggerRule
 import com.garan.threshold.core.port.LocalDayTime
 import com.google.common.truth.Truth.assertThat
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -66,6 +69,70 @@ class AndroidScheduleAlarmSchedulerTest {
         // When profile is disabled, alarm is cancelled
         scheduler.syncNextScheduleAlarm(listOf(profile.copy(enabled = false)))
         assertThat(shadowAlarmManager.scheduledAlarms).isEmpty()
+    }
+
+    @Test
+    fun syncNextScheduleAlarm_withSavedTriggersAndOrRules_schedulesEarliestReferencedBoundary() {
+        val baseMillis = 1_700_000_000_000L
+        val scheduler = AndroidScheduleAlarmScheduler(
+            context = context,
+            clockSource = {
+                LocalDayTime(
+                    dayOfWeek = DayOfWeek.MONDAY,
+                    timeOfDay = TimeOfDay(8, 30),
+                )
+            },
+            nowEpochMillisProvider = { baseMillis },
+        )
+
+        val workHours = SavedTrigger(
+            id = "t-work",
+            name = "Work Hours",
+            trigger = ProfileTrigger.Schedule(
+                ScheduleTrigger(
+                    days = setOf(DayOfWeek.MONDAY),
+                    startTime = TimeOfDay(9, 15),
+                    endTime = TimeOfDay(17, 0),
+                ),
+            ),
+        )
+        val atOffice = SavedTrigger(
+            id = "t-office",
+            name = "At Office",
+            trigger = ProfileTrigger.Geo(GeoTrigger(latitude = 51.5, longitude = -0.1)),
+        )
+        val unreferencedEarly = SavedTrigger(
+            id = "t-unused",
+            name = "Unused Early",
+            trigger = ProfileTrigger.Schedule(
+                ScheduleTrigger(
+                    days = setOf(DayOfWeek.MONDAY),
+                    startTime = TimeOfDay(8, 40),
+                    endTime = TimeOfDay(9, 0),
+                ),
+            ),
+        )
+
+        val focusProfile = CustomProfile(
+            id = "focus",
+            name = "Focus",
+            enabled = true,
+            trigger = null,
+            activationRules = listOf(
+                TriggerRule(listOf("t-work", "t-office")),
+            ),
+        )
+
+        scheduler.syncNextScheduleAlarm(
+            profiles = listOf(focusProfile),
+            savedTriggers = listOf(workHours, atOffice, unreferencedEarly),
+        )
+
+        val shadowAlarmManager = shadowOf(alarmManager)
+        val alarms = shadowAlarmManager.scheduledAlarms
+        assertThat(alarms).hasSize(1)
+        // Must schedule for t-work at 09:15 (45 mins from 08:30), ignoring t-unused at 08:40
+        assertThat(alarms.first().triggerAtMs).isEqualTo(baseMillis + 45 * 60_000L)
     }
 
     @OptIn(ExperimentalCoroutinesApi::class)

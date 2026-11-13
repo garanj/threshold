@@ -19,9 +19,14 @@ import com.garan.threshold.core.model.AppAssignment
 import com.garan.threshold.core.model.BaseProfileSettings
 import com.garan.threshold.core.model.ComponentKey
 import com.garan.threshold.core.model.CustomProfile
+import com.garan.threshold.core.model.DayOfWeek
 import com.garan.threshold.core.model.GeoTrigger
 import com.garan.threshold.core.model.GeoTriggerMode
 import com.garan.threshold.core.model.ProfileTrigger
+import com.garan.threshold.core.model.SavedTrigger
+import com.garan.threshold.core.model.ScheduleTrigger
+import com.garan.threshold.core.model.TimeOfDay
+import com.garan.threshold.core.model.TriggerRule
 import com.garan.threshold.ui.launcher.DialerPackageResolver
 import com.google.common.truth.Truth.assertThat
 import kotlinx.coroutines.runBlocking
@@ -76,10 +81,13 @@ class ThresholdGeoProfileInstrumentedTest {
             locationManager.removeTestProvider(TEST_PROVIDER)
         }
         scenario?.onActivity { activity ->
+            activity.setExactAlarmPermissionForTesting(null)
+            appContainerResetClockForTesting(activity)
             runBlocking {
                 activity.configureScheduleProfilesForTesting(
                     baseProfile = BaseProfileSettings(),
                     customProfiles = emptyList(),
+                    savedTriggers = emptyList(),
                 )
             }
         }
@@ -233,6 +241,162 @@ class ThresholdGeoProfileInstrumentedTest {
             .that(device.waitForFresh(By.text(targetLabel), 5000L))
             .isNotNull()
         assertThat(device.waitUntilGoneFresh(By.desc("Active profile: Office"), 5000L)).isTrue()
+    }
+
+    @Test
+    fun compositeAndOrTriggerProfile_activatesOnlyWhenScheduleAndGeoMatchOrFallbackScheduleMatches() {
+        val targetContext = InstrumentationRegistry.getInstrumentation().targetContext
+        val launcherApps = targetContext.getSystemService(Context.LAUNCHER_APPS_SERVICE) as LauncherApps
+        val userManager = targetContext.getSystemService(Context.USER_SERVICE) as UserManager
+        val myUser = Process.myUserHandle()
+        val userSerial = userManager.getSerialNumberForUser(myUser)
+        val dialerPkg = DialerPackageResolver.resolveDefaultDialerPackage(targetContext)
+
+        val allActivities = launcherApps.getActivityList(null, myUser)
+        val labelCounts = allActivities.groupingBy { it.label.toString().trim() }.eachCount()
+        val targetActivity = allActivities.first { info ->
+            val label = info.label.toString().trim()
+            info.applicationInfo.packageName != targetContext.packageName &&
+                info.applicationInfo.packageName != dialerPkg &&
+                label.length >= 4 &&
+                labelCounts[label] == 1
+        }
+        val targetLabel = targetActivity.label.toString().trim()
+        val searchPrefix = targetLabel.take(3)
+        val targetComponent = ComponentKey(
+            packageName = targetActivity.componentName.packageName,
+            activityName = targetActivity.componentName.className,
+            userSerial = userSerial,
+        )
+
+        val officeLat = 51.5074
+        val officeLon = -0.1278
+
+        val workHoursTrigger = SavedTrigger(
+            id = "t-work-hours",
+            name = "Work Hours",
+            trigger = ProfileTrigger.Schedule(
+                ScheduleTrigger(
+                    days = setOf(DayOfWeek.MONDAY),
+                    startTime = TimeOfDay(9, 0),
+                    endTime = TimeOfDay(17, 0),
+                ),
+            ),
+        )
+        val officeGeoTrigger = SavedTrigger(
+            id = "t-office-geo",
+            name = "At Office",
+            trigger = ProfileTrigger.Geo(
+                GeoTrigger(
+                    latitude = officeLat,
+                    longitude = officeLon,
+                    radiusMeters = 250,
+                    mode = GeoTriggerMode.INSIDE,
+                ),
+            ),
+        )
+        val eveningStudyTrigger = SavedTrigger(
+            id = "t-evening-study",
+            name = "Evening Study",
+            trigger = ProfileTrigger.Schedule(
+                ScheduleTrigger(
+                    days = setOf(DayOfWeek.MONDAY),
+                    startTime = TimeOfDay(20, 0),
+                    endTime = TimeOfDay(22, 0),
+                ),
+            ),
+        )
+
+        // Composite rule: (Work Hours AND At Office) OR (Evening Study)
+        val compositeProfile = CustomProfile(
+            id = "office-focus",
+            name = "Office Focus",
+            priority = 0,
+            enabled = true,
+            colorIndex = 2,
+            trigger = null,
+            activationRules = listOf(
+                TriggerRule(listOf("t-work-hours", "t-office-geo")),
+                TriggerRule(listOf("t-evening-study")),
+            ),
+            appAssignments = mapOf(
+                targetComponent to AppAssignment.Blocked,
+            ),
+        )
+
+        val intent = Intent(targetContext, MainActivity::class.java).apply {
+            action = Intent.ACTION_MAIN
+            addCategory(Intent.CATEGORY_HOME)
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK
+        }
+        scenario = ActivityScenario.launch(intent)
+        scenario?.onActivity { activity ->
+            activity.setShowWhenLocked(true)
+            activity.setTurnScreenOn(true)
+        }
+
+        // 1. Monday 10:00 (Work Hours = true), 500m outside Office (At Office = false) -> AND rule is FALSE
+        pushMockLocation(
+            latitude = officeLat + (500.0 / METERS_PER_DEGREE_LAT),
+            longitude = officeLon,
+        )
+        scenario?.onActivity { activity ->
+            activity.setClockAndTriggerAlarmForTesting(DayOfWeek.MONDAY, TimeOfDay(10, 0))
+            runBlocking {
+                activity.configureScheduleProfilesForTesting(
+                    baseProfile = BaseProfileSettings(),
+                    customProfiles = listOf(compositeProfile),
+                    savedTriggers = listOf(workHoursTrigger, officeGeoTrigger, eveningStudyTrigger),
+                )
+            }
+            activity.refreshLocationAndReconcileForTesting()
+            activity.searchViewModel.activateSearch()
+            activity.searchViewModel.onQueryChanged(searchPrefix)
+        }
+        device.waitForIdle()
+
+        assertThat(device.waitForFresh(By.text(targetLabel), 5000L)).isNotNull()
+        assertThat(device.waitUntilGoneFresh(By.desc("Active profile: Office Focus"), 0L)).isTrue()
+
+        // 2. Monday 10:00, teleport 50m inside Office -> (Work Hours AND At Office) is TRUE -> activates
+        pushMockLocation(
+            latitude = officeLat + (50.0 / METERS_PER_DEGREE_LAT),
+            longitude = officeLon,
+        )
+        scenario?.onActivity { activity ->
+            activity.refreshLocationAndReconcileForTesting()
+        }
+        device.waitForIdle()
+
+        assertThat(device.waitForFresh(By.desc("Active profile: Office Focus"), 5000L)).isNotNull()
+        assertThat(device.waitUntilGoneFresh(By.text(targetLabel), 5000L)).isTrue()
+
+        // 3. Advance clock to Monday 18:00 (after Work Hours), still 50m inside Office -> AND rule breaks -> deactivates
+        scenario?.onActivity { activity ->
+            activity.setClockAndTriggerAlarmForTesting(DayOfWeek.MONDAY, TimeOfDay(18, 0))
+        }
+        device.waitForIdle()
+
+        assertThat(device.waitForFresh(By.text(targetLabel), 5000L)).isNotNull()
+        assertThat(device.waitUntilGoneFresh(By.desc("Active profile: Office Focus"), 5000L)).isTrue()
+
+        // 4. Teleport 500m outside Office and advance clock to Monday 20:30 -> OR rule (Evening Study) is TRUE -> activates
+        pushMockLocation(
+            latitude = officeLat + (500.0 / METERS_PER_DEGREE_LAT),
+            longitude = officeLon,
+        )
+        scenario?.onActivity { activity ->
+            activity.refreshLocationAndReconcileForTesting()
+            activity.setClockAndTriggerAlarmForTesting(DayOfWeek.MONDAY, TimeOfDay(20, 30))
+        }
+        device.waitForIdle()
+
+        assertThat(device.waitForFresh(By.desc("Active profile: Office Focus"), 5000L)).isNotNull()
+        assertThat(device.waitUntilGoneFresh(By.text(targetLabel), 5000L)).isTrue()
+    }
+
+    private fun appContainerResetClockForTesting(activity: MainActivity) {
+        com.garan.threshold.ThresholdAppContainer.from(activity).clockOverrideForTesting = null
     }
 
     companion object {

@@ -34,12 +34,15 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.testTagsAsResourceId
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -226,7 +229,12 @@ fun ThresholdHomeScreen(
         val currentHasSeenFirstRunHint by rememberUpdatedState(hasSeenFirstRunHint)
         val currentOnOpenSettings by rememberUpdatedState(onOpenSettings)
 
-        Box(modifier = modifier.fillMaxSize()) {
+        @OptIn(ExperimentalComposeUiApi::class)
+        Box(
+            modifier = modifier
+                .fillMaxSize()
+                .semantics { testTagsAsResourceId = true },
+        ) {
             ThresholdHomeCanvas(
                 modifier = Modifier
                     .fillMaxSize()

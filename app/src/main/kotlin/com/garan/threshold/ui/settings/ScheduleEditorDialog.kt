@@ -48,6 +48,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -280,7 +281,9 @@ fun ProfileEditorSheet(
                     capitalization = KeyboardCapitalization.Words,
                     imeAction = ImeAction.Done,
                 ),
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag(ProfilesTestTags.TRIGGER_EDITOR_NAME_INPUT),
             )
 
             if (isNewProfile) {
@@ -305,6 +308,7 @@ fun ProfileEditorSheet(
                             }
                         },
                         shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2),
+                        modifier = Modifier.testTag(ProfilesTestTags.TRIGGER_EDITOR_TYPE_SCHEDULE),
                         icon = {
                             Icon(
                                 imageVector = ThresholdIcons.Schedule,
@@ -325,6 +329,7 @@ fun ProfileEditorSheet(
                             }
                         },
                         shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2),
+                        modifier = Modifier.testTag(ProfilesTestTags.TRIGGER_EDITOR_TYPE_GEO),
                         icon = {
                             Icon(
                                 imageVector = ThresholdIcons.LocationOn,
@@ -400,7 +405,10 @@ fun ProfileEditorSheet(
                 horizontalArrangement = Arrangement.End,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                TextButton(onClick = onDismiss) {
+                TextButton(
+                    onClick = onDismiss,
+                    modifier = Modifier.testTag(ProfilesTestTags.TRIGGER_EDITOR_CANCEL_BUTTON),
+                ) {
                     Text("Cancel")
                 }
                 Spacer(modifier = Modifier.width(8.dp))
@@ -449,6 +457,7 @@ fun ProfileEditorSheet(
                     },
                     enabled = canSubmit,
                     shape = RoundedCornerShape(4.dp),
+                    modifier = Modifier.testTag(ProfilesTestTags.TRIGGER_EDITOR_SAVE_BUTTON),
                 ) {
                     Text(if (isNewProfile) "Create" else "Save", fontWeight = FontWeight.SemiBold)
                 }

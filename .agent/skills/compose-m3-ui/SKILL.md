@@ -104,6 +104,10 @@ Read [references/edge-to-edge-and-insets.md](references/edge-to-edge-and-insets.
 2. **Previews & Roborazzi Goldens:**
    - Every stateless `Screen` composable must be testable in [`ThresholdScreenshotTest.kt`](file:///home/garan/threshold/app/src/test/kotlin/com/garan/threshold/ThresholdScreenshotTest.kt).
    - After modifying any UI, run `./gradlew testDebugUnitTest` (and `./gradlew recordRoborazziDebug` when intentionally updating visual goldens) and inspect the generated PNGs in `app/src/test/snapshots/` using `read_file` to visually verify layout, alignment, contrast, and spacing.
+3. **Deterministic UI Automation (`Modifier.testTag` & `testTagsAsResourceId`):**
+   - Keep `Modifier.semantics { testTagsAsResourceId = true }` enabled at the root composable so `testTag`s work in both Compose tests (`onNodeWithTag`) and UiAutomator (`By.res`).
+   - Attach structured `Modifier.testTag(...)` values to all top-level navigation rows, tabs, primary sheet actions (`Save`/`Create`/`Cancel`), form inputs, and repeating item controls (parameterized by entity ID or rule index, e.g. `profile_toggle_<id>`, `profile_rule_<idx>_add_and`).
+   - Avoid writing tests that disambiguate stacked sheets or repeating cards via `.onLast()` or arbitrary `[0]` indices when a keyed `testTag` can be used.
 
 ---
 
@@ -118,4 +122,4 @@ When asked to review or audit an existing or new screen, evaluate it against the
 5. **Color & Typography Tokens:** Are there any hardcoded `Color(0x...)` values or inline `fontSize = ...sp` overrides in the screen file?
 6. **Box-in-a-Box / Visual Clutter:** Are there unnecessary nested bordered boxes, redundant dividers, or "dashboard KPI cards" that should be collapsed into clean M3 `ListItem`s?
 7. **Edge-to-Edge & Insets:** Does `Scaffold` pass `innerPadding` into `LazyColumn(contentPadding = innerPadding)` without clipping the screen via root `safeDrawingPadding`?
-8. **Touch Targets & Accessibility:** Is every interactive element at least `48.dp × 48.dp` with proper `contentDescription` / semantics (`Role.Switch`, `Role.Tab`, `Role.Checkbox`)?
+8. **Touch Targets, Accessibility & Automation `testTag`s:** Is every interactive element at least `48.dp × 48.dp` with proper `contentDescription` / semantics (`Role.Switch`, `Role.Tab`, `Role.Checkbox`) and deterministic `Modifier.testTag(...)` coverage on sheets, tabs, and repeating controls?

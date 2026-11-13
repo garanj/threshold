@@ -2,10 +2,13 @@ package com.garan.threshold.core.cascading
 
 import com.garan.threshold.core.model.CustomProfile
 import com.garan.threshold.core.model.DayOfWeek
+import com.garan.threshold.core.model.GeoTrigger
 import com.garan.threshold.core.model.ProfileTrigger
+import com.garan.threshold.core.model.SavedTrigger
 import com.garan.threshold.core.model.ScheduleTrigger
 import com.garan.threshold.core.model.TimeOfDay
 import com.garan.threshold.core.model.TimeWindow
+import com.garan.threshold.core.model.TriggerRule
 import com.google.common.truth.Truth.assertThat
 import org.junit.Test
 
@@ -201,6 +204,117 @@ class ScheduleHorizonCalculatorTest {
                 targetDay = DayOfWeek.TUESDAY,
                 targetTime = TimeOfDay(10, 0),
                 minutesFromNow = 45,
+            ),
+        )
+    }
+
+    @Test
+    fun findNextTransition_savedTriggersWithAndOrRules_picksEarliestReferencedScheduleAndIgnoresUnreferenced() {
+        val morningSchedule = SavedTrigger(
+            id = "t-morning",
+            name = "Morning Focus",
+            trigger = ProfileTrigger.Schedule(
+                ScheduleTrigger(
+                    days = setOf(DayOfWeek.MONDAY),
+                    startTime = TimeOfDay(9, 0),
+                    endTime = TimeOfDay(12, 0),
+                ),
+            ),
+        )
+        val officeGeo = SavedTrigger(
+            id = "t-office",
+            name = "At Office",
+            trigger = ProfileTrigger.Geo(GeoTrigger(latitude = 51.5, longitude = -0.1)),
+        )
+        val eveningSchedule = SavedTrigger(
+            id = "t-evening",
+            name = "Evening Wind Down",
+            trigger = ProfileTrigger.Schedule(
+                ScheduleTrigger(
+                    days = setOf(DayOfWeek.MONDAY),
+                    startTime = TimeOfDay(18, 0),
+                    endTime = TimeOfDay(21, 0),
+                ),
+            ),
+        )
+        // Unreferenced trigger with an earlier 08:15 boundary that MUST be ignored
+        val unreferencedEarly = SavedTrigger(
+            id = "t-unreferenced",
+            name = "Unreferenced Early",
+            trigger = ProfileTrigger.Schedule(
+                ScheduleTrigger(
+                    days = setOf(DayOfWeek.MONDAY),
+                    startTime = TimeOfDay(8, 15),
+                    endTime = TimeOfDay(8, 45),
+                ),
+            ),
+        )
+        // Trigger referenced only by a disabled profile that MUST also be ignored
+        val disabledOnlyTrigger = SavedTrigger(
+            id = "t-disabled",
+            name = "Disabled Only",
+            trigger = ProfileTrigger.Schedule(
+                ScheduleTrigger(
+                    days = setOf(DayOfWeek.MONDAY),
+                    startTime = TimeOfDay(8, 20),
+                    endTime = TimeOfDay(8, 50),
+                ),
+            ),
+        )
+
+        val enabledCompositeProfile = CustomProfile(
+            id = "composite",
+            name = "Composite",
+            enabled = true,
+            trigger = null,
+            activationRules = listOf(
+                TriggerRule(listOf("t-morning", "t-office")),
+                TriggerRule(listOf("t-evening")),
+            ),
+        )
+        val disabledProfile = CustomProfile(
+            id = "disabled",
+            name = "Disabled",
+            enabled = false,
+            trigger = null,
+            activationRules = listOf(TriggerRule(listOf("t-disabled"))),
+        )
+
+        val savedTriggers = listOf(
+            morningSchedule,
+            officeGeo,
+            eveningSchedule,
+            unreferencedEarly,
+            disabledOnlyTrigger,
+        )
+
+        // At Monday 08:00, earliest referenced active schedule boundary is t-morning at 09:00 (60m)
+        val atEight = calculator.findNextTransition(
+            customProfiles = listOf(enabledCompositeProfile, disabledProfile),
+            currentDay = DayOfWeek.MONDAY,
+            currentTime = TimeOfDay(8, 0),
+            savedTriggers = savedTriggers,
+        )
+        assertThat(atEight).isEqualTo(
+            NextScheduleTransition(
+                targetDay = DayOfWeek.MONDAY,
+                targetTime = TimeOfDay(9, 0),
+                minutesFromNow = 60,
+            ),
+        )
+
+        // At Monday 13:00 (after morning ends), next referenced boundary is t-evening at 18:00 (300m)
+        val atOnePm = calculator.findNextTransition(
+            customProfiles = listOf(enabledCompositeProfile, disabledProfile),
+            currentDay = DayOfWeek.MONDAY,
+            currentTime = TimeOfDay(13, 0),
+            savedTriggers = savedTriggers,
+        )
+        assertThat(atOnePm).isEqualTo(
+            NextScheduleTransition(
+                targetDay = DayOfWeek.MONDAY,
+                targetTime = TimeOfDay(18, 0),
+                minutesFromNow = 5 * 60,
             ),
         )
     }

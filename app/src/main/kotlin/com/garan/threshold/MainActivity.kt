@@ -16,6 +16,10 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.ui.ExperimentalComposeUiApi
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.testTagsAsResourceId
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
@@ -128,6 +132,11 @@ class MainActivity : ComponentActivity() {
         savedTriggers: List<SavedTrigger> = emptyList(),
     ) {
         val repository = appContainer.settingsRepository
+        val keepTriggerIds = savedTriggers.map { it.id }.toSet()
+        repository.getSettings().savedTriggers
+            .map { it.id }
+            .filter { it !in keepTriggerIds }
+            .forEach { repository.deleteTrigger(it) }
         repository.updateBaseProfile(baseProfile)
         savedTriggers.forEach { repository.saveTrigger(it) }
         repository.updateCustomProfiles(customProfiles)
@@ -265,8 +274,10 @@ class MainActivity : ComponentActivity() {
                     }
                 }
 
+                @OptIn(ExperimentalComposeUiApi::class)
                 NavDisplay(
                     backStack = backStack,
+                    modifier = Modifier.semantics { testTagsAsResourceId = true },
                     onBack = {
                         if (backStack.size > 1) {
                             backStack.removeLastOrNull()
