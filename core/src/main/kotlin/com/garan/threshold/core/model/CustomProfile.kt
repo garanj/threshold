@@ -55,10 +55,11 @@ data class CustomProfile(
     }
 
     /**
-     * OS permissions or hardware capabilities required by this profile's inline [trigger].
+     * OS permissions or hardware capabilities required by this profile's inline [trigger]
+     * when [activationRules] is empty.
      */
     val requiredCapabilities: Set<ProfileCapability>
-        get() = trigger?.requiredCapabilities ?: emptySet()
+        get() = if (activationRules.isNotEmpty()) emptySet() else trigger?.requiredCapabilities ?: emptySet()
 
     /**
      * OS permissions or hardware capabilities required across all [activationRules] (or legacy [trigger]).

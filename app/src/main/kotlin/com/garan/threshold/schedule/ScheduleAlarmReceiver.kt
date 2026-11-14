@@ -37,6 +37,7 @@ class ScheduleAlarmReceiver : BroadcastReceiver() {
                 container.scheduleAlarmScheduler.syncNextScheduleAlarm(
                     profiles = settings.customProfiles,
                     savedTriggers = settings.savedTriggers,
+                    nfcLatches = settings.nfcLatches,
                 )
             } finally {
                 pendingResult?.finish()

@@ -888,4 +888,212 @@ class CascadingResolutionEngineTest {
         assertThat(wsAfterSecondTap.activeProfiles).isEmpty()
         assertThat(wsAfterSecondTap.activeNfcLatches).isEmpty()
     }
+
+    @Test
+    fun multiNfcAndRule_allowsSequentialTagLatchingAndActivatesOnlyWhenBothLatched() {
+        val nfcKeyA = SavedTrigger(
+            id = "t-nfc-a",
+            name = "Desk Tag A",
+            trigger = ProfileTrigger.Nfc(
+                NfcTrigger(
+                    tags = listOf(NfcTagEntry(uid = "04:AA:11:22", label = "Key A")),
+                    mode = NfcTriggerMode.TOGGLE_ON_TAP,
+                ),
+            ),
+        )
+        val nfcKeyB = SavedTrigger(
+            id = "t-nfc-b",
+            name = "Hallway Tag B",
+            trigger = ProfileTrigger.Nfc(
+                NfcTrigger(
+                    tags = listOf(NfcTagEntry(uid = "04:BB:33:44", label = "Key B")),
+                    mode = NfcTriggerMode.TOGGLE_ON_TAP,
+                ),
+            ),
+        )
+        val triggers = listOf(nfcKeyA, nfcKeyB)
+        val vaultProfile = CustomProfile(
+            id = "vault",
+            name = "Vault Lock",
+            priority = 0,
+            enabled = true,
+            trigger = null,
+            activationRules = listOf(TriggerRule(listOf("t-nfc-a", "t-nfc-b"))),
+            appAssignments = mapOf(socialComponent to AppAssignment.Blocked),
+        )
+        val profiles = listOf(vaultProfile)
+
+        // 1. Tap Key A first -> latches Key A ON; profile stays inactive until Key B is also tapped
+        val tapA = engine.processNfcTagTap(
+            rawTagUid = "04:AA:11:22",
+            savedTriggers = triggers,
+            customProfiles = profiles,
+            currentDay = DayOfWeek.WEDNESDAY,
+            currentTime = TimeOfDay(14, 0),
+            nowEpochMillis = 1_000L,
+        )
+        assertThat(tapA.outcome).isEqualTo(NfcTapOutcome.LATCHED_ON)
+        assertThat(tapA.updatedLatches.keys).containsExactly("t-nfc-a")
+
+        val wsAfterA = engine.resolveWorkingSet(
+            baseProfile = BaseProfileSettings(),
+            customProfiles = profiles,
+            currentDay = DayOfWeek.WEDNESDAY,
+            currentTime = TimeOfDay(14, 0),
+            defaultDialerPackage = dialerComponent.packageName,
+            savedTriggers = triggers,
+            nfcLatchStates = tapA.updatedLatches,
+            nowEpochMillis = 1_000L,
+        )
+        assertThat(wsAfterA.activeTriggerIds).containsExactly("t-nfc-a")
+        assertThat(wsAfterA.activeNfcLatches.keys).containsExactly("t-nfc-a")
+        assertThat(wsAfterA.activeProfiles).isEmpty()
+
+        // 2. Tap Key B second -> latches Key B ON while retaining Key A; profile now activates!
+        val tapB = engine.processNfcTagTap(
+            rawTagUid = "04:BB:33:44",
+            savedTriggers = triggers,
+            customProfiles = profiles,
+            currentDay = DayOfWeek.WEDNESDAY,
+            currentTime = TimeOfDay(14, 1),
+            previouslyActiveTriggerIds = wsAfterA.activeTriggerIds,
+            currentNfcLatches = wsAfterA.activeNfcLatches,
+            nowEpochMillis = 2_000L,
+        )
+        assertThat(tapB.outcome).isEqualTo(NfcTapOutcome.LATCHED_ON)
+        assertThat(tapB.updatedLatches.keys).containsExactly("t-nfc-a", "t-nfc-b")
+
+        val wsAfterB = engine.resolveWorkingSet(
+            baseProfile = BaseProfileSettings(),
+            customProfiles = profiles,
+            currentDay = DayOfWeek.WEDNESDAY,
+            currentTime = TimeOfDay(14, 1),
+            defaultDialerPackage = dialerComponent.packageName,
+            savedTriggers = triggers,
+            previouslyActiveTriggerIds = wsAfterA.activeTriggerIds,
+            nfcLatchStates = tapB.updatedLatches,
+            nowEpochMillis = 2_000L,
+        )
+        assertThat(wsAfterB.activeTriggerIds).containsExactly("t-nfc-a", "t-nfc-b")
+        assertThat(wsAfterB.activeProfiles).containsExactly(vaultProfile)
+
+        // 3. Tap Key A again -> unlatches Key A and deactivates profile while Key B stays latched
+        val untapA = engine.processNfcTagTap(
+            rawTagUid = "04:AA:11:22",
+            savedTriggers = triggers,
+            customProfiles = profiles,
+            currentDay = DayOfWeek.WEDNESDAY,
+            currentTime = TimeOfDay(14, 2),
+            previouslyActiveTriggerIds = wsAfterB.activeTriggerIds,
+            previouslyActiveProfileIds = setOf(vaultProfile.id),
+            currentNfcLatches = wsAfterB.activeNfcLatches,
+            nowEpochMillis = 3_000L,
+        )
+        assertThat(untapA.outcome).isEqualTo(NfcTapOutcome.UNLATCHED_OFF)
+        assertThat(untapA.updatedLatches.keys).containsExactly("t-nfc-b")
+    }
+
+    @Test
+    fun mutatingLatchedNfcTrigger_updatesTimedExpiryOrUnlatchesWhenTappedTagRemoved() {
+        val initialNfcTrigger = SavedTrigger(
+            id = "t-nfc",
+            name = "Focus Tag",
+            trigger = ProfileTrigger.Nfc(
+                NfcTrigger(
+                    tags = listOf(
+                        NfcTagEntry(uid = "04:A1:B2:C3", label = "Primary"),
+                        NfcTagEntry(uid = "04:D4:E5:F6", label = "Backup"),
+                    ),
+                    mode = NfcTriggerMode.TOGGLE_ON_TAP,
+                ),
+            ),
+        )
+        val profile = CustomProfile(
+            id = "focus",
+            name = "Focus",
+            priority = 0,
+            enabled = true,
+            trigger = null,
+            activationRules = listOf(TriggerRule(listOf("t-nfc"))),
+            appAssignments = mapOf(socialComponent to AppAssignment.Blocked),
+        )
+        val t0 = 5_000_000L
+
+        // 1. Tap Primary tag in TOGGLE_ON_TAP mode -> latches indefinitely (expiresAtEpochMillis = null)
+        val tapResult = engine.processNfcTagTap(
+            rawTagUid = "04:a1:b2:c3",
+            savedTriggers = listOf(initialNfcTrigger),
+            customProfiles = listOf(profile),
+            currentDay = DayOfWeek.THURSDAY,
+            currentTime = TimeOfDay(9, 0),
+            nowEpochMillis = t0,
+        )
+        assertThat(tapResult.outcome).isEqualTo(NfcTapOutcome.LATCHED_ON)
+        val initialLatch = tapResult.updatedLatches["t-nfc"]!!
+        assertThat(initialLatch.expiresAtEpochMillis).isNull()
+        assertThat(initialLatch.latchedByTagUid).isEqualTo("04:A1:B2:C3")
+
+        // 2. Edit trigger while latched: switch from TOGGLE_ON_TAP to TIMED_SESSION (15m)
+        val timedNfcTrigger = initialNfcTrigger.copy(
+            trigger = ProfileTrigger.Nfc(
+                NfcTrigger(
+                    tags = listOf(
+                        NfcTagEntry(uid = "04:A1:B2:C3", label = "Primary"),
+                        NfcTagEntry(uid = "04:D4:E5:F6", label = "Backup"),
+                    ),
+                    mode = NfcTriggerMode.TIMED_SESSION,
+                    durationMinutes = 15,
+                ),
+            ),
+        )
+        val wsAt10Min = engine.resolveWorkingSet(
+            baseProfile = BaseProfileSettings(),
+            customProfiles = listOf(profile),
+            currentDay = DayOfWeek.THURSDAY,
+            currentTime = TimeOfDay(9, 10),
+            defaultDialerPackage = dialerComponent.packageName,
+            savedTriggers = listOf(timedNfcTrigger),
+            nfcLatchStates = tapResult.updatedLatches,
+            nowEpochMillis = t0 + 10 * 60_000L,
+        )
+        assertThat(wsAt10Min.activeProfiles).containsExactly(profile)
+        assertThat(wsAt10Min.activeNfcLatches["t-nfc"]?.expiresAtEpochMillis)
+            .isEqualTo(t0 + 15 * 60_000L)
+
+        // At 15 minutes -> reconciled timed session expires!
+        val wsAt15Min = engine.resolveWorkingSet(
+            baseProfile = BaseProfileSettings(),
+            customProfiles = listOf(profile),
+            currentDay = DayOfWeek.THURSDAY,
+            currentTime = TimeOfDay(9, 15),
+            defaultDialerPackage = dialerComponent.packageName,
+            savedTriggers = listOf(timedNfcTrigger),
+            nfcLatchStates = wsAt10Min.activeNfcLatches,
+            nowEpochMillis = t0 + 15 * 60_000L,
+        )
+        assertThat(wsAt15Min.activeProfiles).isEmpty()
+        assertThat(wsAt15Min.activeNfcLatches).isEmpty()
+
+        // 3. Edit trigger while latched: remove Primary tag (04:A1:B2:C3), keeping only Backup tag
+        val primaryRemovedTrigger = initialNfcTrigger.copy(
+            trigger = ProfileTrigger.Nfc(
+                NfcTrigger(
+                    tags = listOf(NfcTagEntry(uid = "04:D4:E5:F6", label = "Backup")),
+                    mode = NfcTriggerMode.TOGGLE_ON_TAP,
+                ),
+            ),
+        )
+        val wsAfterTagRemoved = engine.resolveWorkingSet(
+            baseProfile = BaseProfileSettings(),
+            customProfiles = listOf(profile),
+            currentDay = DayOfWeek.THURSDAY,
+            currentTime = TimeOfDay(9, 5),
+            defaultDialerPackage = dialerComponent.packageName,
+            savedTriggers = listOf(primaryRemovedTrigger),
+            nfcLatchStates = tapResult.updatedLatches,
+            nowEpochMillis = t0 + 5 * 60_000L,
+        )
+        assertThat(wsAfterTagRemoved.activeProfiles).isEmpty()
+        assertThat(wsAfterTagRemoved.activeNfcLatches).isEmpty()
+    }
 }

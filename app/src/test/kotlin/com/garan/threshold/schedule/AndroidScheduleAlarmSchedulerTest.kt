@@ -230,4 +230,57 @@ class AndroidScheduleAlarmSchedulerTest {
         assertThat(alarms).hasSize(1)
         assertThat(alarms.first().triggerAtMs).isEqualTo(latchExpiryMillis)
     }
+
+    @Test
+    fun syncNextScheduleAlarm_whenNfcLatchExpiredMidMinute_doesNotScheduleAlarmInPast() {
+        val minuteFloorMillis = 1_700_000_000_000L
+        val exactNowMillis = minuteFloorMillis + 46_000L // 46s into the minute
+        val expiredMidMinuteMillis = minuteFloorMillis + 45_000L // expired 1s ago (45s into the minute)
+
+        val scheduler = AndroidScheduleAlarmScheduler(
+            context = context,
+            clockSource = {
+                LocalDayTime(
+                    dayOfWeek = DayOfWeek.MONDAY,
+                    timeOfDay = TimeOfDay(10, 0),
+                )
+            },
+            nowEpochMillisProvider = { minuteFloorMillis },
+            exactNowEpochMillisProvider = { exactNowMillis },
+        )
+
+        val nfcTrigger = SavedTrigger(
+            id = "t-nfc",
+            name = "Desk Tag",
+            trigger = ProfileTrigger.Nfc(
+                NfcTrigger(
+                    tags = listOf(NfcTagEntry(uid = "04:A2:3F:8B", label = "Desk")),
+                    mode = NfcTriggerMode.TIMED_SESSION,
+                    durationMinutes = 15,
+                ),
+            ),
+        )
+        val nfcProfile = CustomProfile(
+            id = "deep-focus",
+            name = "Deep Focus",
+            enabled = true,
+            trigger = null,
+            activationRules = listOf(TriggerRule(listOf("t-nfc"))),
+        )
+
+        scheduler.syncNextScheduleAlarm(
+            profiles = listOf(nfcProfile),
+            savedTriggers = listOf(nfcTrigger),
+            nfcLatches = mapOf(
+                "t-nfc" to NfcLatchState(
+                    triggerId = "t-nfc",
+                    latchedAtEpochMillis = expiredMidMinuteMillis - 15 * 60_000L,
+                    expiresAtEpochMillis = expiredMidMinuteMillis,
+                ),
+            ),
+        )
+
+        val shadowAlarmManager = shadowOf(alarmManager)
+        assertThat(shadowAlarmManager.scheduledAlarms).isEmpty()
+    }
 }

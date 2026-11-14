@@ -13,6 +13,8 @@ import com.garan.threshold.nfc.AndroidNfcReaderSource
 import com.garan.threshold.schedule.AndroidProfileCapabilityChecker
 import com.garan.threshold.schedule.AndroidScheduleAlarmScheduler
 import com.garan.threshold.ui.launcher.DialerPackageResolver
+import java.time.ZonedDateTime
+import java.time.temporal.ChronoUnit
 
 class ThresholdApplication : Application() {
     val container: ThresholdAppContainer by lazy { ThresholdAppContainer(applicationContext) }
@@ -57,6 +59,11 @@ class ThresholdAppContainer(context: Context) {
         AndroidScheduleAlarmScheduler(
             context = appContext,
             clockSource = activeClockSource,
+            nowEpochMillisProvider = {
+                nowEpochMillisOverrideForTesting
+                    ?: ZonedDateTime.now().truncatedTo(ChronoUnit.MINUTES).toInstant().toEpochMilli()
+            },
+            exactNowEpochMillisProvider = activeNowEpochMillisProvider,
         )
     }
 

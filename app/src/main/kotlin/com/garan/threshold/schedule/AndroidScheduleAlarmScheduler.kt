@@ -47,6 +47,7 @@ class AndroidScheduleAlarmScheduler(
     private val nowEpochMillisProvider: () -> Long = {
         ZonedDateTime.now().truncatedTo(ChronoUnit.MINUTES).toInstant().toEpochMilli()
     },
+    private val exactNowEpochMillisProvider: () -> Long = nowEpochMillisProvider,
 ) : ScheduleAlarmScheduler {
 
     private val alarmManager: AlarmManager?
@@ -81,12 +82,13 @@ class AndroidScheduleAlarmScheduler(
         )
 
         val currentMinuteFloorMillis = nowEpochMillisProvider()
+        val exactNowMillis = exactNowEpochMillisProvider()
         val scheduleTriggerAtMillis = nextTransition?.let {
             currentMinuteFloorMillis + it.minutesFromNow * 60_000L
         }
         val earliestNfcExpiryMillis = nfcLatches.values
             .mapNotNull { it.expiresAtEpochMillis }
-            .filter { it > currentMinuteFloorMillis }
+            .filter { it > exactNowMillis }
             .minOrNull()
 
         val triggerAtMillis = listOfNotNull(scheduleTriggerAtMillis, earliestNfcExpiryMillis).minOrNull()

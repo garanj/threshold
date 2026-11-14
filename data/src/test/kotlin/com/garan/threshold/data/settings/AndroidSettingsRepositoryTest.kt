@@ -452,4 +452,77 @@ class AndroidSettingsRepositoryTest {
             com.garan.threshold.core.model.NfcTagEntry(uid = "04:B1:22:99", label = "Badge"),
         ).inOrder()
     }
+
+    @Test
+    fun updateNfcLatches_persistsRoundTripAndReconcilesOnTriggerSaveOrDelete() = runTest(testDispatcher) {
+        val t1 = com.garan.threshold.core.model.SavedTrigger(
+            id = "t-nfc-1",
+            name = "Bedside",
+            trigger = com.garan.threshold.core.model.ProfileTrigger.Nfc(
+                com.garan.threshold.core.model.NfcTrigger(
+                    tags = listOf(com.garan.threshold.core.model.NfcTagEntry(uid = "04:AA:BB:CC", label = "Night")),
+                    mode = com.garan.threshold.core.model.NfcTriggerMode.TOGGLE_ON_TAP,
+                ),
+            ),
+        )
+        val t2 = com.garan.threshold.core.model.SavedTrigger(
+            id = "t-nfc-2",
+            name = "Desk",
+            trigger = com.garan.threshold.core.model.ProfileTrigger.Nfc(
+                com.garan.threshold.core.model.NfcTrigger(
+                    tags = listOf(com.garan.threshold.core.model.NfcTagEntry(uid = "04:11:22:33", label = "Desk")),
+                    mode = com.garan.threshold.core.model.NfcTriggerMode.TIMED_SESSION,
+                    durationMinutes = 30,
+                ),
+            ),
+        )
+        repository.saveTrigger(t1)
+        repository.saveTrigger(t2)
+
+        val latch1 = com.garan.threshold.core.model.NfcLatchState(
+            triggerId = "t-nfc-1",
+            latchedAtEpochMillis = 1_000_000L,
+            expiresAtEpochMillis = null,
+            latchedByTagUid = "04:AA:BB:CC",
+        )
+        val latch2 = com.garan.threshold.core.model.NfcLatchState(
+            triggerId = "t-nfc-2",
+            latchedAtEpochMillis = 2_000_000L,
+            expiresAtEpochMillis = 3_800_000L,
+            latchedByTagUid = "04:11:22:33",
+        )
+        repository.updateNfcLatches(
+            mapOf(
+                "t-nfc-1" to latch1,
+                "t-nfc-2" to latch2,
+            ),
+        )
+
+        val loadedLatches = repository.getSettings().nfcLatches
+        assertThat(loadedLatches).containsExactly(
+            "t-nfc-1",
+            latch1,
+            "t-nfc-2",
+            latch2,
+        )
+
+        // Editing t-nfc-1 from TOGGLE_ON_TAP to TIMED_SESSION (15m) updates its persisted expiresAtEpochMillis
+        repository.saveTrigger(
+            t1.copy(
+                trigger = com.garan.threshold.core.model.ProfileTrigger.Nfc(
+                    com.garan.threshold.core.model.NfcTrigger(
+                        tags = listOf(com.garan.threshold.core.model.NfcTagEntry(uid = "04:AA:BB:CC", label = "Night")),
+                        mode = com.garan.threshold.core.model.NfcTriggerMode.TIMED_SESSION,
+                        durationMinutes = 15,
+                    ),
+                ),
+            ),
+        )
+        assertThat(repository.getSettings().nfcLatches["t-nfc-1"]?.expiresAtEpochMillis)
+            .isEqualTo(1_000_000L + 15 * 60_000L)
+
+        // Deleting t-nfc-2 prunes its persisted latch
+        repository.deleteTrigger("t-nfc-2")
+        assertThat(repository.getSettings().nfcLatches.keys).containsExactly("t-nfc-1")
+    }
 }

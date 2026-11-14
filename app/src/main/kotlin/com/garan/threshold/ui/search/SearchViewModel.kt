@@ -254,7 +254,13 @@ class SearchViewModel(
                 currentNfcLatches = currentNfcLatches,
                 nowEpochMillis = nowMillis,
             )
+            val latchesChanged = tapResult.updatedLatches != currentNfcLatches
             currentNfcLatches = tapResult.updatedLatches
+            val updatedSettings = effective.copy(nfcLatches = currentNfcLatches)
+            lastObservedSettings = updatedSettings
+            if (latchesChanged) {
+                settingsRepository?.updateNfcLatches(currentNfcLatches)
+            }
             when (tapResult.outcome) {
                 NfcTapOutcome.LATCHED_ON,
                 NfcTapOutcome.UNLATCHED_OFF,
@@ -263,11 +269,11 @@ class SearchViewModel(
                 NfcTapOutcome.UNRECOGNIZED_TAG -> Unit
             }
             scheduleAlarmScheduler.syncNextScheduleAlarm(
-                profiles = effective.customProfiles,
-                savedTriggers = effective.savedTriggers,
+                profiles = updatedSettings.customProfiles,
+                savedTriggers = updatedSettings.savedTriggers,
                 nfcLatches = currentNfcLatches,
             )
-            reconcileWorkingSetLocked(effective)
+            reconcileWorkingSetLocked(updatedSettings)
         }
     }
 
@@ -284,6 +290,9 @@ class SearchViewModel(
             locationSource?.refreshLocation()
         }
         reconcileMutex.withLock {
+            if (settings == null || settings.nfcLatches.isNotEmpty()) {
+                currentNfcLatches = effective.nfcLatches
+            }
             lastObservedSettings = effective
             reconcileWorkingSetLocked(effective)
             scheduleAlarmScheduler.syncNextScheduleAlarm(
@@ -391,6 +400,7 @@ class SearchViewModel(
             locationSource?.refreshLocation()
         }
         reconcileMutex.withLock {
+            currentNfcLatches = settings.nfcLatches
             lastObservedSettings = settings
             reconcileWorkingSetLocked(settings)
             scheduleAlarmScheduler.syncNextScheduleAlarm(
@@ -426,6 +436,8 @@ class SearchViewModel(
         previouslyActiveTriggerIds = workingSet.activeTriggerIds
         currentNfcLatches = workingSet.activeNfcLatches
         if (currentNfcLatches != previousLatches) {
+            lastObservedSettings = settings.copy(nfcLatches = currentNfcLatches)
+            settingsRepository?.updateNfcLatches(currentNfcLatches)
             scheduleAlarmScheduler.syncNextScheduleAlarm(
                 profiles = settings.customProfiles,
                 savedTriggers = settings.savedTriggers,

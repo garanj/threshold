@@ -130,6 +130,7 @@ object ProfilesTestTags {
 
     fun triggerPickerItem(triggerId: String): String = "trigger_picker_item_$triggerId"
 
+    fun triggerEditorScheduleDay(day: DayOfWeek): String = "trigger_editor_schedule_day_${day.name}"
     fun triggerEditorNfcDuration(minutes: Int): String = "trigger_editor_nfc_duration_$minutes"
     fun triggerEditorNfcTagLabel(uid: String): String = "trigger_editor_nfc_tag_label_${NfcTagEntry.normalizeUid(uid)}"
     fun triggerEditorNfcTagRemove(uid: String): String =

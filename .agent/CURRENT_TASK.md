@@ -1,10 +1,14 @@
-# Current Task: Issue #84 — Increase Location Cache Freshness Window to 2m & Eliminate Double Registration
+# Active Task: Harden NFC Latch Persistence, Multi-NFC AND Rules, Trigger Mutation Reconciliation, and Alarm Scheduling
 
-- **Issue:** [#84](https://github.com/garanj/threshold/issues/84)
-- **Branch:** `fix/84-location-cache-and-single-registration`
+- **Issue:** [#86](https://github.com/garanj/threshold/issues/86)
+- **Branch:** `fix/86-nfc-and-trigger-state-machine-hardening`
 - **Status:** Ready for Review
 
 ## Checklist
-- [x] `:data` (TDD Red): Update `AndroidLocationSourceTest` to assert that a 60s-old fix (minute tick) is a cache hit and >120s-old fix triggers a single active refresh
-- [x] `:data` (TDD Green): Update `STALE_FIX_THRESHOLD_MS = 120_000L` and use a single `requestLocationUpdates` registration in `AndroidLocationSource.kt`
-- [x] Verify all unit tests and `spotlessCheck` pass
+- [x] Write failing unit tests across `:core`, `:data`, and `:app` (Red phase)
+- [x] Update `NfcLatchState` (`latchedByTagUid`), `CustomProfile` (`requiredCapabilities`), and `CascadingResolutionEngine` (reconcile trigger mutations + support multi-NFC `AND` sequential taps)
+- [x] Persist `nfcLatches: Map<String, NfcLatchState>` in `SettingsRepository` / `AndroidSettingsRepository` and wire into `SearchViewModel` and `ScheduleAlarmReceiver`
+- [x] Fix sub-minute NFC expiry alarm comparison in `AndroidScheduleAlarmScheduler` and wire `activeNowEpochMillisProvider` in `ThresholdAppContainer`
+- [x] Marshal `AndroidNfcReaderSource` registration callbacks onto main thread and eliminate duplicate `relaySnap()` in `ScheduleEditorDialog.kt`
+- [x] Require `selectedDays.isNotEmpty()` for `SCHEDULE` triggers in `ScheduleEditorDialog.kt`
+- [x] Verify `./gradlew test` passes with zero `android.*` imports in `:core`

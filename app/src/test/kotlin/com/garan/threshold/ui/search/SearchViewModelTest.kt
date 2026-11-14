@@ -1001,6 +1001,98 @@ class SearchViewModelTest {
             assertThat(vm.uiState.value.activeProfiles).isEmpty()
         }
 
+    @Test
+    fun nfcTriggerLatch_persistsAcrossViewModelRecreationAndReconcilesOnTriggerEdit() = runTest(testDispatcher) {
+        val deskNfc = com.garan.threshold.core.model.SavedTrigger(
+            id = "t-desk",
+            name = "Desk Tag",
+            trigger = com.garan.threshold.core.model.ProfileTrigger.Nfc(
+                com.garan.threshold.core.model.NfcTrigger(
+                    tags = listOf(
+                        com.garan.threshold.core.model.NfcTagEntry(
+                            uid = "04:AA:BB:CC",
+                            label = "Desk",
+                        ),
+                        com.garan.threshold.core.model.NfcTagEntry(
+                            uid = "04:DD:EE:FF",
+                            label = "Door",
+                        ),
+                    ),
+                    mode = com.garan.threshold.core.model.NfcTriggerMode.TOGGLE_ON_TAP,
+                ),
+            ),
+        )
+        val focusProfile = com.garan.threshold.core.model.CustomProfile(
+            id = "focus",
+            name = "Focus",
+            enabled = true,
+            trigger = null,
+            activationRules = listOf(
+                com.garan.threshold.core.model.TriggerRule(listOf("t-desk")),
+            ),
+            appAssignments = mapOf(
+                socialComponent to com.garan.threshold.core.model.AppAssignment.Blocked,
+            ),
+        )
+
+        val fakeRepo = com.garan.threshold.ui.settings.FakeSettingsRepository(
+            com.garan.threshold.core.model.ThresholdSettings(
+                customProfiles = listOf(focusProfile),
+                savedTriggers = listOf(deskNfc),
+            ),
+        )
+        val nfcScansFlow = kotlinx.coroutines.flow.MutableSharedFlow<String>(extraBufferCapacity = 4)
+        val fakeNfcReader = object : com.garan.threshold.core.port.NfcReaderSource {
+            override val tagScans = nfcScansFlow
+        }
+
+        val vm1 = SearchViewModel(
+            packageIndexSource = fakePackageIndexSource,
+            settingsRepository = fakeRepo,
+            nfcReaderSource = fakeNfcReader,
+            nowEpochMillisProvider = { 10_000L },
+            ioDispatcher = testDispatcher,
+        )
+        advanceUntilIdle()
+
+        // 1. Tap Desk Tag on vm1 -> latches ON and persists in fakeRepo
+        nfcScansFlow.tryEmit("04:AA:BB:CC")
+        advanceUntilIdle()
+        assertThat(vm1.uiState.value.activeProfiles).containsExactly(focusProfile)
+        assertThat(fakeRepo.getSettings().nfcLatches).containsKey("t-desk")
+
+        // 2. Simulate process restart by creating a new SearchViewModel backed by the same repository
+        val vm2 = SearchViewModel(
+            packageIndexSource = fakePackageIndexSource,
+            settingsRepository = fakeRepo,
+            nfcReaderSource = fakeNfcReader,
+            nowEpochMillisProvider = { 15_000L },
+            ioDispatcher = testDispatcher,
+        )
+        advanceUntilIdle()
+        assertThat(vm2.uiState.value.activeProfiles).containsExactly(focusProfile)
+
+        // 3. Edit trigger to remove the tapped tag (04:AA:BB:CC) -> vm2 reconciles and unlatches
+        fakeRepo.saveTrigger(
+            deskNfc.copy(
+                trigger = com.garan.threshold.core.model.ProfileTrigger.Nfc(
+                    com.garan.threshold.core.model.NfcTrigger(
+                        tags = listOf(
+                            com.garan.threshold.core.model.NfcTagEntry(
+                                uid = "04:DD:EE:FF",
+                                label = "Door",
+                            ),
+                        ),
+                        mode = com.garan.threshold.core.model.NfcTriggerMode.TOGGLE_ON_TAP,
+                    ),
+                ),
+            ),
+        )
+        advanceUntilIdle()
+        assertThat(vm2.uiState.value.activeProfiles).isEmpty()
+        assertThat(fakeRepo.getSettings().nfcLatches).isEmpty()
+    }
+
     private class TestHapticEngine : HapticEngine {
         var rotaryDetentCount = 0
             private set

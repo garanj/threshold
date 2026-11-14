@@ -2,6 +2,8 @@ package com.garan.threshold.ui.settings
 
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
@@ -633,5 +635,49 @@ class ProfilesScreenTest {
             TriggerRule(listOf(createdTrigger.id)),
         )
         assertThat(activeScanListener).isNull()
+    }
+
+    @Test
+    fun triggerEditor_whenAllScheduleDaysUnchecked_disablesSaveButtonUntilDaySelected() {
+        val initialSchedule = ScheduleTrigger(
+            days = setOf(DayOfWeek.MONDAY),
+            startTime = TimeOfDay(9, 0),
+            endTime = TimeOfDay(17, 0),
+        )
+
+        composeTestRule.setContent {
+            ThresholdTheme {
+                TriggerEditorSheet(
+                    initialName = "Monday Focus",
+                    initialTrigger = ProfileTrigger.Schedule(initialSchedule),
+                    isNewTrigger = false,
+                    onSaveTrigger = { _, _ -> },
+                    onDismiss = {},
+                )
+            }
+        }
+
+        // Initially Monday is selected -> Save button is enabled
+        composeTestRule
+            .onNodeWithTag(ProfilesTestTags.TRIGGER_EDITOR_SAVE_BUTTON)
+            .assertIsEnabled()
+
+        // Uncheck Monday -> 0 days selected -> Save button must be disabled
+        composeTestRule
+            .onNodeWithTag(ProfilesTestTags.triggerEditorScheduleDay(DayOfWeek.MONDAY))
+            .performSemanticsAction(SemanticsActions.OnClick)
+
+        composeTestRule
+            .onNodeWithTag(ProfilesTestTags.TRIGGER_EDITOR_SAVE_BUTTON)
+            .assertIsNotEnabled()
+
+        // Select Wednesday -> Save button becomes enabled again
+        composeTestRule
+            .onNodeWithTag(ProfilesTestTags.triggerEditorScheduleDay(DayOfWeek.WEDNESDAY))
+            .performSemanticsAction(SemanticsActions.OnClick)
+
+        composeTestRule
+            .onNodeWithTag(ProfilesTestTags.TRIGGER_EDITOR_SAVE_BUTTON)
+            .assertIsEnabled()
     }
 }
