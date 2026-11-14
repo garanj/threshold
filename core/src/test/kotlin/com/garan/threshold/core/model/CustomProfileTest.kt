@@ -141,4 +141,25 @@ class CustomProfileTest {
             ),
         )
     }
+
+    @Test
+    fun referencedTriggerIdsAndSavedTriggersById_areCachedOncePerInstance() {
+        val profile = CustomProfile(
+            id = "work",
+            name = "Work",
+            trigger = null,
+            activationRules = listOf(
+                TriggerRule(listOf("t-1", "t-2")),
+                TriggerRule(listOf("t-3")),
+            ),
+        )
+        assertThat(profile.referencedTriggerIds).isSameInstanceAs(profile.referencedTriggerIds)
+
+        val settings = ThresholdSettings(
+            savedTriggers = listOf(
+                SavedTrigger(id = "t-1", name = "One", trigger = ProfileTrigger.Schedule()),
+            ),
+        )
+        assertThat(settings.savedTriggersById).isSameInstanceAs(settings.savedTriggersById)
+    }
 }

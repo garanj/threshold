@@ -320,6 +320,13 @@ class MainActivity : ComponentActivity() {
                     }
                 }
 
+                val topRoute = backStack.lastOrNull()
+                LaunchedEffect(topRoute) {
+                    if (topRoute == ThresholdRoute.Home) {
+                        settingsViewModel.releaseLoadedApps()
+                    }
+                }
+
                 @OptIn(ExperimentalComposeUiApi::class)
                 NavDisplay(
                     backStack = backStack,
