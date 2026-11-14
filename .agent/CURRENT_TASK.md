@@ -1,11 +1,13 @@
-# Active Task: Cache Derived Trigger Sets, Memoize DataStore JSON Parsing, and Release Settings App List on Home Return
+# Active Task: Decompose Monolithic ProfilesScreen and ScheduleEditorDialog into Focused Compose Files
 
-- **Issue:** [#88](https://github.com/garanj/threshold/issues/88)
-- **Branch:** `refactor/88-perf-and-memory-polish`
+- **Issue:** [#91](https://github.com/garanj/threshold/issues/91)
+- **Branch:** `refactor/91-decompose-profiles-and-trigger-ui`
 - **Status:** Ready for Review
 
 ## Checklist
-- [x] Convert `CustomProfile.referencedTriggerIds` and `ThresholdSettings.savedTriggersById` to stored `val` properties (`:core:test` passing)
-- [x] Memoize raw string -> parsed collection deserialization in `AndroidSettingsRepository` (`:data:testDebugUnitTest` passing)
-- [x] Add `SettingsViewModel.releaseLoadedApps()` + unit test in `SettingsViewModelTest` and invoke when returning to `ThresholdRoute.Home` in `MainActivity`
-- [x] Verify `./gradlew spotlessApply spotlessCheck test` and open PR for [#88](https://github.com/garanj/threshold/issues/88)
+- [x] Extract `ProfilesTestTags.kt`
+- [x] Extract `TriggerFormatting.kt`
+- [x] Extract `ProfileRulesEditorSheet.kt`
+- [x] Rename/split `ScheduleEditorDialog.kt` -> `TriggerEditorSheet.kt` and `TriggerTypeEditorFields.kt`
+- [x] Trim `ProfilesScreen.kt` to top-level screen and card components
+- [x] Run `./gradlew spotlessApply spotlessCheck test` and open PR for [#91](https://github.com/garanj/threshold/issues/91)
