@@ -521,9 +521,40 @@ class AndroidSettingsRepositoryTest {
         assertThat(repository.getSettings().nfcLatches["t-nfc-1"]?.expiresAtEpochMillis)
             .isEqualTo(1_000_000L + 15 * 60_000L)
 
-        // Deleting t-nfc-2 prunes its persisted latch
+        // Deleting t-nfc-2 prunes its persisted latch and daily usage
+        repository.updateNfcLatches(
+            latches = repository.getSettings().nfcLatches,
+            dailyUsage = mapOf(
+                "t-nfc-1" to com.garan.threshold.core.model.NfcDailyUsage(localDate = "2026-11-14", tapCount = 1),
+                "t-nfc-2" to com.garan.threshold.core.model.NfcDailyUsage(localDate = "2026-11-14", tapCount = 2),
+            ),
+        )
+        assertThat(repository.getSettings().nfcDailyUsage.keys).containsExactly("t-nfc-1", "t-nfc-2")
+
         repository.deleteTrigger("t-nfc-2")
         assertThat(repository.getSettings().nfcLatches.keys).containsExactly("t-nfc-1")
+        assertThat(repository.getSettings().nfcDailyUsage.keys).containsExactly("t-nfc-1")
+    }
+
+    @Test
+    fun saveTrigger_persistsNfcTriggerMaxDailyUsesRoundTrip() = runTest(testDispatcher) {
+        val limitedTrigger = com.garan.threshold.core.model.SavedTrigger(
+            id = "t-nfc-limited",
+            name = "Break Tag",
+            trigger = com.garan.threshold.core.model.ProfileTrigger.Nfc(
+                com.garan.threshold.core.model.NfcTrigger(
+                    tags = listOf(com.garan.threshold.core.model.NfcTagEntry(uid = "04:AA:11:22", label = "Break")),
+                    mode = com.garan.threshold.core.model.NfcTriggerMode.TIMED_SESSION,
+                    durationMinutes = 15,
+                    maxDailyUses = 3,
+                ),
+            ),
+        )
+        repository.saveTrigger(limitedTrigger)
+
+        val loaded = repository.getSettings().savedTriggers.first { it.id == "t-nfc-limited" }
+        val loadedNfc = (loaded.trigger as com.garan.threshold.core.model.ProfileTrigger.Nfc).nfc
+        assertThat(loadedNfc.maxDailyUses).isEqualTo(3)
     }
 
     @Test

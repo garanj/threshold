@@ -498,6 +498,8 @@ internal fun NfcEditorFields(
     onNfcModeChange: (NfcTriggerMode) -> Unit,
     nfcDurationMinutes: Int,
     onNfcDurationMinutesChange: (Int) -> Unit,
+    nfcMaxDailyUses: Int?,
+    onNfcMaxDailyUsesChange: (Int?) -> Unit,
     nfcTags: List<NfcTagEntry>,
     onTagLabelChange: (uid: String, label: String) -> Unit,
     onRemoveTag: (uid: String) -> Unit,
@@ -591,6 +593,97 @@ internal fun NfcEditorFields(
                 )
             }
         }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        Text(
+            text = "MAXIMUM USES PER DAY",
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        val maxUsesLabel = when (nfcMaxDailyUses) {
+            null -> "Unlimited"
+            1 -> "1 activation per day"
+            else -> "$nfcMaxDailyUses activations per day"
+        }
+        val canDecrement = nfcMaxDailyUses != null
+        val canIncrement = nfcMaxDailyUses == null || nfcMaxDailyUses < NfcTrigger.MAX_DAILY_USES
+
+        ListItem(
+            headlineContent = {
+                Text(
+                    text = maxUsesLabel,
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.testTag(ProfilesTestTags.TRIGGER_EDITOR_NFC_MAX_USES_VALUE),
+                )
+            },
+            supportingContent = {
+                Text(
+                    text = "Only taps that start an active session count; resets at midnight",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            },
+            trailingContent = {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    IconButton(
+                        onClick = {
+                            val current = nfcMaxDailyUses ?: return@IconButton
+                            val next = if (current <= NfcTrigger.MIN_DAILY_USES) null else current - 1
+                            onNfcMaxDailyUsesChange(next)
+                        },
+                        enabled = canDecrement,
+                        modifier = Modifier.testTag(ProfilesTestTags.TRIGGER_EDITOR_NFC_MAX_USES_DECREMENT),
+                    ) {
+                        Icon(
+                            imageVector = ThresholdIcons.Remove,
+                            contentDescription = "Decrease maximum daily uses",
+                            tint = if (canDecrement) {
+                                MaterialTheme.colorScheme.onSurface
+                            } else {
+                                MaterialTheme.colorScheme.outlineVariant
+                            },
+                        )
+                    }
+
+                    IconButton(
+                        onClick = {
+                            val current = nfcMaxDailyUses
+                            val next = if (current == null) {
+                                NfcTrigger.MIN_DAILY_USES
+                            } else {
+                                (current + 1).coerceAtMost(NfcTrigger.MAX_DAILY_USES)
+                            }
+                            onNfcMaxDailyUsesChange(next)
+                        },
+                        enabled = canIncrement,
+                        modifier = Modifier.testTag(ProfilesTestTags.TRIGGER_EDITOR_NFC_MAX_USES_INCREMENT),
+                    ) {
+                        Icon(
+                            imageVector = ThresholdIcons.Add,
+                            contentDescription = "Increase maximum daily uses",
+                            tint = if (canIncrement) {
+                                MaterialTheme.colorScheme.onSurface
+                            } else {
+                                MaterialTheme.colorScheme.outlineVariant
+                            },
+                        )
+                    }
+                }
+            },
+            colors = ListItemDefaults.colors(
+                containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+            ),
+            modifier = Modifier.fillMaxWidth(),
+        )
     }
 
     Spacer(modifier = Modifier.height(16.dp))

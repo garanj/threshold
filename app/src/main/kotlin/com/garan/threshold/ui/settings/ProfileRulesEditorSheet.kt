@@ -111,13 +111,29 @@ fun ProfileRulesEditorSheet(
         }
     }
 
-    fun requestAttach(target: TriggerAttachTarget) {
+    fun targetRuleAlreadyHasNfc(target: TriggerAttachTarget): Boolean = when (target) {
+        is TriggerAttachTarget.NewOrRule -> false
+        is TriggerAttachTarget.AndInRule ->
+            rules.getOrNull(target.ruleIndex)?.triggerIds?.any { id ->
+                triggersById[id]?.trigger is ProfileTrigger.Nfc
+            } == true
+    }
+
+    fun availableTriggersForTarget(target: TriggerAttachTarget): List<SavedTrigger> {
         val alreadyInTargetRow = when (target) {
             is TriggerAttachTarget.NewOrRule -> emptySet()
             is TriggerAttachTarget.AndInRule ->
                 rules.getOrNull(target.ruleIndex)?.triggerIds?.toSet().orEmpty()
         }
-        val availableExisting = triggersById.values.filter { it.id !in alreadyInTargetRow }
+        val disallowNfc = targetRuleAlreadyHasNfc(target)
+        return triggersById.values.filter { candidate ->
+            candidate.id !in alreadyInTargetRow &&
+                (!disallowNfc || candidate.trigger !is ProfileTrigger.Nfc)
+        }
+    }
+
+    fun requestAttach(target: TriggerAttachTarget) {
+        val availableExisting = availableTriggersForTarget(target)
         if (availableExisting.isEmpty()) {
             isCreatingTriggerForTarget = target
         } else {
@@ -434,12 +450,7 @@ fun ProfileRulesEditorSheet(
 
     // Picker sheet for selecting an existing SavedTrigger or creating a new one
     attachTarget?.let { target ->
-        val alreadyInTargetRow = when (target) {
-            is TriggerAttachTarget.NewOrRule -> emptySet()
-            is TriggerAttachTarget.AndInRule ->
-                rules.getOrNull(target.ruleIndex)?.triggerIds?.toSet().orEmpty()
-        }
-        val availableExisting = triggersById.values.filter { it.id !in alreadyInTargetRow }
+        val availableExisting = availableTriggersForTarget(target)
 
         ModalBottomSheet(
             onDismissRequest = { attachTarget = null },
@@ -545,6 +556,7 @@ fun ProfileRulesEditorSheet(
             onUseCurrentLocation = onUseCurrentLocation,
             onOpenMapApp = onOpenMapApp,
             onRegisterNfcScanListener = onRegisterNfcScanListener,
+            allowNfcTriggerType = !targetRuleAlreadyHasNfc(target),
             hapticEngine = hapticEngine,
             onSaveTrigger = { triggerName, profileTrigger ->
                 val created = SavedTrigger(

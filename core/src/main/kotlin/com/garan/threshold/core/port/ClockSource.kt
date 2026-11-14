@@ -5,9 +5,17 @@ import com.garan.threshold.core.model.TimeOfDay
 import java.time.LocalDateTime
 
 /**
- * Snapshot of the current local day of week and time of day.
+ * Snapshot of the current local day of week, 24-hour time of day, and ISO-8601 local calendar date (`"YYYY-MM-DD"`).
  */
-data class LocalDayTime(val dayOfWeek: DayOfWeek, val timeOfDay: TimeOfDay)
+data class LocalDayTime(
+    val dayOfWeek: DayOfWeek,
+    val timeOfDay: TimeOfDay,
+    val localDate: String = DEFAULT_LOCAL_DATE,
+) {
+    companion object {
+        const val DEFAULT_LOCAL_DATE = "1970-01-01"
+    }
+}
 
 /**
  * Outbound port providing the current local day of week and 24-hour time of day.
@@ -32,6 +40,7 @@ object SystemClockSource : ClockSource {
         return LocalDayTime(
             dayOfWeek = day,
             timeOfDay = TimeOfDay(now.hour, now.minute),
+            localDate = now.toLocalDate().toString(),
         )
     }
 }

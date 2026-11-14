@@ -102,6 +102,7 @@ fun TriggerEditorSheet(
     onUseCurrentLocation: ((onLocationResolved: (LocationFix) -> Unit) -> Unit)? = null,
     onOpenMapApp: (LocationFix?) -> Unit = {},
     onRegisterNfcScanListener: (((String) -> Unit)?) -> Unit = {},
+    allowNfcTriggerType: Boolean = true,
 ) {
     ProfileEditorSheet(
         initialName = initialName,
@@ -115,6 +116,7 @@ fun TriggerEditorSheet(
         onUseCurrentLocation = onUseCurrentLocation,
         onOpenMapApp = onOpenMapApp,
         onRegisterNfcScanListener = onRegisterNfcScanListener,
+        allowNfcTriggerType = allowNfcTriggerType,
         nameFieldLabel = "Trigger name",
         newTitle = "New Trigger",
         editTitle = "Edit Trigger",
@@ -161,6 +163,7 @@ fun ProfileEditorSheet(
     onOpenMapApp: (LocationFix?) -> Unit = {},
     onRegisterNfcScanListener: (((String) -> Unit)?) -> Unit = {},
     onSaveTrigger: ((name: String, trigger: ProfileTrigger) -> Unit)? = null,
+    allowNfcTriggerType: Boolean = true,
     nameFieldLabel: String = "Profile name",
     newTitle: String = "New Profile",
     editTitle: String = "Edit Profile",
@@ -234,6 +237,7 @@ fun ProfileEditorSheet(
     var nfcDurationMinutes by remember {
         mutableIntStateOf(seedNfc?.durationMinutes ?: NfcTrigger.DEFAULT_DURATION_MINUTES)
     }
+    var nfcMaxDailyUses by remember { mutableStateOf(seedNfc?.maxDailyUses) }
     var nfcTags by remember { mutableStateOf(seedNfc?.tags ?: emptyList()) }
 
     DisposableEffect(selectedKind, onRegisterNfcScanListener) {
@@ -360,11 +364,12 @@ fun ProfileEditorSheet(
                     SegmentedButton(
                         selected = selectedKind == EditorTriggerKind.NFC,
                         onClick = {
-                            if (selectedKind != EditorTriggerKind.NFC) {
+                            if (allowNfcTriggerType && selectedKind != EditorTriggerKind.NFC) {
                                 hapticEngine.rotaryDetent()
                                 selectedKind = EditorTriggerKind.NFC
                             }
                         },
+                        enabled = allowNfcTriggerType,
                         shape = SegmentedButtonDefaults.itemShape(index = 2, count = 3),
                         modifier = Modifier.testTag(ProfilesTestTags.TRIGGER_EDITOR_TYPE_NFC),
                         icon = {
@@ -440,6 +445,11 @@ fun ProfileEditorSheet(
                         onNfcDurationMinutesChange = {
                             hapticEngine.rotaryDetent()
                             nfcDurationMinutes = it
+                        },
+                        nfcMaxDailyUses = nfcMaxDailyUses,
+                        onNfcMaxDailyUsesChange = {
+                            hapticEngine.rotaryDetent()
+                            nfcMaxDailyUses = it
                         },
                         nfcTags = nfcTags,
                         onTagLabelChange = { uid, updatedLabel ->
@@ -523,6 +533,11 @@ fun ProfileEditorSheet(
                                     tags = nfcTags.map { it.copy(label = it.label.trim()) },
                                     mode = nfcMode,
                                     durationMinutes = nfcDurationMinutes,
+                                    maxDailyUses = if (nfcMode == NfcTriggerMode.TIMED_SESSION) {
+                                        nfcMaxDailyUses
+                                    } else {
+                                        null
+                                    },
                                 )
                                 onSaveTrigger?.invoke(resolvedName, ProfileTrigger.Nfc(newNfc))
                                 onDismiss()

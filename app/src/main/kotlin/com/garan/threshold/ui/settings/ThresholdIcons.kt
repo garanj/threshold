@@ -59,6 +59,25 @@ object ThresholdIcons {
         }.build()
     }
 
+    val Remove: ImageVector by lazy {
+        ImageVector.Builder(
+            name = "Remove",
+            defaultWidth = 24.dp,
+            defaultHeight = 24.dp,
+            viewportWidth = 24f,
+            viewportHeight = 24f,
+        ).apply {
+            path(fill = SolidColor(Color.White)) {
+                moveTo(19f, 13f)
+                horizontalLineTo(5f)
+                verticalLineTo(11f)
+                horizontalLineTo(19f)
+                verticalLineTo(13f)
+                close()
+            }
+        }.build()
+    }
+
     val Delete: ImageVector by lazy {
         ImageVector.Builder(
             name = "Delete",

@@ -7,6 +7,7 @@ import com.garan.threshold.core.model.ComponentKey
 import com.garan.threshold.core.model.CustomProfile
 import com.garan.threshold.core.model.DayOfWeek
 import com.garan.threshold.core.model.LocationFix
+import com.garan.threshold.core.model.NfcDailyUsage
 import com.garan.threshold.core.model.NfcLatchState
 import com.garan.threshold.core.model.NfcTagEntry
 import com.garan.threshold.core.model.NfcTriggerMode
@@ -14,6 +15,7 @@ import com.garan.threshold.core.model.Profile
 import com.garan.threshold.core.model.ProfileTrigger
 import com.garan.threshold.core.model.SavedTrigger
 import com.garan.threshold.core.model.TimeOfDay
+import com.garan.threshold.core.port.LocalDayTime
 import kotlin.random.Random
 
 /**
@@ -37,6 +39,13 @@ enum class NfcTapOutcome {
     COMPANION_CONDITIONS_NOT_MET,
 
     /**
+     * The tapped tag matched a [NfcTriggerMode.TIMED_SESSION] trigger whose companion conditions were met,
+     * but its [com.garan.threshold.core.model.NfcTrigger.maxDailyUses] limit for the current local calendar
+     * day has already been reached.
+     */
+    DAILY_LIMIT_REACHED,
+
+    /**
      * The tapped tag UID is not registered in any [SavedTrigger].
      */
     UNRECOGNIZED_TAG,
@@ -49,6 +58,7 @@ data class NfcTapResult(
     val outcome: NfcTapOutcome,
     val updatedLatches: Map<String, NfcLatchState>,
     val affectedTriggerIds: Set<String> = emptySet(),
+    val updatedDailyUsage: Map<String, NfcDailyUsage> = emptyMap(),
 )
 
 /**
@@ -145,18 +155,17 @@ class CascadingResolutionEngine {
         if (candidateNfcIds.isEmpty()) return ambientActiveIds
 
         // 2. If customProfiles are provided, verify each candidate NFC trigger still has at least one
-        //    enabled profile rule whose ambient companion conditions (`Schedule` / `Geo`) are satisfied;
-        //    otherwise auto-unlatch it.
+        //    enabled profile rule (with at most 1 NFC trigger) whose ambient companion conditions
+        //    (`Schedule` / `Geo`) are satisfied; otherwise auto-unlatch it.
         val survivingNfcIds = if (customProfiles.isEmpty()) {
             candidateNfcIds
         } else {
-            val eligibleIdsForNfcRetention = ambientActiveIds + validNfcTriggerIds
             candidateNfcIds.filterTo(linkedSetOf()) { nfcId ->
                 customProfiles.any { profile ->
                     profile.enabled &&
                         profile.activationRules.any { rule ->
                             nfcId in rule.triggerIds &&
-                                rule.triggerIds.all { it in eligibleIdsForNfcRetention }
+                                rule.triggerIds.all { it == nfcId || it in ambientActiveIds }
                         }
                 }
             }
@@ -189,10 +198,13 @@ class CascadingResolutionEngine {
 
     /**
      * Processes a physical NFC tag tap for [rawTagUid] at [nowEpochMillis]:
-     * - If any matching [ProfileTrigger.Nfc] is currently active, tapping unlatches it OFF.
-     * - If matching [ProfileTrigger.Nfc] triggers are currently OFF, each trigger latches ON only if
-     *   at least one enabled profile's `AND` rule referencing it has all of its ambient companion conditions
-     *   currently satisfied ("no early taps").
+     * - If any matching [ProfileTrigger.Nfc] is currently active, tapping unlatches it OFF without
+     *   consuming a daily activation.
+     * - If matching [ProfileTrigger.Nfc] triggers are currently OFF, each trigger latches ON only if:
+     *   1. At least one enabled profile's single-NFC `AND` rule referencing it has all of its ambient
+     *      companion conditions (`Schedule` / `Geo`) currently satisfied ("no early taps"), and
+     *   2. For [NfcTriggerMode.TIMED_SESSION] triggers with a configured `maxDailyUses`, the trigger
+     *      has remaining activations on [currentLocalDate].
      */
     fun processNfcTagTap(
         rawTagUid: String,
@@ -205,6 +217,8 @@ class CascadingResolutionEngine {
         previouslyActiveProfileIds: Set<String> = emptySet(),
         currentNfcLatches: Map<String, NfcLatchState> = emptyMap(),
         nowEpochMillis: Long = 0L,
+        currentDailyUsage: Map<String, NfcDailyUsage> = emptyMap(),
+        currentLocalDate: String = LocalDayTime.DEFAULT_LOCAL_DATE,
     ): NfcTapResult {
         val normalizedUid = NfcTagEntry.normalizeUid(rawTagUid)
         val matchingNfcTriggers = savedTriggers.filter { saved ->
@@ -215,6 +229,7 @@ class CascadingResolutionEngine {
             return NfcTapResult(
                 outcome = NfcTapOutcome.UNRECOGNIZED_TAG,
                 updatedLatches = currentNfcLatches,
+                updatedDailyUsage = currentDailyUsage,
             )
         }
 
@@ -237,7 +252,7 @@ class CascadingResolutionEngine {
             nowEpochMillis = nowEpochMillis,
         )
 
-        // If any matching NFC trigger is currently active -> toggle it OFF
+        // If any matching NFC trigger is currently active -> toggle it OFF (does not increment daily usage)
         val activeMatches = matchingNfcTriggers.filter { it.id in currentlyActiveIds }
         if (activeMatches.isNotEmpty()) {
             val idsToUnlatch = activeMatches.mapTo(linkedSetOf()) { it.id }
@@ -245,34 +260,51 @@ class CascadingResolutionEngine {
                 outcome = NfcTapOutcome.UNLATCHED_OFF,
                 updatedLatches = validCurrentLatches - idsToUnlatch,
                 affectedTriggerIds = idsToUnlatch,
+                updatedDailyUsage = currentDailyUsage,
             )
         }
 
-        // Otherwise, matching NFC triggers are currently OFF -> check if ambient companion AND conditions allow latching
-        val validNfcTriggerIds = savedTriggers.mapNotNullTo(linkedSetOf()) { saved ->
-            val nfcSpec = saved.trigger as? ProfileTrigger.Nfc ?: return@mapNotNullTo null
-            if (nfcSpec.nfc.tags.isNotEmpty()) saved.id else null
+        // Otherwise, matching NFC triggers are currently OFF -> check if ambient companion AND conditions
+        // in a single-NFC rule allow latching
+        val ambientActiveIds = savedTriggers.mapNotNullTo(linkedSetOf()) { saved ->
+            if (saved.trigger !is ProfileTrigger.Nfc && saved.id in currentlyActiveIds) saved.id else null
         }
-        val eligibleIdsForLatching = currentlyActiveIds + validNfcTriggerIds
 
-        val latchableTriggers = matchingNfcTriggers.filter { nfcTrigger ->
+        val companionSatisfiedTriggers = matchingNfcTriggers.filter { nfcTrigger ->
+            val nfcSpec = (nfcTrigger.trigger as? ProfileTrigger.Nfc)?.nfc ?: return@filter false
+            if (nfcSpec.tags.isEmpty()) return@filter false
             customProfiles.any { profile ->
                 profile.enabled &&
                     profile.activationRules.any { rule ->
                         nfcTrigger.id in rule.triggerIds &&
-                            rule.triggerIds.all { it in eligibleIdsForLatching }
+                            rule.triggerIds.all { it == nfcTrigger.id || it in ambientActiveIds }
                     }
             }
         }
 
-        if (latchableTriggers.isEmpty()) {
+        if (companionSatisfiedTriggers.isEmpty()) {
             return NfcTapResult(
                 outcome = NfcTapOutcome.COMPANION_CONDITIONS_NOT_MET,
                 updatedLatches = validCurrentLatches,
+                updatedDailyUsage = currentDailyUsage,
+            )
+        }
+
+        val latchableTriggers = companionSatisfiedTriggers.filter { saved ->
+            val nfc = (saved.trigger as ProfileTrigger.Nfc).nfc
+            nfc.hasRemainingTaps(currentDailyUsage[saved.id], currentLocalDate)
+        }
+
+        if (latchableTriggers.isEmpty()) {
+            return NfcTapResult(
+                outcome = NfcTapOutcome.DAILY_LIMIT_REACHED,
+                updatedLatches = validCurrentLatches,
+                updatedDailyUsage = currentDailyUsage,
             )
         }
 
         val newLatches = LinkedHashMap(validCurrentLatches)
+        val newDailyUsage = LinkedHashMap(currentDailyUsage)
         val newlyLatchedIds = LinkedHashSet<String>()
         for (saved in latchableTriggers) {
             val nfc = (saved.trigger as ProfileTrigger.Nfc).nfc
@@ -286,6 +318,9 @@ class CascadingResolutionEngine {
                 expiresAtEpochMillis = expiresAt,
                 latchedByTagUid = normalizedUid,
             )
+            if (nfc.mode == NfcTriggerMode.TIMED_SESSION) {
+                newDailyUsage[saved.id] = nfc.markTapUsed(currentDailyUsage[saved.id], currentLocalDate)
+            }
             newlyLatchedIds.add(saved.id)
         }
 
@@ -293,6 +328,7 @@ class CascadingResolutionEngine {
             outcome = NfcTapOutcome.LATCHED_ON,
             updatedLatches = newLatches,
             affectedTriggerIds = newlyLatchedIds,
+            updatedDailyUsage = newDailyUsage,
         )
     }
 

@@ -890,7 +890,7 @@ class CascadingResolutionEngineTest {
     }
 
     @Test
-    fun multiNfcAndRule_allowsSequentialTagLatchingAndActivatesOnlyWhenBothLatched() {
+    fun multiNfcAndRule_isRejectedWhileMultiNfcOrRulesActivateIndependently() {
         val nfcKeyA = SavedTrigger(
             id = "t-nfc-a",
             name = "Desk Tag A",
@@ -912,85 +912,187 @@ class CascadingResolutionEngineTest {
             ),
         )
         val triggers = listOf(nfcKeyA, nfcKeyB)
-        val vaultProfile = CustomProfile(
-            id = "vault",
-            name = "Vault Lock",
+
+        // 1. An invalid AND rule containing two NFC triggers is rejected (at most 1 NFC trigger per AND rule)
+        val invalidMultiNfcAndProfile = CustomProfile(
+            id = "invalid-and",
+            name = "Invalid Multi-NFC AND",
             priority = 0,
             enabled = true,
             trigger = null,
             activationRules = listOf(TriggerRule(listOf("t-nfc-a", "t-nfc-b"))),
             appAssignments = mapOf(socialComponent to AppAssignment.Blocked),
         )
-        val profiles = listOf(vaultProfile)
+        val rejectedTap = engine.processNfcTagTap(
+            rawTagUid = "04:AA:11:22",
+            savedTriggers = triggers,
+            customProfiles = listOf(invalidMultiNfcAndProfile),
+            currentDay = DayOfWeek.WEDNESDAY,
+            currentTime = TimeOfDay(14, 0),
+            nowEpochMillis = 1_000L,
+        )
+        assertThat(rejectedTap.outcome).isEqualTo(NfcTapOutcome.COMPANION_CONDITIONS_NOT_MET)
+        assertThat(rejectedTap.updatedLatches).isEmpty()
 
-        // 1. Tap Key A first -> latches Key A ON; profile stays inactive until Key B is also tapped
+        // 2. Separate OR rules (Rule 1 = NFC A, Rule 2 = NFC B) each have 1 NFC trigger and activate independently
+        val multiNfcOrProfile = CustomProfile(
+            id = "valid-or",
+            name = "Multi-NFC OR",
+            priority = 0,
+            enabled = true,
+            trigger = null,
+            activationRules = listOf(
+                TriggerRule(listOf("t-nfc-a")),
+                TriggerRule(listOf("t-nfc-b")),
+            ),
+            appAssignments = mapOf(socialComponent to AppAssignment.Blocked),
+        )
         val tapA = engine.processNfcTagTap(
             rawTagUid = "04:AA:11:22",
             savedTriggers = triggers,
-            customProfiles = profiles,
+            customProfiles = listOf(multiNfcOrProfile),
             currentDay = DayOfWeek.WEDNESDAY,
             currentTime = TimeOfDay(14, 0),
-            nowEpochMillis = 1_000L,
+            nowEpochMillis = 2_000L,
         )
         assertThat(tapA.outcome).isEqualTo(NfcTapOutcome.LATCHED_ON)
         assertThat(tapA.updatedLatches.keys).containsExactly("t-nfc-a")
+    }
 
-        val wsAfterA = engine.resolveWorkingSet(
-            baseProfile = BaseProfileSettings(),
+    @Test
+    fun nfcTriggerTimedSession_enforcesMaxDailyUsesOnlyWhenSessionActuallyStartsAndResetsNextDay() {
+        val workHoursTrigger = SavedTrigger(
+            id = "t-work-hours",
+            name = "Work Hours",
+            trigger = ProfileTrigger.Schedule(
+                ScheduleTrigger(
+                    days = setOf(DayOfWeek.MONDAY, DayOfWeek.TUESDAY),
+                    startTime = TimeOfDay(9, 0),
+                    endTime = TimeOfDay(17, 0),
+                ),
+            ),
+        )
+        val breakNfcSpec = NfcTrigger(
+            tags = listOf(NfcTagEntry(uid = "04:CC:55:66", label = "Break Tag")),
+            mode = NfcTriggerMode.TIMED_SESSION,
+            durationMinutes = 15,
+            maxDailyUses = 2,
+        )
+        val breakNfcTrigger = SavedTrigger(
+            id = "t-break-nfc",
+            name = "Break Tag",
+            trigger = ProfileTrigger.Nfc(breakNfcSpec),
+        )
+        val triggers = listOf(workHoursTrigger, breakNfcTrigger)
+        val breakProfile = CustomProfile(
+            id = "break-profile",
+            name = "Short Break",
+            priority = 0,
+            enabled = true,
+            trigger = null,
+            activationRules = listOf(TriggerRule(listOf("t-work-hours", "t-break-nfc"))),
+            appAssignments = mapOf(socialComponent to AppAssignment.Standard),
+        )
+        val profiles = listOf(breakProfile)
+        val day1 = "2026-11-16"
+        val day2 = "2026-11-17"
+        val t0 = 10_000_000L
+
+        // 1. Tap before Work Hours (08:30) -> companion Schedule condition NOT met -> does NOT start and does NOT count
+        val failedEarlyTap = engine.processNfcTagTap(
+            rawTagUid = "04:CC:55:66",
+            savedTriggers = triggers,
             customProfiles = profiles,
-            currentDay = DayOfWeek.WEDNESDAY,
+            currentDay = DayOfWeek.MONDAY,
+            currentTime = TimeOfDay(8, 30),
+            nowEpochMillis = t0,
+            currentDailyUsage = emptyMap(),
+            currentLocalDate = day1,
+        )
+        assertThat(failedEarlyTap.outcome).isEqualTo(NfcTapOutcome.COMPANION_CONDITIONS_NOT_MET)
+        assertThat(failedEarlyTap.updatedLatches).isEmpty()
+        assertThat(breakNfcSpec.getTapsToday(failedEarlyTap.updatedDailyUsage["t-break-nfc"], day1)).isEqualTo(0)
+
+        // 2. Tap 1 during Work Hours (10:00) -> starts session 1, increments daily count to 1
+        val tap1Start = engine.processNfcTagTap(
+            rawTagUid = "04:CC:55:66",
+            savedTriggers = triggers,
+            customProfiles = profiles,
+            currentDay = DayOfWeek.MONDAY,
+            currentTime = TimeOfDay(10, 0),
+            nowEpochMillis = t0 + 60_000L,
+            currentDailyUsage = failedEarlyTap.updatedDailyUsage,
+            currentLocalDate = day1,
+        )
+        assertThat(tap1Start.outcome).isEqualTo(NfcTapOutcome.LATCHED_ON)
+        assertThat(breakNfcSpec.getTapsToday(tap1Start.updatedDailyUsage["t-break-nfc"], day1)).isEqualTo(1)
+        assertThat(breakNfcSpec.hasRemainingTaps(tap1Start.updatedDailyUsage["t-break-nfc"], day1)).isTrue()
+
+        // 3. Tap to end session 1 early (10:05) -> unlatches OFF, does NOT increment daily count (still 1)
+        val tap1StopEarly = engine.processNfcTagTap(
+            rawTagUid = "04:CC:55:66",
+            savedTriggers = triggers,
+            customProfiles = profiles,
+            currentDay = DayOfWeek.MONDAY,
+            currentTime = TimeOfDay(10, 5),
+            currentNfcLatches = tap1Start.updatedLatches,
+            nowEpochMillis = t0 + 6 * 60_000L,
+            currentDailyUsage = tap1Start.updatedDailyUsage,
+            currentLocalDate = day1,
+        )
+        assertThat(tap1StopEarly.outcome).isEqualTo(NfcTapOutcome.UNLATCHED_OFF)
+        assertThat(tap1StopEarly.updatedLatches).isEmpty()
+        assertThat(breakNfcSpec.getTapsToday(tap1StopEarly.updatedDailyUsage["t-break-nfc"], day1)).isEqualTo(1)
+
+        // 4. Tap 2 during Work Hours (14:00) -> starts session 2, increments daily count to 2 (reaches maxDailyUses = 2)
+        val tap2Start = engine.processNfcTagTap(
+            rawTagUid = "04:CC:55:66",
+            savedTriggers = triggers,
+            customProfiles = profiles,
+            currentDay = DayOfWeek.MONDAY,
             currentTime = TimeOfDay(14, 0),
-            defaultDialerPackage = dialerComponent.packageName,
-            savedTriggers = triggers,
-            nfcLatchStates = tapA.updatedLatches,
-            nowEpochMillis = 1_000L,
+            currentNfcLatches = tap1StopEarly.updatedLatches,
+            nowEpochMillis = t0 + 240 * 60_000L,
+            currentDailyUsage = tap1StopEarly.updatedDailyUsage,
+            currentLocalDate = day1,
         )
-        assertThat(wsAfterA.activeTriggerIds).containsExactly("t-nfc-a")
-        assertThat(wsAfterA.activeNfcLatches.keys).containsExactly("t-nfc-a")
-        assertThat(wsAfterA.activeProfiles).isEmpty()
+        assertThat(tap2Start.outcome).isEqualTo(NfcTapOutcome.LATCHED_ON)
+        assertThat(breakNfcSpec.getTapsToday(tap2Start.updatedDailyUsage["t-break-nfc"], day1)).isEqualTo(2)
+        assertThat(breakNfcSpec.hasRemainingTaps(tap2Start.updatedDailyUsage["t-break-nfc"], day1)).isFalse()
 
-        // 2. Tap Key B second -> latches Key B ON while retaining Key A; profile now activates!
-        val tapB = engine.processNfcTagTap(
-            rawTagUid = "04:BB:33:44",
+        // 5. After session 2 expires naturally at 14:15, tapping a 3rd time at 15:00 on day1 is rejected (DAILY_LIMIT_REACHED)
+        val tap3Blocked = engine.processNfcTagTap(
+            rawTagUid = "04:CC:55:66",
             savedTriggers = triggers,
             customProfiles = profiles,
-            currentDay = DayOfWeek.WEDNESDAY,
-            currentTime = TimeOfDay(14, 1),
-            previouslyActiveTriggerIds = wsAfterA.activeTriggerIds,
-            currentNfcLatches = wsAfterA.activeNfcLatches,
-            nowEpochMillis = 2_000L,
+            currentDay = DayOfWeek.MONDAY,
+            currentTime = TimeOfDay(15, 0),
+            currentNfcLatches = tap2Start.updatedLatches,
+            nowEpochMillis = t0 + 300 * 60_000L,
+            currentDailyUsage = tap2Start.updatedDailyUsage,
+            currentLocalDate = day1,
         )
-        assertThat(tapB.outcome).isEqualTo(NfcTapOutcome.LATCHED_ON)
-        assertThat(tapB.updatedLatches.keys).containsExactly("t-nfc-a", "t-nfc-b")
+        assertThat(tap3Blocked.outcome).isEqualTo(NfcTapOutcome.DAILY_LIMIT_REACHED)
+        assertThat(tap3Blocked.updatedLatches).isEmpty()
+        assertThat(breakNfcSpec.getTapsToday(tap3Blocked.updatedDailyUsage["t-break-nfc"], day1)).isEqualTo(2)
 
-        val wsAfterB = engine.resolveWorkingSet(
-            baseProfile = BaseProfileSettings(),
-            customProfiles = profiles,
-            currentDay = DayOfWeek.WEDNESDAY,
-            currentTime = TimeOfDay(14, 1),
-            defaultDialerPackage = dialerComponent.packageName,
-            savedTriggers = triggers,
-            previouslyActiveTriggerIds = wsAfterA.activeTriggerIds,
-            nfcLatchStates = tapB.updatedLatches,
-            nowEpochMillis = 2_000L,
-        )
-        assertThat(wsAfterB.activeTriggerIds).containsExactly("t-nfc-a", "t-nfc-b")
-        assertThat(wsAfterB.activeProfiles).containsExactly(vaultProfile)
+        // 6. On the next local calendar day (day2 = "2026-11-17"), getTapsToday(day2) is 0 and tapping starts a new session!
+        assertThat(breakNfcSpec.getTapsToday(tap3Blocked.updatedDailyUsage["t-break-nfc"], day2)).isEqualTo(0)
+        assertThat(breakNfcSpec.hasRemainingTaps(tap3Blocked.updatedDailyUsage["t-break-nfc"], day2)).isTrue()
 
-        // 3. Tap Key A again -> unlatches Key A and deactivates profile while Key B stays latched
-        val untapA = engine.processNfcTagTap(
-            rawTagUid = "04:AA:11:22",
+        val tapNextDay = engine.processNfcTagTap(
+            rawTagUid = "04:CC:55:66",
             savedTriggers = triggers,
             customProfiles = profiles,
-            currentDay = DayOfWeek.WEDNESDAY,
-            currentTime = TimeOfDay(14, 2),
-            previouslyActiveTriggerIds = wsAfterB.activeTriggerIds,
-            previouslyActiveProfileIds = setOf(vaultProfile.id),
-            currentNfcLatches = wsAfterB.activeNfcLatches,
-            nowEpochMillis = 3_000L,
+            currentDay = DayOfWeek.TUESDAY,
+            currentTime = TimeOfDay(10, 0),
+            currentNfcLatches = tap3Blocked.updatedLatches,
+            nowEpochMillis = t0 + 86_400_000L,
+            currentDailyUsage = tap3Blocked.updatedDailyUsage,
+            currentLocalDate = day2,
         )
-        assertThat(untapA.outcome).isEqualTo(NfcTapOutcome.UNLATCHED_OFF)
-        assertThat(untapA.updatedLatches.keys).containsExactly("t-nfc-b")
+        assertThat(tapNextDay.outcome).isEqualTo(NfcTapOutcome.LATCHED_ON)
+        assertThat(breakNfcSpec.getTapsToday(tapNextDay.updatedDailyUsage["t-break-nfc"], day2)).isEqualTo(1)
     }
 
     @Test
