@@ -525,4 +525,48 @@ class AndroidSettingsRepositoryTest {
         repository.deleteTrigger("t-nfc-2")
         assertThat(repository.getSettings().nfcLatches.keys).containsExactly("t-nfc-1")
     }
+
+    @Test
+    fun getSettings_memoizesDeserializedCollectionsWhenUnrelatedPreferencesChange() = runTest(testDispatcher) {
+        val trigger = com.garan.threshold.core.model.SavedTrigger(
+            id = "t-work",
+            name = "Work Hours",
+            trigger = com.garan.threshold.core.model.ProfileTrigger.Schedule(),
+        )
+        val profile = com.garan.threshold.core.model.CustomProfile(
+            id = "work",
+            name = "Work",
+            enabled = true,
+            priority = 0,
+            trigger = null,
+            activationRules = listOf(com.garan.threshold.core.model.TriggerRule(listOf("t-work"))),
+        )
+        repository.saveTrigger(trigger)
+        repository.saveCustomProfile(profile)
+        repository.updateBaseProfile(
+            BaseProfileSettings(
+                quickActions = listOf(socialKey),
+                appAssignments = mapOf(socialKey to AppAssignment.Blocked),
+            ),
+        )
+        repository.updateNfcLatches(
+            mapOf(
+                "t-work" to com.garan.threshold.core.model.NfcLatchState(
+                    triggerId = "t-work",
+                    latchedAtEpochMillis = 500L,
+                ),
+            ),
+        )
+
+        val firstSnapshot = repository.getSettings()
+        repository.setHasSeenFirstRunHint(true)
+        val secondSnapshot = repository.getSettings()
+
+        assertThat(secondSnapshot.general.hasSeenFirstRunHint).isTrue()
+        assertThat(secondSnapshot.customProfiles).isSameInstanceAs(firstSnapshot.customProfiles)
+        assertThat(secondSnapshot.savedTriggers).isSameInstanceAs(firstSnapshot.savedTriggers)
+        assertThat(secondSnapshot.baseProfile.appAssignments).isSameInstanceAs(firstSnapshot.baseProfile.appAssignments)
+        assertThat(secondSnapshot.baseProfile.quickActions).isSameInstanceAs(firstSnapshot.baseProfile.quickActions)
+        assertThat(secondSnapshot.nfcLatches).isSameInstanceAs(firstSnapshot.nfcLatches)
+    }
 }

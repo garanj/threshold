@@ -1,14 +1,11 @@
-# Active Task: Harden NFC Latch Persistence, Multi-NFC AND Rules, Trigger Mutation Reconciliation, and Alarm Scheduling
+# Active Task: Cache Derived Trigger Sets, Memoize DataStore JSON Parsing, and Release Settings App List on Home Return
 
-- **Issue:** [#86](https://github.com/garanj/threshold/issues/86)
-- **Branch:** `fix/86-nfc-and-trigger-state-machine-hardening`
+- **Issue:** [#88](https://github.com/garanj/threshold/issues/88)
+- **Branch:** `refactor/88-perf-and-memory-polish`
 - **Status:** Ready for Review
 
 ## Checklist
-- [x] Write failing unit tests across `:core`, `:data`, and `:app` (Red phase)
-- [x] Update `NfcLatchState` (`latchedByTagUid`), `CustomProfile` (`requiredCapabilities`), and `CascadingResolutionEngine` (reconcile trigger mutations + support multi-NFC `AND` sequential taps)
-- [x] Persist `nfcLatches: Map<String, NfcLatchState>` in `SettingsRepository` / `AndroidSettingsRepository` and wire into `SearchViewModel` and `ScheduleAlarmReceiver`
-- [x] Fix sub-minute NFC expiry alarm comparison in `AndroidScheduleAlarmScheduler` and wire `activeNowEpochMillisProvider` in `ThresholdAppContainer`
-- [x] Marshal `AndroidNfcReaderSource` registration callbacks onto main thread and eliminate duplicate `relaySnap()` in `ScheduleEditorDialog.kt`
-- [x] Require `selectedDays.isNotEmpty()` for `SCHEDULE` triggers in `ScheduleEditorDialog.kt`
-- [x] Verify `./gradlew test` passes with zero `android.*` imports in `:core`
+- [x] Convert `CustomProfile.referencedTriggerIds` and `ThresholdSettings.savedTriggersById` to stored `val` properties (`:core:test` passing)
+- [x] Memoize raw string -> parsed collection deserialization in `AndroidSettingsRepository` (`:data:testDebugUnitTest` passing)
+- [x] Add `SettingsViewModel.releaseLoadedApps()` + unit test in `SettingsViewModelTest` and invoke when returning to `ThresholdRoute.Home` in `MainActivity`
+- [x] Verify `./gradlew spotlessApply spotlessCheck test` and open PR for [#88](https://github.com/garanj/threshold/issues/88)

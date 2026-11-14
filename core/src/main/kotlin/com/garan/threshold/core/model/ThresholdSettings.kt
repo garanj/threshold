@@ -11,6 +11,6 @@ data class ThresholdSettings(
     val savedTriggers: List<SavedTrigger> = emptyList(),
     val nfcLatches: Map<String, NfcLatchState> = emptyMap(),
 ) {
-    val savedTriggersById: Map<String, SavedTrigger>
-        get() = savedTriggers.associateBy { it.id }
+    val savedTriggersById: Map<String, SavedTrigger> =
+        savedTriggers.associateBy { it.id }
 }

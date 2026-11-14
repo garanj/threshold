@@ -69,6 +69,18 @@ class AndroidSettingsRepository(
         val NFC_LATCHES = stringPreferencesKey("nfc_latches")
     }
 
+    private val cacheLock = Any()
+    private var cachedQuickActionsRaw: String? = null
+    private var cachedQuickActions: List<ComponentKey> = emptyList()
+    private var cachedAppAssignmentsRaw: String? = null
+    private var cachedAppAssignments: Map<ComponentKey, AppAssignment> = emptyMap()
+    private var cachedSavedTriggersRaw: String? = null
+    private var cachedCustomProfilesRaw: String? = null
+    private var cachedMigratedTriggers: List<SavedTrigger> = emptyList()
+    private var cachedMigratedProfiles: List<CustomProfile> = emptyList()
+    private var cachedNfcLatchesRaw: String? = null
+    private var cachedNfcLatches: Map<String, NfcLatchState> = emptyMap()
+
     override fun observeSettings(): Flow<ThresholdSettings> = dataStore.data
         .catch { exception ->
             if (exception is IOException) {
@@ -250,48 +262,88 @@ class AndroidSettingsRepository(
         } ?: FrictionChoice.TYPED_INTENTION
 
         val quickActionsRaw = prefs[Keys.QUICK_ACTIONS].orEmpty()
-        val quickActions = if (quickActionsRaw.isBlank()) {
-            emptyList()
-        } else {
-            quickActionsRaw.split(";")
-                .filter { it.isNotBlank() }
-                .mapNotNull { runCatching { ComponentKey.fromFlatString(it) }.getOrNull() }
-        }
-
         val appAssignmentsRaw = prefs[Keys.APP_ASSIGNMENTS].orEmpty()
-        val appAssignments = deserializeAppAssignments(appAssignmentsRaw)
-
         val savedTriggersRaw = prefs[Keys.SAVED_TRIGGERS].orEmpty()
-        val rawSavedTriggers = deserializeSavedTriggers(savedTriggersRaw)
-
         val customProfilesRaw = prefs[Keys.CUSTOM_PROFILES].orEmpty()
-        val rawCustomProfiles = deserializeCustomProfiles(customProfilesRaw)
-
         val nfcLatchesRaw = prefs[Keys.NFC_LATCHES].orEmpty()
-        val nfcLatches = deserializeNfcLatches(nfcLatchesRaw)
 
-        // Legacy migration: any profile that has an inline `trigger` and no `activationRules`
-        // gets a synthesized SavedTrigger and a single-trigger TriggerRule.
-        val migratedTriggers = rawSavedTriggers.toMutableList()
-        val existingTriggerIds = migratedTriggers.map { it.id }.toMutableSet()
-        val migratedProfiles = rawCustomProfiles.map { profile ->
-            val inlineTrigger = profile.trigger
-            if (profile.activationRules.isEmpty() && inlineTrigger != null) {
-                val migratedTriggerId = "trigger-${profile.id}"
-                if (existingTriggerIds.add(migratedTriggerId)) {
-                    migratedTriggers.add(
-                        SavedTrigger(
-                            id = migratedTriggerId,
-                            name = profile.name,
-                            trigger = inlineTrigger,
-                        ),
-                    )
-                }
-                profile.copy(
-                    activationRules = listOf(TriggerRule(listOf(migratedTriggerId))),
-                )
+        val quickActions: List<ComponentKey>
+        val appAssignments: Map<ComponentKey, AppAssignment>
+        val migratedTriggers: List<SavedTrigger>
+        val migratedProfiles: List<CustomProfile>
+        val nfcLatches: Map<String, NfcLatchState>
+
+        synchronized(cacheLock) {
+            quickActions = if (quickActionsRaw == cachedQuickActionsRaw) {
+                cachedQuickActions
             } else {
-                profile
+                val parsed = if (quickActionsRaw.isBlank()) {
+                    emptyList()
+                } else {
+                    quickActionsRaw.split(";")
+                        .filter { it.isNotBlank() }
+                        .mapNotNull { runCatching { ComponentKey.fromFlatString(it) }.getOrNull() }
+                }
+                cachedQuickActionsRaw = quickActionsRaw
+                cachedQuickActions = parsed
+                parsed
+            }
+
+            appAssignments = if (appAssignmentsRaw == cachedAppAssignmentsRaw) {
+                cachedAppAssignments
+            } else {
+                val parsed = deserializeAppAssignments(appAssignmentsRaw)
+                cachedAppAssignmentsRaw = appAssignmentsRaw
+                cachedAppAssignments = parsed
+                parsed
+            }
+
+            if (savedTriggersRaw == cachedSavedTriggersRaw && customProfilesRaw == cachedCustomProfilesRaw) {
+                migratedTriggers = cachedMigratedTriggers
+                migratedProfiles = cachedMigratedProfiles
+            } else {
+                val rawSavedTriggers = deserializeSavedTriggers(savedTriggersRaw)
+                val rawCustomProfiles = deserializeCustomProfiles(customProfilesRaw)
+
+                // Legacy migration: any profile that has an inline `trigger` and no `activationRules`
+                // gets a synthesized SavedTrigger and a single-trigger TriggerRule.
+                val triggersList = rawSavedTriggers.toMutableList()
+                val existingTriggerIds = triggersList.map { it.id }.toMutableSet()
+                val profilesList = rawCustomProfiles.map { profile ->
+                    val inlineTrigger = profile.trigger
+                    if (profile.activationRules.isEmpty() && inlineTrigger != null) {
+                        val migratedTriggerId = "trigger-${profile.id}"
+                        if (existingTriggerIds.add(migratedTriggerId)) {
+                            triggersList.add(
+                                SavedTrigger(
+                                    id = migratedTriggerId,
+                                    name = profile.name,
+                                    trigger = inlineTrigger,
+                                ),
+                            )
+                        }
+                        profile.copy(
+                            activationRules = listOf(TriggerRule(listOf(migratedTriggerId))),
+                        )
+                    } else {
+                        profile
+                    }
+                }
+                cachedSavedTriggersRaw = savedTriggersRaw
+                cachedCustomProfilesRaw = customProfilesRaw
+                cachedMigratedTriggers = triggersList
+                cachedMigratedProfiles = profilesList
+                migratedTriggers = triggersList
+                migratedProfiles = profilesList
+            }
+
+            nfcLatches = if (nfcLatchesRaw == cachedNfcLatchesRaw) {
+                cachedNfcLatches
+            } else {
+                val parsed = deserializeNfcLatches(nfcLatchesRaw)
+                cachedNfcLatchesRaw = nfcLatchesRaw
+                cachedNfcLatches = parsed
+                parsed
             }
         }
 

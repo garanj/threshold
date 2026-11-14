@@ -37,10 +37,10 @@ data class CustomProfile(
         get() = name.trim().firstOrNull()?.uppercaseChar()?.toString() ?: "P"
 
     /**
-     * Ordered set of all [SavedTrigger] IDs referenced across [activationRules].
+     * Ordered set of all [SavedTrigger] IDs referenced across [activationRules], cached once per instance.
      */
-    val referencedTriggerIds: Set<String>
-        get() = activationRules.flatMapTo(linkedSetOf()) { it.triggerIds }
+    val referencedTriggerIds: Set<String> =
+        activationRules.flatMapTo(linkedSetOf()) { it.triggerIds }
 
     /**
      * Resolves all [ProfileTrigger] instances attached to this profile via [activationRules]

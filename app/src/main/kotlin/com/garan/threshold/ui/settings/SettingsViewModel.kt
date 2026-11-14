@@ -17,6 +17,7 @@ import kotlinx.collections.immutable.persistentListOf
 import kotlinx.collections.immutable.toImmutableList
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -45,6 +46,9 @@ class SettingsViewModel(
 
     private val isIndexLoaded = java.util.concurrent.atomic.AtomicBoolean(false)
 
+    @Volatile
+    private var loadJob: Job? = null
+
     init {
         viewModelScope.launch(ioDispatcher) {
             settingsRepository.observeSettings().collect { settings ->
@@ -66,18 +70,36 @@ class SettingsViewModel(
      */
     fun ensureLoaded() {
         if (!isIndexLoaded.compareAndSet(false, true)) return
-        viewModelScope.launch(ioDispatcher) {
+        loadJob = viewModelScope.launch(ioDispatcher) {
             val dialerPkg = dialerPackageResolver()
             val apps = packageIndexSource.getInstalledApps()
                 .filterNot { it.component.packageName == dialerPkg }
                 .sortedBy { it.label.lowercase() }
 
-            _uiState.update {
-                it.copy(
-                    availableApps = apps.toImmutableList(),
-                    isLoading = false,
-                )
+            if (isIndexLoaded.get()) {
+                _uiState.update {
+                    it.copy(
+                        availableApps = apps.toImmutableList(),
+                        isLoading = false,
+                    )
+                }
             }
+        }
+    }
+
+    /**
+     * Releases the resolved [InstalledApp] list when returning to the Home canvas so Settings
+     * metadata does not remain resident in memory while idle.
+     */
+    fun releaseLoadedApps() {
+        if (!isIndexLoaded.compareAndSet(true, false)) return
+        loadJob?.cancel()
+        loadJob = null
+        _uiState.update {
+            it.copy(
+                availableApps = persistentListOf(),
+                isLoading = true,
+            )
         }
     }
 

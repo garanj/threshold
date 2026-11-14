@@ -216,4 +216,20 @@ class SettingsViewModelTest {
         assertThat(updatedProfile.activationRules).isEmpty()
         assertThat(updatedProfile.enabled).isFalse()
     }
+
+    @Test
+    fun releaseLoadedApps_clearsAvailableAppsAndReloadsOnSubsequentEnsureLoaded() = runTest(testDispatcher) {
+        advanceUntilIdle()
+        assertThat(viewModel.uiState.value.availableApps).hasSize(3)
+        assertThat(viewModel.uiState.value.isLoading).isFalse()
+
+        viewModel.releaseLoadedApps()
+        assertThat(viewModel.uiState.value.availableApps).isEmpty()
+        assertThat(viewModel.uiState.value.isLoading).isTrue()
+
+        viewModel.ensureLoaded()
+        advanceUntilIdle()
+        assertThat(viewModel.uiState.value.availableApps).hasSize(3)
+        assertThat(viewModel.uiState.value.isLoading).isFalse()
+    }
 }
