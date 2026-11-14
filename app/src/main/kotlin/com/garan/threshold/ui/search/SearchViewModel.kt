@@ -10,6 +10,7 @@ import com.garan.threshold.core.model.ComponentKey
 import com.garan.threshold.core.model.CustomProfile
 import com.garan.threshold.core.model.FrictionPolicy
 import com.garan.threshold.core.model.GeneralSettings
+import com.garan.threshold.core.model.NfcDailyUsage
 import com.garan.threshold.core.model.NfcLatchState
 import com.garan.threshold.core.model.Profile
 import com.garan.threshold.core.model.ProfileCapabilityIssue
@@ -122,6 +123,9 @@ class SearchViewModel(
 
     @Volatile
     private var currentNfcLatches: Map<String, NfcLatchState> = emptyMap()
+
+    @Volatile
+    private var currentNfcDailyUsage: Map<String, NfcDailyUsage> = emptyMap()
 
     init {
         if (settingsRepository != null) {
@@ -253,19 +257,31 @@ class SearchViewModel(
                 previouslyActiveProfileIds = previouslyActiveProfileIds,
                 currentNfcLatches = currentNfcLatches,
                 nowEpochMillis = nowMillis,
+                currentDailyUsage = currentNfcDailyUsage,
+                currentLocalDate = now.localDate,
             )
             val latchesChanged = tapResult.updatedLatches != currentNfcLatches
+            val usageChanged = tapResult.updatedDailyUsage != currentNfcDailyUsage
             currentNfcLatches = tapResult.updatedLatches
-            val updatedSettings = effective.copy(nfcLatches = currentNfcLatches)
+            currentNfcDailyUsage = tapResult.updatedDailyUsage
+            val updatedSettings = effective.copy(
+                nfcLatches = currentNfcLatches,
+                nfcDailyUsage = currentNfcDailyUsage,
+            )
             lastObservedSettings = updatedSettings
-            if (latchesChanged) {
-                settingsRepository?.updateNfcLatches(currentNfcLatches)
+            if (latchesChanged || usageChanged) {
+                settingsRepository?.updateNfcLatches(
+                    latches = currentNfcLatches,
+                    dailyUsage = currentNfcDailyUsage,
+                )
             }
             when (tapResult.outcome) {
                 NfcTapOutcome.LATCHED_ON,
                 NfcTapOutcome.UNLATCHED_OFF,
                 -> hapticEngine.relaySnap()
-                NfcTapOutcome.COMPANION_CONDITIONS_NOT_MET -> hapticEngine.resistanceDetent()
+                NfcTapOutcome.COMPANION_CONDITIONS_NOT_MET,
+                NfcTapOutcome.DAILY_LIMIT_REACHED,
+                -> hapticEngine.resistanceDetent()
                 NfcTapOutcome.UNRECOGNIZED_TAG -> Unit
             }
             scheduleAlarmScheduler.syncNextScheduleAlarm(
@@ -401,6 +417,7 @@ class SearchViewModel(
         }
         reconcileMutex.withLock {
             currentNfcLatches = settings.nfcLatches
+            currentNfcDailyUsage = settings.nfcDailyUsage
             lastObservedSettings = settings
             reconcileWorkingSetLocked(settings)
             scheduleAlarmScheduler.syncNextScheduleAlarm(

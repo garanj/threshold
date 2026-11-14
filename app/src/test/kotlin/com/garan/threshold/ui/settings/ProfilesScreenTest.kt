@@ -17,6 +17,7 @@ import com.garan.threshold.core.model.GeoTrigger
 import com.garan.threshold.core.model.GeoTriggerMode
 import com.garan.threshold.core.model.LocationFix
 import com.garan.threshold.core.model.NfcTagEntry
+import com.garan.threshold.core.model.NfcTrigger
 import com.garan.threshold.core.model.NfcTriggerMode
 import com.garan.threshold.core.model.ProfileTrigger
 import com.garan.threshold.core.model.SavedTrigger
@@ -25,6 +26,7 @@ import com.garan.threshold.core.model.TimeOfDay
 import com.garan.threshold.core.model.TimeWindow
 import com.garan.threshold.core.model.TriggerRule
 import com.garan.threshold.core.port.LocationTelemetry
+import com.garan.threshold.core.port.NoOpHapticEngine
 import com.garan.threshold.ui.theme.ThresholdTheme
 import com.google.common.truth.Truth.assertThat
 import org.junit.Rule
@@ -679,5 +681,109 @@ class ProfilesScreenTest {
         composeTestRule
             .onNodeWithTag(ProfilesTestTags.TRIGGER_EDITOR_SAVE_BUTTON)
             .assertIsEnabled()
+    }
+
+    @Test
+    fun triggerEditorSheet_nfcTimedSessionStepperConfiguresMaxDailyUses() {
+        var savedTriggerResult: ProfileTrigger? = null
+        val initialNfc = NfcTrigger(
+            tags = listOf(NfcTagEntry(uid = "04:AA:11:22", label = "Break")),
+            mode = NfcTriggerMode.TIMED_SESSION,
+            durationMinutes = 30,
+            maxDailyUses = null,
+        )
+
+        composeTestRule.setContent {
+            ThresholdTheme {
+                TriggerEditorSheet(
+                    initialName = "Break Tag",
+                    initialTrigger = ProfileTrigger.Nfc(initialNfc),
+                    isNewTrigger = false,
+                    onSaveTrigger = { _, trigger -> savedTriggerResult = trigger },
+                    onDismiss = {},
+                )
+            }
+        }
+
+        // Starts at Unlimited; decrement button is disabled
+        composeTestRule.onNodeWithText("Unlimited").assertIsDisplayed()
+        composeTestRule
+            .onNodeWithTag(ProfilesTestTags.TRIGGER_EDITOR_NFC_MAX_USES_DECREMENT)
+            .assertIsNotEnabled()
+
+        // Increment twice -> 1 activation per day -> 2 activations per day
+        composeTestRule
+            .onNodeWithTag(ProfilesTestTags.TRIGGER_EDITOR_NFC_MAX_USES_INCREMENT)
+            .performSemanticsAction(SemanticsActions.OnClick)
+        composeTestRule.onNodeWithText("1 activation per day").assertIsDisplayed()
+
+        composeTestRule
+            .onNodeWithTag(ProfilesTestTags.TRIGGER_EDITOR_NFC_MAX_USES_INCREMENT)
+            .performSemanticsAction(SemanticsActions.OnClick)
+        composeTestRule.onNodeWithText("2 activations per day").assertIsDisplayed()
+
+        // Save and verify maxDailyUses = 2
+        composeTestRule
+            .onNodeWithTag(ProfilesTestTags.TRIGGER_EDITOR_SAVE_BUTTON)
+            .performSemanticsAction(SemanticsActions.OnClick)
+
+        val savedNfc = (savedTriggerResult as? ProfileTrigger.Nfc)?.nfc
+        assertThat(savedNfc).isNotNull()
+        assertThat(savedNfc?.maxDailyUses).isEqualTo(2)
+        assertThat(formatNfcSummary(savedNfc!!)).contains("Timed session (30m, max 2/day)")
+    }
+
+    @Test
+    fun profileRulesEditorSheet_andRuleWithNfcExcludesSecondNfcTrigger() {
+        val scheduleTrigger = SavedTrigger(
+            id = "t-schedule",
+            name = "Work Hours",
+            trigger = ProfileTrigger.Schedule(),
+        )
+        val nfcTriggerA = SavedTrigger(
+            id = "t-nfc-a",
+            name = "Desk Tag A",
+            trigger = ProfileTrigger.Nfc(
+                NfcTrigger(tags = listOf(NfcTagEntry(uid = "04:AA:11:22"))),
+            ),
+        )
+        val nfcTriggerB = SavedTrigger(
+            id = "t-nfc-b",
+            name = "Hallway Tag B",
+            trigger = ProfileTrigger.Nfc(
+                NfcTrigger(tags = listOf(NfcTagEntry(uid = "04:BB:33:44"))),
+            ),
+        )
+
+        composeTestRule.setContent {
+            ThresholdTheme {
+                ProfileRulesEditorSheet(
+                    initialName = "Deep Work",
+                    initialRules = listOf(TriggerRule(listOf("t-nfc-a"))),
+                    isNewProfile = false,
+                    savedTriggers = listOf(scheduleTrigger, nfcTriggerA, nfcTriggerB),
+                    currentLocation = null,
+                    hapticEngine = NoOpHapticEngine,
+                    onUseCurrentLocation = null,
+                    onOpenMapApp = {},
+                    onSaveTrigger = {},
+                    onSaveProfileRules = { _, _ -> },
+                    onDismiss = {},
+                )
+            }
+        }
+
+        // Click "Add AND trigger" on Rule 0 (which already contains "t-nfc-a")
+        composeTestRule
+            .onNodeWithTag(ProfilesTestTags.profileRuleAddAnd(0))
+            .performSemanticsAction(SemanticsActions.OnClick)
+
+        // The picker must offer "Work Hours" (Schedule) but NOT "Hallway Tag B" (NFC)
+        composeTestRule
+            .onNodeWithTag(ProfilesTestTags.triggerPickerItem("t-schedule"))
+            .assertIsDisplayed()
+        composeTestRule
+            .onNodeWithTag(ProfilesTestTags.triggerPickerItem("t-nfc-b"))
+            .assertDoesNotExist()
     }
 }

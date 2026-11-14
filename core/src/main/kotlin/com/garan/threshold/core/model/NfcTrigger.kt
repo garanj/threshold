@@ -63,17 +63,31 @@ data class NfcTagEntry(val uid: String, val label: String = "") {
 /**
  * Physical NFC trigger definition containing one or more registered hardware tag UIDs
  * and an activation mode ([NfcTriggerMode.TOGGLE_ON_TAP] or [NfcTriggerMode.TIMED_SESSION]).
+ *
+ * @property maxDailyUses Optional cap on how many times a [NfcTriggerMode.TIMED_SESSION] trigger can be
+ *   activated per local calendar day (`null` = unlimited). Only taps that successfully start an active
+ *   session count toward this cap.
  */
 data class NfcTrigger(
     val tags: List<NfcTagEntry> = emptyList(),
     val mode: NfcTriggerMode = NfcTriggerMode.TOGGLE_ON_TAP,
     val durationMinutes: Int = DEFAULT_DURATION_MINUTES,
+    val maxDailyUses: Int? = null,
 ) {
     init {
         require(durationMinutes in MIN_DURATION_MINUTES..MAX_DURATION_MINUTES) {
             "durationMinutes must be between $MIN_DURATION_MINUTES and $MAX_DURATION_MINUTES, was $durationMinutes"
         }
+        require(maxDailyUses == null || maxDailyUses in MIN_DAILY_USES..MAX_DAILY_USES) {
+            "maxDailyUses must be null or between $MIN_DAILY_USES and $MAX_DAILY_USES, was $maxDailyUses"
+        }
     }
+
+    /**
+     * Effective daily activation cap (`null` when unlimited or when [mode] is [NfcTriggerMode.TOGGLE_ON_TAP]).
+     */
+    val effectiveMaxDailyUses: Int?
+        get() = if (mode == NfcTriggerMode.TIMED_SESSION) maxDailyUses else null
 
     /**
      * Returns `true` if [rawTagUid] matches any registered tag in [tags].
@@ -84,10 +98,30 @@ data class NfcTrigger(
         return tags.any { it.normalizedUid == candidate }
     }
 
+    /**
+     * Returns the number of timed sessions started on [currentLocalDate] (`"YYYY-MM-DD"`).
+     */
+    fun getTapsToday(usage: NfcDailyUsage?, currentLocalDate: String): Int = usage?.getTapsToday(currentLocalDate) ?: 0
+
+    /**
+     * Returns `true` if this trigger can be activated on [currentLocalDate] (`"YYYY-MM-DD"`).
+     */
+    fun hasRemainingTaps(usage: NfcDailyUsage?, currentLocalDate: String): Boolean =
+        usage?.hasRemainingTaps(effectiveMaxDailyUses, currentLocalDate) ?: true
+
+    /**
+     * Returns an updated [NfcDailyUsage] recording one started session on [currentLocalDate] (`"YYYY-MM-DD"`).
+     */
+    fun markTapUsed(usage: NfcDailyUsage?, currentLocalDate: String): NfcDailyUsage =
+        (usage ?: NfcDailyUsage(localDate = currentLocalDate, tapCount = 0)).markTapUsed(currentLocalDate)
+
     companion object {
         const val MIN_DURATION_MINUTES = 1
         const val MAX_DURATION_MINUTES = 240
         const val DEFAULT_DURATION_MINUTES = 60
+
+        const val MIN_DAILY_USES = 1
+        const val MAX_DAILY_USES = 99
 
         val DURATION_PRESETS_MINUTES = listOf(15, 30, 60, 120, 240)
 
@@ -97,6 +131,31 @@ data class NfcTrigger(
             else -> "${minutes / 60}h ${minutes % 60}m"
         }
     }
+}
+
+/**
+ * Per-trigger daily activation counter for [NfcTriggerMode.TIMED_SESSION] triggers.
+ * Compares [localDate] (`"YYYY-MM-DD"`) against the current local calendar date at evaluation time
+ * so daily limits reset deterministically at local midnight without relying on OS broadcasts.
+ *
+ * @property localDate ISO-8601 local calendar date (`"YYYY-MM-DD"`) when [tapCount] was recorded.
+ * @property tapCount Number of timed sessions started on [localDate].
+ */
+data class NfcDailyUsage(val localDate: String, val tapCount: Int = 0) {
+    init {
+        require(tapCount >= 0) { "tapCount must be non-negative, was $tapCount" }
+    }
+
+    fun getTapsToday(currentLocalDate: String): Int =
+        if (currentLocalDate.isNotBlank() && localDate == currentLocalDate) tapCount else 0
+
+    fun hasRemainingTaps(maxDailyUses: Int?, currentLocalDate: String): Boolean =
+        maxDailyUses == null || getTapsToday(currentLocalDate) < maxDailyUses
+
+    fun markTapUsed(currentLocalDate: String): NfcDailyUsage = NfcDailyUsage(
+        localDate = currentLocalDate,
+        tapCount = getTapsToday(currentLocalDate) + 1,
+    )
 }
 
 /**

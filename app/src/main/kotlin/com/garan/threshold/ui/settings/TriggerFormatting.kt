@@ -58,7 +58,15 @@ internal fun formatTriggerDetail(trigger: ProfileTrigger, currentLocation: Locat
 internal fun formatNfcSummary(nfc: NfcTrigger): String {
     val modeText = when (nfc.mode) {
         NfcTriggerMode.TOGGLE_ON_TAP -> "Toggle on tap"
-        NfcTriggerMode.TIMED_SESSION -> "Timed session (${NfcTrigger.formatDuration(nfc.durationMinutes)})"
+        NfcTriggerMode.TIMED_SESSION -> {
+            val durationText = NfcTrigger.formatDuration(nfc.durationMinutes)
+            val limit = nfc.effectiveMaxDailyUses
+            if (limit != null) {
+                "Timed session ($durationText, max $limit/day)"
+            } else {
+                "Timed session ($durationText)"
+            }
+        }
     }
     return when {
         nfc.tags.isEmpty() -> "$modeText · No tags registered"

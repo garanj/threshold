@@ -17,6 +17,7 @@ import com.garan.threshold.core.model.FrictionChoice
 import com.garan.threshold.core.model.GeneralSettings
 import com.garan.threshold.core.model.GeoTrigger
 import com.garan.threshold.core.model.GeoTriggerMode
+import com.garan.threshold.core.model.NfcDailyUsage
 import com.garan.threshold.core.model.NfcLatchState
 import com.garan.threshold.core.model.NfcTagEntry
 import com.garan.threshold.core.model.NfcTrigger
@@ -67,6 +68,7 @@ class AndroidSettingsRepository(
         val CUSTOM_PROFILES = stringPreferencesKey("custom_profiles")
         val SAVED_TRIGGERS = stringPreferencesKey("saved_triggers")
         val NFC_LATCHES = stringPreferencesKey("nfc_latches")
+        val NFC_DAILY_USAGE = stringPreferencesKey("nfc_daily_usage")
     }
 
     private val cacheLock = Any()
@@ -80,6 +82,8 @@ class AndroidSettingsRepository(
     private var cachedMigratedProfiles: List<CustomProfile> = emptyList()
     private var cachedNfcLatchesRaw: String? = null
     private var cachedNfcLatches: Map<String, NfcLatchState> = emptyMap()
+    private var cachedNfcDailyUsageRaw: String? = null
+    private var cachedNfcDailyUsage: Map<String, NfcDailyUsage> = emptyMap()
 
     override fun observeSettings(): Flow<ThresholdSettings> = dataStore.data
         .catch { exception ->
@@ -206,14 +210,24 @@ class AndroidSettingsRepository(
                     val updatedLatches = currentSettings.nfcLatches - triggerId
                     prefs[Keys.NFC_LATCHES] = serializeNfcLatches(updatedLatches)
                 }
+                if (triggerId in currentSettings.nfcDailyUsage) {
+                    val updatedUsage = currentSettings.nfcDailyUsage - triggerId
+                    prefs[Keys.NFC_DAILY_USAGE] = serializeNfcDailyUsage(updatedUsage)
+                }
             }
         }
     }
 
-    override suspend fun updateNfcLatches(latches: Map<String, NfcLatchState>) {
+    override suspend fun updateNfcLatches(
+        latches: Map<String, NfcLatchState>,
+        dailyUsage: Map<String, NfcDailyUsage>?,
+    ) {
         withContext(ioDispatcher) {
             dataStore.edit { prefs ->
                 prefs[Keys.NFC_LATCHES] = serializeNfcLatches(latches)
+                if (dailyUsage != null) {
+                    prefs[Keys.NFC_DAILY_USAGE] = serializeNfcDailyUsage(dailyUsage)
+                }
             }
         }
     }
@@ -266,12 +280,14 @@ class AndroidSettingsRepository(
         val savedTriggersRaw = prefs[Keys.SAVED_TRIGGERS].orEmpty()
         val customProfilesRaw = prefs[Keys.CUSTOM_PROFILES].orEmpty()
         val nfcLatchesRaw = prefs[Keys.NFC_LATCHES].orEmpty()
+        val nfcDailyUsageRaw = prefs[Keys.NFC_DAILY_USAGE].orEmpty()
 
         val quickActions: List<ComponentKey>
         val appAssignments: Map<ComponentKey, AppAssignment>
         val migratedTriggers: List<SavedTrigger>
         val migratedProfiles: List<CustomProfile>
         val nfcLatches: Map<String, NfcLatchState>
+        val nfcDailyUsage: Map<String, NfcDailyUsage>
 
         synchronized(cacheLock) {
             quickActions = if (quickActionsRaw == cachedQuickActionsRaw) {
@@ -345,6 +361,15 @@ class AndroidSettingsRepository(
                 cachedNfcLatches = parsed
                 parsed
             }
+
+            nfcDailyUsage = if (nfcDailyUsageRaw == cachedNfcDailyUsageRaw) {
+                cachedNfcDailyUsage
+            } else {
+                val parsed = deserializeNfcDailyUsage(nfcDailyUsageRaw)
+                cachedNfcDailyUsageRaw = nfcDailyUsageRaw
+                cachedNfcDailyUsage = parsed
+                parsed
+            }
         }
 
         return ThresholdSettings(
@@ -362,6 +387,7 @@ class AndroidSettingsRepository(
             customProfiles = migratedProfiles,
             savedTriggers = migratedTriggers,
             nfcLatches = nfcLatches,
+            nfcDailyUsage = nfcDailyUsage,
         )
     }
 
@@ -476,6 +502,41 @@ class AndroidSettingsRepository(
         }.getOrDefault(emptyMap())
     }
 
+    private fun serializeNfcDailyUsage(dailyUsage: Map<String, NfcDailyUsage>): String {
+        if (dailyUsage.isEmpty()) return ""
+        val jsonArray = JSONArray()
+        for ((triggerId, usage) in dailyUsage) {
+            if (triggerId.isBlank() || usage.localDate.isBlank() || usage.tapCount <= 0) continue
+            val obj = JSONObject()
+            obj.put("triggerId", triggerId)
+            obj.put("localDate", usage.localDate)
+            obj.put("tapCount", usage.tapCount)
+            jsonArray.put(obj)
+        }
+        return jsonArray.toString()
+    }
+
+    private fun deserializeNfcDailyUsage(raw: String): Map<String, NfcDailyUsage> {
+        if (raw.isBlank()) return emptyMap()
+        return runCatching {
+            val jsonArray = JSONArray(raw)
+            val map = LinkedHashMap<String, NfcDailyUsage>()
+            for (i in 0 until jsonArray.length()) {
+                val obj = jsonArray.optJSONObject(i) ?: continue
+                val triggerId = obj.optString("triggerId", "")
+                val localDate = obj.optString("localDate", "")
+                val tapCount = obj.optInt("tapCount", 0)
+                if (triggerId.isNotBlank() && localDate.isNotBlank() && tapCount > 0) {
+                    map[triggerId] = NfcDailyUsage(
+                        localDate = localDate,
+                        tapCount = tapCount,
+                    )
+                }
+            }
+            map
+        }.getOrDefault(emptyMap())
+    }
+
     private fun deserializeSavedTriggers(raw: String): List<SavedTrigger> {
         if (raw.isBlank()) return emptyList()
         return runCatching {
@@ -533,6 +594,9 @@ class AndroidSettingsRepository(
                 triggerObj.put("type", "NFC")
                 triggerObj.put("mode", nfc.mode.name)
                 triggerObj.put("durationMinutes", nfc.durationMinutes)
+                if (nfc.maxDailyUses != null) {
+                    triggerObj.put("maxDailyUses", nfc.maxDailyUses)
+                }
                 val tagsArray = JSONArray()
                 for (tag in nfc.tags) {
                     val tagObj = JSONObject()
@@ -623,6 +687,13 @@ class AndroidSettingsRepository(
                 }.getOrDefault(NfcTriggerMode.TOGGLE_ON_TAP)
                 val durationMinutes = triggerObj.optInt("durationMinutes", NfcTrigger.DEFAULT_DURATION_MINUTES)
                     .coerceIn(NfcTrigger.MIN_DURATION_MINUTES, NfcTrigger.MAX_DURATION_MINUTES)
+                val maxDailyUses = if (triggerObj.has("maxDailyUses") && !triggerObj.isNull("maxDailyUses")) {
+                    triggerObj.optInt("maxDailyUses", 0)
+                        .takeIf { it >= NfcTrigger.MIN_DAILY_USES }
+                        ?.coerceIn(NfcTrigger.MIN_DAILY_USES, NfcTrigger.MAX_DAILY_USES)
+                } else {
+                    null
+                }
                 val tags = mutableListOf<NfcTagEntry>()
                 val tagsArray = triggerObj.optJSONArray("tags")
                 if (tagsArray != null) {
@@ -643,6 +714,7 @@ class AndroidSettingsRepository(
                         tags = tags,
                         mode = mode,
                         durationMinutes = durationMinutes,
+                        maxDailyUses = maxDailyUses,
                     ),
                 )
             }

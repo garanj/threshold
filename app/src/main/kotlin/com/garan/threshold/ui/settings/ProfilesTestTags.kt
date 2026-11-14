@@ -26,6 +26,9 @@ object ProfilesTestTags {
     const val TRIGGER_EDITOR_TYPE_NFC = "trigger_editor_type_nfc"
     const val TRIGGER_EDITOR_NFC_MODE_TOGGLE = "trigger_editor_nfc_mode_toggle"
     const val TRIGGER_EDITOR_NFC_MODE_TIMED = "trigger_editor_nfc_mode_timed"
+    const val TRIGGER_EDITOR_NFC_MAX_USES_VALUE = "trigger_editor_nfc_max_uses_value"
+    const val TRIGGER_EDITOR_NFC_MAX_USES_DECREMENT = "trigger_editor_nfc_max_uses_decrement"
+    const val TRIGGER_EDITOR_NFC_MAX_USES_INCREMENT = "trigger_editor_nfc_max_uses_increment"
     const val TRIGGER_EDITOR_SAVE_BUTTON = "trigger_editor_save_button"
     const val TRIGGER_EDITOR_CANCEL_BUTTON = "trigger_editor_cancel_button"
 

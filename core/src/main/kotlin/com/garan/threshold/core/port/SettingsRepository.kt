@@ -4,6 +4,7 @@ import com.garan.threshold.core.model.BaseProfileSettings
 import com.garan.threshold.core.model.ComponentKey
 import com.garan.threshold.core.model.CustomProfile
 import com.garan.threshold.core.model.GeneralSettings
+import com.garan.threshold.core.model.NfcDailyUsage
 import com.garan.threshold.core.model.NfcLatchState
 import com.garan.threshold.core.model.SavedTrigger
 import com.garan.threshold.core.model.ThresholdSettings
@@ -72,7 +73,8 @@ interface SettingsRepository {
     suspend fun deleteTrigger(triggerId: String) {}
 
     /**
-     * Persists the active NFC trigger latch states ([NfcLatchState] keyed by [SavedTrigger.id]).
+     * Persists the active NFC trigger latch states ([NfcLatchState] keyed by [SavedTrigger.id])
+     * and optional daily usage counters ([NfcDailyUsage] keyed by [SavedTrigger.id]).
      */
-    suspend fun updateNfcLatches(latches: Map<String, NfcLatchState>) {}
+    suspend fun updateNfcLatches(latches: Map<String, NfcLatchState>, dailyUsage: Map<String, NfcDailyUsage>? = null) {}
 }

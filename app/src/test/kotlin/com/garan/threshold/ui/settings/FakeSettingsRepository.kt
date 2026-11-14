@@ -3,6 +3,7 @@ package com.garan.threshold.ui.settings
 import com.garan.threshold.core.model.BaseProfileSettings
 import com.garan.threshold.core.model.ComponentKey
 import com.garan.threshold.core.model.GeneralSettings
+import com.garan.threshold.core.model.NfcDailyUsage
 import com.garan.threshold.core.model.NfcLatchState
 import com.garan.threshold.core.model.ProfileTrigger
 import com.garan.threshold.core.model.SavedTrigger
@@ -125,11 +126,20 @@ class FakeSettingsRepository(initialSettings: ThresholdSettings = ThresholdSetti
                 savedTriggers = updatedTriggers,
                 customProfiles = updatedProfiles,
                 nfcLatches = current.nfcLatches - triggerId,
+                nfcDailyUsage = current.nfcDailyUsage - triggerId,
             )
         }
     }
 
-    override suspend fun updateNfcLatches(latches: Map<String, NfcLatchState>) {
-        _settings.update { it.copy(nfcLatches = latches) }
+    override suspend fun updateNfcLatches(
+        latches: Map<String, NfcLatchState>,
+        dailyUsage: Map<String, NfcDailyUsage>?,
+    ) {
+        _settings.update {
+            it.copy(
+                nfcLatches = latches,
+                nfcDailyUsage = dailyUsage ?: it.nfcDailyUsage,
+            )
+        }
     }
 }
