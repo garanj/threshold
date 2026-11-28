@@ -151,7 +151,14 @@ class DryToastMasterDetailInstrumentedTest {
     }
 
     private fun findInMasterSettingsList(tag: String): UiObject2 {
-        device.waitForFresh(By.res(tag), 1_500L)?.let { return it }
+        fun findComfortablyVisible(): UiObject2? {
+            val candidate = device.waitForFresh(By.res(tag), 1_500L) ?: return null
+            val bounds = candidate.visibleBounds
+            val safeBottom = device.displayHeight - 120
+            return if (bounds.height() >= 72 && bounds.bottom <= safeBottom) candidate else null
+        }
+
+        findComfortablyVisible()?.let { return it }
         repeat(5) {
             val listNode = checkNotNull(
                 device.waitForFresh(By.res(SettingsTestTags.SETTINGS_LIST), 5_000L),
@@ -162,9 +169,11 @@ class DryToastMasterDetailInstrumentedTest {
             val endY = (bounds.top + bounds.height() * 0.25f).toInt()
             device.swipe(centerX, startY, centerX, endY, 15)
             device.waitForIdle()
-            device.waitForFresh(By.res(tag), 2_000L)?.let { return it }
+            findComfortablyVisible()?.let { return it }
         }
-        error("Expected '$tag' inside master settings_list after scrolling")
+        return checkNotNull(device.waitForFresh(By.res(tag), 2_000L)) {
+            "Expected '$tag' inside master settings_list after scrolling"
+        }
     }
 
     private fun waitForActivityWindowFocus(): Boolean = pollFresh(5_000L) {

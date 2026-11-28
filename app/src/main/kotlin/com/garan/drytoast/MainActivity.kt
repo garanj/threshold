@@ -416,11 +416,17 @@ class MainActivity : ComponentActivity() {
         Toast.makeText(this, getString(R.string.toast_settings_locked), Toast.LENGTH_SHORT).show()
     }
 
+    private suspend fun applyPureBlackWallpaperAsync(): Boolean {
+        val applied = appContainer.wallpaperController.applyPureBlackWallpaper()
+        if (applied) {
+            appContainer.hapticEngine.targetSnap()
+        }
+        return applied
+    }
+
     private fun applyPureBlackWallpaper() {
         lifecycleScope.launch {
-            val applied = appContainer.wallpaperController.applyPureBlackWallpaper()
-            if (applied) {
-                appContainer.hapticEngine.targetSnap()
+            if (applyPureBlackWallpaperAsync()) {
                 Toast.makeText(
                     this@MainActivity,
                     getString(R.string.toast_black_wallpaper_applied),
@@ -843,7 +849,7 @@ class MainActivity : ComponentActivity() {
                                 onUpdateGuardedSessionGraceMinutes =
                                 settingsViewModel::updateGuardedSessionGraceMinutes,
                                 onDiscardPendingChanges = settingsViewModel::discardPendingChanges,
-                                onApplyPureBlackWallpaper = ::applyPureBlackWallpaper,
+                                onApplyPureBlackWallpaperAsync = ::applyPureBlackWallpaperAsync,
                                 onSendFeedback = ::launchFeedbackEmail,
                                 onRequestExport = { passphrase ->
                                     settingsViewModel.stageExportRequest(passphrase)

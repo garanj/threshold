@@ -44,6 +44,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.ExperimentalComposeUiApi
@@ -66,6 +67,7 @@ import com.garan.drytoast.core.model.FrictionChoice
 import com.garan.drytoast.core.model.GeneralSettings
 import com.garan.drytoast.core.model.InstalledApp
 import com.garan.drytoast.ui.search.SearchKeyboardOptions
+import kotlinx.coroutines.launch
 
 object SettingsTestTags {
     const val SETTINGS_LIST = "settings_list"
@@ -129,6 +131,7 @@ fun DryToastSettingsScreen(
     onUpdateGuardedSessionGraceMinutes: (Int) -> Unit = {},
     onDiscardPendingChanges: () -> Unit = {},
     onApplyPureBlackWallpaper: () -> Unit = {},
+    onApplyPureBlackWallpaperAsync: (suspend () -> Boolean)? = null,
     onSendFeedback: () -> Unit = {},
     onOpenWebsite: ((String) -> Unit)? = null,
     onRequestExport: (passphrase: String?) -> Unit = {},
@@ -162,6 +165,8 @@ fun DryToastSettingsScreen(
     var pendingSecondDeviceUrl by rememberSaveable { mutableStateOf<String?>(null) }
     val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior()
     val snackbarHostState = remember { SnackbarHostState() }
+    val coroutineScope = rememberCoroutineScope()
+    val blackWallpaperAppliedMessage = stringResource(R.string.toast_black_wallpaper_applied)
 
     LaunchedEffect(backupStatusMessage) {
         if (backupStatusMessage != null) {
@@ -984,6 +989,12 @@ fun DryToastSettingsScreen(
             url = targetUrl,
             onOpenHere = openWebsiteHandler,
             onDismiss = { pendingSecondDeviceUrl = null },
+            onShowMessage = { message ->
+                coroutineScope.launch {
+                    snackbarHostState.currentSnackbarData?.dismiss()
+                    snackbarHostState.showSnackbar(message)
+                }
+            },
         )
     }
 
@@ -1051,7 +1062,20 @@ fun DryToastSettingsScreen(
                 TextButton(
                     onClick = {
                         showConfirmBlackWallpaperDialog = false
-                        onApplyPureBlackWallpaper()
+                        if (onApplyPureBlackWallpaperAsync != null) {
+                            coroutineScope.launch {
+                                if (onApplyPureBlackWallpaperAsync()) {
+                                    snackbarHostState.currentSnackbarData?.dismiss()
+                                    snackbarHostState.showSnackbar(blackWallpaperAppliedMessage)
+                                }
+                            }
+                        } else {
+                            onApplyPureBlackWallpaper()
+                            coroutineScope.launch {
+                                snackbarHostState.currentSnackbarData?.dismiss()
+                                snackbarHostState.showSnackbar(blackWallpaperAppliedMessage)
+                            }
+                        }
                     },
                     modifier = Modifier.testTag(SettingsTestTags.CONFIRM_BLACK_WALLPAPER_BUTTON),
                 ) {
