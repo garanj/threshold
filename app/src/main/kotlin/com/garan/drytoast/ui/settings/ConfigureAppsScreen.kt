@@ -10,6 +10,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -55,6 +56,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -530,16 +532,65 @@ private fun UnifiedAppRow(
                 onClick = onToggleExpand,
             ),
     ) {
-        if (isCustomProfile) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 12.dp),
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically,
+        BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+            val stackCompactAccessibilityRow =
+                !isCustomProfile &&
+                    maxWidth < 420.dp &&
+                    LocalDensity.current.fontScale >= 1.3f
+
+            if (isCustomProfile) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            text = app.label,
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = if (currentToggleState == BaseToggleState.BLOCK) {
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            } else {
+                                MaterialTheme.colorScheme.onSurface
+                            },
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f),
+                        )
+
+                        if (guardedSubtitle != null) {
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = guardedSubtitle,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(4.dp))
+
+                    DryToastProfileOverrideToggle(
+                        overrideState = when (assignment) {
+                            is AppAssignment.Standard -> BaseToggleState.ALLOW
+                            is AppAssignment.Guarded -> BaseToggleState.GUARD
+                            is AppAssignment.Blocked -> BaseToggleState.BLOCK
+                            null -> null
+                        },
+                        onOverrideChange = onSelectOverrideToggle,
+                        modifier = Modifier.fillMaxWidth(),
+                        hapticEngine = hapticEngine,
+                    )
+                }
+            } else if (stackCompactAccessibilityRow) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 10.dp),
                 ) {
                     Text(
                         text = app.label,
@@ -549,71 +600,64 @@ private fun UnifiedAppRow(
                         } else {
                             MaterialTheme.colorScheme.onSurface
                         },
-                        maxLines = 1,
+                        maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f),
                     )
-
                     if (guardedSubtitle != null) {
-                        Spacer(modifier = Modifier.width(8.dp))
                         Text(
                             text = guardedSubtitle,
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                DryToastProfileOverrideToggle(
-                    overrideState = when (assignment) {
-                        is AppAssignment.Standard -> BaseToggleState.ALLOW
-                        is AppAssignment.Guarded -> BaseToggleState.GUARD
-                        is AppAssignment.Blocked -> BaseToggleState.BLOCK
-                        null -> null
-                    },
-                    onOverrideChange = onSelectOverrideToggle,
-                    modifier = Modifier.fillMaxWidth(),
-                    hapticEngine = hapticEngine,
-                )
-            }
-        } else {
-            ListItem(
-                headlineContent = {
-                    Text(
-                        text = app.label,
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = if (currentToggleState == BaseToggleState.BLOCK) {
-                            MaterialTheme.colorScheme.onSurfaceVariant
-                        } else {
-                            MaterialTheme.colorScheme.onSurface
-                        },
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                },
-                supportingContent = guardedSubtitle?.let { subtitle ->
-                    {
-                        Text(
-                            text = subtitle,
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
-                },
-                trailingContent = {
+                    Spacer(modifier = Modifier.height(4.dp))
                     DryToastMultiStateToggle(
                         options = BaseToggleState.entries,
                         selected = currentToggleState,
                         onSelect = onSelectToggle,
                         label = { stringResource(it.labelRes) },
-                        modifier = Modifier.width(168.dp),
+                        modifier = Modifier.fillMaxWidth(),
                         hapticEngine = hapticEngine,
                         isResistanceState = { it == BaseToggleState.BLOCK },
                     )
-                },
-            )
+                }
+            } else {
+                ListItem(
+                    headlineContent = {
+                        Text(
+                            text = app.label,
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = if (currentToggleState == BaseToggleState.BLOCK) {
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            } else {
+                                MaterialTheme.colorScheme.onSurface
+                            },
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    },
+                    supportingContent = guardedSubtitle?.let { subtitle ->
+                        {
+                            Text(
+                                text = subtitle,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    },
+                    trailingContent = {
+                        DryToastMultiStateToggle(
+                            options = BaseToggleState.entries,
+                            selected = currentToggleState,
+                            onSelect = onSelectToggle,
+                            label = { stringResource(it.labelRes) },
+                            modifier = Modifier.width(168.dp),
+                            hapticEngine = hapticEngine,
+                            isResistanceState = { it == BaseToggleState.BLOCK },
+                        )
+                    },
+                )
+            }
         }
 
         // Expandable Friction Override Section for Guarded Apps

@@ -1,10 +1,10 @@
 # Current Task
 
-- **Issue:** [#219](https://github.com/garanj/drytoast/issues/219) — `feat(settings): add adaptive 2-pane Settings master-detail and 2-column profile grid on expanded screens`
-- **Branch:** `feat/219-adaptive-two-pane-settings-grid`
+- **Issue:** [#220](https://github.com/garanj/drytoast/issues/220) — `fix(accessibility): enforce 48dp touch targets on compact controls and capture tablet/foldable Play assets`
+- **Branch:** `fix/220-touch-targets-snackbar-tablet-assets`
 - **Status:** Ready for Verification & PR
 
 ## Checklist
-- [x] TDD Red: Add `AdaptiveSettingsLayoutTest` covering `COMPACT` (`411x891dp`), `MEDIUM` (`673x841dp` & `768x1024dp` centered `<= 720dp`), `EXPANDED` (`1280x800dp` 2-pane master–detail + non-duplicating detail switching + Back), and `>= 720dp` 2-column `Profiles`/`Triggers` staggered grid.
-- [x] TDD Green: Implement `AdaptiveSettingsLayout.kt` (`SettingsTwoPaneSceneStrategy`, `SettingsContentFrame`, `navigateFromSettingsMaster`, `exitSettingsFromMaster`), extract `ProfileCards.kt` and add 2-column `LazyVerticalStaggeredGrid` to `ProfilesScreen`, wire `MainActivity` `NavDisplay`, record `configure_apps_foldable_unfolded.png` and `settings_master_detail_tablet_expanded.png` Roborazzi goldens, and add `DryToastMasterDetailInstrumentedTest` + `2560x1600` PSS verification in `scripts/test-emulator-smoke.sh`.
+- [x] TDD Red: Add `AccessibilityTouchTargetAndSnackbarTest` verifying `>= 48dp × 48dp` non-overlapping touch targets across `ProfilesScreen` and `ConfigureAppsScreen`, zero text overflow/overlap at `360x800dp` + `FontScale(1.5f)`, and pane-scoped `SnackbarHost` confirmations (`black_wallpaper_applied`, `link_copied`) with zero system `Toast`.
+- [x] TDD Green: Enforce `>= 48dp × 48dp` touch bounds on `ProfileCard` reorder buttons (preserving `18dp` icons) and `DryToastMultiStateToggle`/`DryToastProfileOverrideToggle` (preserving `32dp` visual pill frame), ensure `360x800dp @ 1.5x` font-scale resilience, route in-Settings confirmations through `SnackbarHost`, update affected snapshots, and capture 7" tablet, 10" tablet, and unfolded foldable Play Store screenshots under `docs/play-store/`.
 - [x] Verify `./gradlew spotlessCheck --no-daemon`, `./gradlew test`, `:app:compileReleaseKotlin`, zero `android.*` imports in `:core`, and green GitHub Actions CI.

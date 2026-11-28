@@ -26,10 +26,13 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.testTagsAsResourceId
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -48,7 +51,7 @@ object SecondDeviceSheetTestTags {
  * computer or second device (so the phone's camera can scan the QR code or connect via USB),
  * offering Share, Copy, and an "Open on this phone" fallback.
  */
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalComposeUiApi::class)
 @Composable
 internal fun SecondDeviceLinkBottomSheet(
     url: String,
@@ -56,6 +59,7 @@ internal fun SecondDeviceLinkBottomSheet(
     onDismiss: () -> Unit,
     onShare: ((String) -> Unit)? = null,
     onCopy: ((String) -> Unit)? = null,
+    onShowMessage: ((String) -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -76,7 +80,11 @@ internal fun SecondDeviceLinkBottomSheet(
     val copyHandler: (String) -> Unit = onCopy ?: { targetUrl ->
         val clipboard = context.getSystemService(ClipboardManager::class.java)
         clipboard?.setPrimaryClip(ClipData.newPlainText("Dry Toast Console URL", targetUrl))
-        Toast.makeText(context, copiedToastText, Toast.LENGTH_SHORT).show()
+        if (onShowMessage != null) {
+            onShowMessage(copiedToastText)
+        } else {
+            Toast.makeText(context, copiedToastText, Toast.LENGTH_SHORT).show()
+        }
     }
 
     ModalBottomSheet(
@@ -84,6 +92,7 @@ internal fun SecondDeviceLinkBottomSheet(
         sheetState = sheetState,
         containerColor = MaterialTheme.colorScheme.surfaceContainer,
         contentWindowInsets = { WindowInsets(0, 0, 0, 0) },
+        modifier = Modifier.semantics { testTagsAsResourceId = true },
     ) {
         Column(
             modifier = Modifier
@@ -171,7 +180,7 @@ internal fun SecondDeviceLinkBottomSheet(
                 },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .heightIn(min = 44.dp)
+                    .heightIn(min = 48.dp)
                     .testTag(SecondDeviceSheetTestTags.OPEN_HERE_BUTTON),
             ) {
                 Text(

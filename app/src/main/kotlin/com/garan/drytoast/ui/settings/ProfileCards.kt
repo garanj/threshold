@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.HorizontalDivider
@@ -26,8 +27,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.compositeOver
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.garan.drytoast.core.model.AppAssignment
 import com.garan.drytoast.core.model.CustomProfile
@@ -236,13 +239,13 @@ internal fun ProfileCard(
                                     onClick = onMoveUp,
                                     enabled = index > 0,
                                     modifier = Modifier
-                                        .size(28.dp)
+                                        .sizeIn(minWidth = 48.dp, minHeight = 48.dp)
                                         .testTag(ProfilesTestTags.profileMoveUp(profile.id)),
                                 ) {
                                     Icon(
                                         imageVector = DryToastIcons.KeyboardArrowUp,
                                         contentDescription = "Move profile up",
-                                        modifier = Modifier.size(20.dp),
+                                        modifier = Modifier.size(18.dp),
                                         tint = if (index > 0) {
                                             MaterialTheme.colorScheme.onSurface
                                         } else {
@@ -254,13 +257,13 @@ internal fun ProfileCard(
                                     onClick = onMoveDown,
                                     enabled = index < totalProfiles - 1,
                                     modifier = Modifier
-                                        .size(28.dp)
+                                        .sizeIn(minWidth = 48.dp, minHeight = 48.dp)
                                         .testTag(ProfilesTestTags.profileMoveDown(profile.id)),
                                 ) {
                                     Icon(
                                         imageVector = DryToastIcons.KeyboardArrowDown,
                                         contentDescription = "Move profile down",
-                                        modifier = Modifier.size(20.dp),
+                                        modifier = Modifier.size(18.dp),
                                         tint = if (index < totalProfiles - 1) {
                                             MaterialTheme.colorScheme.onSurface
                                         } else {
@@ -331,6 +334,7 @@ internal fun ProfileCard(
                 modifier = Modifier.padding(horizontal = 16.dp),
             )
 
+            val actionButtonMaxLines = if (LocalDensity.current.fontScale >= 1.3f) 2 else 1
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -341,32 +345,34 @@ internal fun ProfileCard(
                 OutlinedButton(
                     onClick = onEditProfile,
                     modifier = Modifier
-                        .weight(1f)
+                        .weight(0.95f)
                         .testTag(ProfilesTestTags.profileEditRules(profile.id)),
                     shape = RoundedCornerShape(4.dp),
                     border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp),
+                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 8.dp),
                 ) {
                     Text(
                         text = editButtonLabel,
                         style = MaterialTheme.typography.labelMedium,
-                        maxLines = 1,
+                        textAlign = TextAlign.Center,
+                        maxLines = actionButtonMaxLines,
                     )
                 }
 
                 OutlinedButton(
                     onClick = onConfigureApps,
                     modifier = Modifier
-                        .weight(1.25f)
+                        .weight(1.35f)
                         .testTag(ProfilesTestTags.profileConfigureApps(profile.id)),
                     shape = RoundedCornerShape(4.dp),
                     border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp),
+                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 8.dp),
                 ) {
                     Text(
                         text = "Configure Apps",
                         style = MaterialTheme.typography.labelMedium,
-                        maxLines = 1,
+                        textAlign = TextAlign.Center,
+                        maxLines = actionButtonMaxLines,
                     )
                 }
 

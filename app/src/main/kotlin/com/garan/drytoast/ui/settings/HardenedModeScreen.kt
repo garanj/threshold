@@ -40,6 +40,8 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -53,6 +55,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -85,6 +88,7 @@ import com.garan.drytoast.R
 import com.garan.drytoast.core.model.GeneralSettings
 import com.garan.drytoast.core.security.ChallengeResponseVerifier
 import com.garan.drytoast.core.security.VerificationDomain
+import kotlinx.coroutines.launch
 
 /**
  * Validates the QR-code deep link URIs used to open:
@@ -183,6 +187,8 @@ fun HardenedModeScreen(
 
     val context = LocalContext.current
     val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior()
+    val snackbarHostState = remember { SnackbarHostState() }
+    val coroutineScope = rememberCoroutineScope()
     var pendingSecondDeviceUrl by rememberSaveable { mutableStateOf<String?>(null) }
     var showLockScreenTextSheet by rememberSaveable { mutableStateOf(false) }
 
@@ -198,6 +204,7 @@ fun HardenedModeScreen(
             .fillMaxSize()
             .semantics { testTagsAsResourceId = true }
             .nestedScroll(scrollBehavior.nestedScrollConnection),
+        snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
         topBar = {
             Column(
                 modifier = Modifier
@@ -518,6 +525,12 @@ fun HardenedModeScreen(
             url = targetUrl,
             onOpenHere = openWebsiteHandler,
             onDismiss = { pendingSecondDeviceUrl = null },
+            onShowMessage = { message ->
+                coroutineScope.launch {
+                    snackbarHostState.currentSnackbarData?.dismiss()
+                    snackbarHostState.showSnackbar(message)
+                }
+            },
         )
     }
 

@@ -11,8 +11,10 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
@@ -26,6 +28,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -46,6 +49,8 @@ import com.garan.drytoast.ui.theme.HairlineBorder
 import com.garan.drytoast.ui.theme.PureWhite
 import com.garan.drytoast.ui.theme.SubtleGray
 
+private val MIN_TOUCH_TARGET_SIZE = 48.dp
+
 /**
  * Standard 3-state toggle positions for the Base / Default Profile.
  * Balanced 5-letter verbs: ALLOW, GUARD, BLOCK.
@@ -60,21 +65,12 @@ enum class BaseToggleState(val label: String, @StringRes val labelRes: Int) {
  * Precision mechanical segmented slider toggle.
  *
  * Implements Dry Toast's tactile instrument aesthetic:
- * - Solid monochrome sliding indicator.
+ * - Solid monochrome sliding indicator inside a crisp [height] (`32.dp` default) bordered housing.
+ * - Full `>= 48.dp × 48.dp` accessible touch bounds on each interactive segment.
  * - Decelerating optical easing (`cubic-bezier(0.16, 1.0, 0.3, 1.0)`).
- * - Hairline framing (1dp rule) with crisp zero-radius or minimal corners.
+ * - Hairline framing (1dp rule) with crisp minimal corners.
  * - Distinct micro-haptic detents on transitions (`PRIMITIVE_CLICK` / resistance detent).
  * - When [selected] is null or [enabled] is false, the slider is visually dimmed to 40% with no indicator.
- *
- * @param options Discrete ordered states to present.
- * @param selected The currently active state, or null if no state is selected / unmanaged.
- * @param onSelect Callback invoked when a state is clicked.
- * @param label Text extraction for each state.
- * @param modifier Composable modifier for sizing and placement.
- * @param height Height of the mechanical toggle housing (defaults to 32.dp).
- * @param enabled Whether the toggle is active or dimmed.
- * @param hapticEngine Tactile feedback provider.
- * @param isResistanceState Predicate determining if entering a state triggers a resistance detent.
  */
 @Composable
 fun <T> DryToastMultiStateToggle(
@@ -96,6 +92,11 @@ fun <T> DryToastMultiStateToggle(
     val innerPadding = 2.dp
     val containerShape = RoundedCornerShape(2.dp)
     val indicatorShape = RoundedCornerShape(1.dp)
+    val touchHeight = maxOf(height, MIN_TOUCH_TARGET_SIZE)
+
+    val density = LocalDensity.current
+    val cappedFontScale = density.fontScale.coerceAtMost(1.25f)
+    val labelFontSize = ((11f * cappedFontScale) / density.fontScale.coerceAtLeast(0.01f)).sp
 
     val animatedAlpha by animateFloatAsState(
         targetValue = if (enabled && selected != null) 1.0f else 0.4f,
@@ -104,50 +105,60 @@ fun <T> DryToastMultiStateToggle(
     )
 
     BoxWithConstraints(
-        modifier = modifier
-            .height(height)
-            .alpha(animatedAlpha)
-            .clip(containerShape)
-            .background(CharcoalGray)
-            .border(1.dp, HairlineBorder, containerShape)
-            .padding(innerPadding),
+        modifier = modifier.height(touchHeight),
+        contentAlignment = Alignment.Center,
     ) {
         val count = options.size
-        val availableWidth = maxWidth
-        val segmentWidth = availableWidth / count
+        val innerTrackWidth = (maxWidth - innerPadding * 2).coerceAtLeast(0.dp)
+        val segmentWidth = innerTrackWidth / count
 
-        if (selectedIndex >= 0) {
-            val targetIndicatorOffset = segmentWidth * selectedIndex
-            val animatedIndicatorOffset by animateDpAsState(
-                targetValue = targetIndicatorOffset,
-                animationSpec = DryToastMotion.opticalTween(DryToastMotion.RESULT_REVEAL_DURATION_MS),
-                label = "multi_state_toggle_indicator",
-            )
+        // Crisp 32.dp (or custom `height`) visual pill housing + sliding mechanical indicator
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(height)
+                .alpha(animatedAlpha)
+                .clip(containerShape)
+                .background(CharcoalGray)
+                .border(1.dp, HairlineBorder, containerShape)
+                .padding(innerPadding),
+        ) {
+            if (selectedIndex >= 0) {
+                val targetIndicatorOffset = segmentWidth * selectedIndex
+                val animatedIndicatorOffset by animateDpAsState(
+                    targetValue = targetIndicatorOffset,
+                    animationSpec = DryToastMotion.opticalTween(DryToastMotion.RESULT_REVEAL_DURATION_MS),
+                    label = "multi_state_toggle_indicator",
+                )
 
-            // Sliding Mechanical Indicator
-            Box(
-                modifier = Modifier
-                    .offset(x = animatedIndicatorOffset)
-                    .width(segmentWidth)
-                    .fillMaxHeight()
-                    .clip(indicatorShape)
-                    .background(PureWhite),
-            )
+                Box(
+                    modifier = Modifier
+                        .offset(x = animatedIndicatorOffset)
+                        .width(segmentWidth)
+                        .fillMaxHeight()
+                        .clip(indicatorShape)
+                        .background(PureWhite),
+                )
+            }
         }
 
-        // Discrete Interactive Segments
+        // Full-height (>= 48.dp) discrete interactive segments
         Row(
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = innerPadding)
+                .alpha(animatedAlpha),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             options.forEachIndexed { index, option ->
                 val isSelected = index == selectedIndex
                 val interactionSource = remember { MutableInteractionSource() }
-
                 val tag = optionTestTag?.invoke(option)
+
                 Box(
                     modifier = Modifier
                         .weight(1f)
+                        .defaultMinSize(minWidth = MIN_TOUCH_TARGET_SIZE, minHeight = MIN_TOUCH_TARGET_SIZE)
                         .fillMaxHeight()
                         .then(if (tag != null) Modifier.testTag(tag) else Modifier)
                         .semantics {
@@ -173,11 +184,12 @@ fun <T> DryToastMultiStateToggle(
                     Text(
                         text = label(option),
                         color = if (isSelected && enabled) AmoledBlack else SubtleGray,
-                        fontSize = 11.sp,
+                        fontSize = labelFontSize,
                         fontWeight = if (isSelected && enabled) FontWeight.Bold else FontWeight.Medium,
                         letterSpacing = 0.5.sp,
                         textAlign = TextAlign.Center,
                         maxLines = maxLines,
+                        softWrap = maxLines > 1,
                     )
                 }
             }
@@ -186,24 +198,10 @@ fun <T> DryToastMultiStateToggle(
 }
 
 /**
- * Combined profile override toggle implementing Approach 1:
- * - A standalone [DEFAULT] button.
+ * Combined profile override toggle:
+ * - A standalone [DEFAULT] button (`>= 48.dp × 48.dp` touch target around a crisp `32.dp` visual pill).
  * - Followed by a hairline vertical separator.
- * - Followed by the 3-state slider ([STD | GUARD | BLOCK]).
- *
- * When [overrideState] is null (Default / Inactive):
- * - [DEFAULT] is highlighted in pure white with black text.
- * - The 3-state slider is dimmed to 40% opacity with no active sliding indicator.
- *
- * When [overrideState] is set ([BaseToggleState.STANDARD], [BaseToggleState.GUARD], or [BaseToggleState.BLOCK]):
- * - [DEFAULT] is unselected (subtle outline).
- * - The 3-state slider is active at 100% opacity with the solid white sliding indicator.
- *
- * @param overrideState The explicit override state, or null if the app inherits the default profile.
- * @param onOverrideChange Callback invoked when the override changes or is reset to null.
- * @param modifier Composable modifier for sizing and placement.
- * @param height Height of the controls (defaults to 32.dp).
- * @param hapticEngine Tactile feedback provider.
+ * - Followed by the 3-state slider ([ALLOW | GUARD | BLOCK]).
  */
 @Composable
 fun DryToastProfileOverrideToggle(
@@ -213,21 +211,24 @@ fun DryToastProfileOverrideToggle(
     height: Dp = 32.dp,
     hapticEngine: HapticEngine = NoOpHapticEngine,
 ) {
+    val touchHeight = maxOf(height, MIN_TOUCH_TARGET_SIZE)
+    val density = LocalDensity.current
+    val cappedFontScale = density.fontScale.coerceAtMost(1.25f)
+    val labelFontSize = ((11f * cappedFontScale) / density.fontScale.coerceAtLeast(0.01f)).sp
+
     Row(
-        modifier = modifier,
+        modifier = modifier.height(touchHeight),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         val isDefault = overrideState == null
         val interactionSource = remember { MutableInteractionSource() }
 
-        // [DEFAULT] Button
+        // [DEFAULT] Button (>= 48.dp × 48.dp interactive bounds with 32.dp visual pill frame)
         Box(
             modifier = Modifier
-                .height(height)
-                .clip(RoundedCornerShape(2.dp))
-                .background(if (isDefault) PureWhite else CharcoalGray)
-                .border(1.dp, if (isDefault) PureWhite else HairlineBorder, RoundedCornerShape(2.dp))
+                .defaultMinSize(minWidth = MIN_TOUCH_TARGET_SIZE, minHeight = MIN_TOUCH_TARGET_SIZE)
+                .fillMaxHeight()
                 .clickable(
                     interactionSource = interactionSource,
                     indication = null,
@@ -237,17 +238,27 @@ fun DryToastProfileOverrideToggle(
                         hapticEngine.rotaryDetent()
                         onOverrideChange(null)
                     }
-                }
-                .padding(horizontal = 8.dp),
+                },
             contentAlignment = Alignment.Center,
         ) {
-            Text(
-                text = stringResource(R.string.toggle_default),
-                color = if (isDefault) AmoledBlack else SubtleGray,
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Bold,
-                letterSpacing = 0.5.sp,
-            )
+            Box(
+                modifier = Modifier
+                    .height(height)
+                    .clip(RoundedCornerShape(2.dp))
+                    .background(if (isDefault) PureWhite else CharcoalGray)
+                    .border(1.dp, if (isDefault) PureWhite else HairlineBorder, RoundedCornerShape(2.dp))
+                    .padding(horizontal = 8.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = stringResource(R.string.toggle_default),
+                    color = if (isDefault) AmoledBlack else SubtleGray,
+                    fontSize = labelFontSize,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 0.5.sp,
+                    softWrap = false,
+                )
+            }
         }
 
         // Hairline vertical notch
