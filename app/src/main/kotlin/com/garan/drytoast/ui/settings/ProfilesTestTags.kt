@@ -9,6 +9,10 @@ import com.garan.drytoast.core.model.NfcTagEntry
 object ProfilesTestTags {
     const val TAB_PROFILES = "profiles_tab_profiles"
     const val TAB_TRIGGERS = "profiles_tab_triggers"
+    const val PROFILES_LIST = "profiles_single_column_list"
+    const val TRIGGERS_LIST = "triggers_single_column_list"
+    const val PROFILES_GRID = "profiles_two_column_grid"
+    const val TRIGGERS_GRID = "triggers_two_column_grid"
     const val TOP_ADD_BUTTON = "profiles_top_add_button"
     const val ADD_PROFILE_BUTTON = "profiles_add_profile_button"
     const val ADD_TRIGGER_BUTTON = "profiles_add_trigger_button"

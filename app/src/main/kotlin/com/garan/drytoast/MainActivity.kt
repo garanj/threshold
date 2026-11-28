@@ -20,13 +20,16 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTagsAsResourceId
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -34,6 +37,7 @@ import androidx.lifecycle.lifecycleScope
 import androidx.navigation3.runtime.NavKey
 import androidx.navigation3.runtime.entryProvider
 import androidx.navigation3.runtime.rememberNavBackStack
+import androidx.navigation3.scene.SinglePaneSceneStrategy
 import androidx.navigation3.ui.NavDisplay
 import com.garan.drytoast.core.backup.ConfigBackupCodec
 import com.garan.drytoast.core.backup.ConfigImportError
@@ -64,8 +68,14 @@ import com.garan.drytoast.ui.settings.FeedbackEmailIntentFactory
 import com.garan.drytoast.ui.settings.HardenedModeDeepLink
 import com.garan.drytoast.ui.settings.HardenedModeScreen
 import com.garan.drytoast.ui.settings.ProfilesScreen
+import com.garan.drytoast.ui.settings.SETTINGS_EXPANDED_BREAKPOINT
+import com.garan.drytoast.ui.settings.SettingsDetailSection
 import com.garan.drytoast.ui.settings.SettingsLockScreen
+import com.garan.drytoast.ui.settings.SettingsTwoPaneSceneStrategy
 import com.garan.drytoast.ui.settings.SettingsViewModel
+import com.garan.drytoast.ui.settings.exitSettingsFromMaster
+import com.garan.drytoast.ui.settings.navigateFromSettingsMaster
+import com.garan.drytoast.ui.settings.rememberSettingsTwoPaneSceneStrategy
 import com.garan.drytoast.ui.theme.DryToastTheme
 import com.garan.drytoast.ui.util.ImeUtils
 import kotlinx.coroutines.Dispatchers
@@ -605,10 +615,31 @@ class MainActivity : ComponentActivity() {
                     }
                 }
 
+                val isExpandedSettings =
+                    LocalConfiguration.current.screenWidthDp.dp >= SETTINGS_EXPANDED_BREAKPOINT
+                val settingsTwoPaneStrategy = rememberSettingsTwoPaneSceneStrategy<NavKey>(
+                    isExpanded = isExpandedSettings,
+                ) {
+                    ConfigureAppsScreen(
+                        availableApps = settingsUiState.availableApps,
+                        initialAssignments = settingsUiState.baseProfile.appAssignments,
+                        defaultFriction = settingsUiState.baseProfile.defaultFriction,
+                        onSave = settingsViewModel::saveAppAssignments,
+                        onBack = {
+                            if (backStack.size > 1) backStack.removeLastOrNull()
+                        },
+                        hapticEngine = hapticEngine,
+                    )
+                }
+                val sceneStrategies = remember(settingsTwoPaneStrategy) {
+                    listOf(settingsTwoPaneStrategy, SinglePaneSceneStrategy())
+                }
+
                 @OptIn(ExperimentalComposeUiApi::class)
                 NavDisplay(
                     backStack = backStack,
                     modifier = Modifier.semantics { testTagsAsResourceId = true },
+                    sceneStrategies = sceneStrategies,
                     onBack = {
                         if (backStack.size > 1) {
                             backStack.removeLastOrNull()
@@ -695,7 +726,9 @@ class MainActivity : ComponentActivity() {
                             )
                         }
 
-                        entry<DryToastRoute.Settings> {
+                        entry<DryToastRoute.Settings>(
+                            metadata = SettingsTwoPaneSceneStrategy.masterMetadata(),
+                        ) {
                             LaunchedEffect(Unit) {
                                 settingsViewModel.ensureLoaded()
                             }
@@ -769,19 +802,35 @@ class MainActivity : ComponentActivity() {
                             DryToastSettingsScreen(
                                 uiState = settingsUiState,
                                 onBack = {
-                                    if (backStack.size > 1) backStack.removeLastOrNull()
+                                    exitSettingsFromMaster(backStack)
                                 },
                                 onNavigateToConfigureApps = {
-                                    backStack.add(DryToastRoute.ConfigureApps(profileId = null))
+                                    navigateFromSettingsMaster(
+                                        backStack = backStack,
+                                        target = DryToastRoute.ConfigureApps(profileId = null),
+                                        isExpanded = isExpandedSettings,
+                                    )
                                 },
                                 onNavigateToProfiles = {
-                                    backStack.add(DryToastRoute.Profiles)
+                                    navigateFromSettingsMaster(
+                                        backStack = backStack,
+                                        target = DryToastRoute.Profiles,
+                                        isExpanded = isExpandedSettings,
+                                    )
                                 },
                                 onNavigateToHardenedMode = {
-                                    backStack.add(DryToastRoute.HardenedMode)
+                                    navigateFromSettingsMaster(
+                                        backStack = backStack,
+                                        target = DryToastRoute.HardenedMode,
+                                        isExpanded = isExpandedSettings,
+                                    )
                                 },
                                 onNavigateToBreakGlass = {
-                                    backStack.add(DryToastRoute.BreakGlass)
+                                    navigateFromSettingsMaster(
+                                        backStack = backStack,
+                                        target = DryToastRoute.BreakGlass,
+                                        isExpanded = isExpandedSettings,
+                                    )
                                 },
                                 onUpdateShowUnlocks = settingsViewModel::updateShowUnlocks,
                                 onUpdateShowRest = settingsViewModel::updateShowRest,
@@ -845,7 +894,11 @@ class MainActivity : ComponentActivity() {
                             )
                         }
 
-                        entry<DryToastRoute.HardenedMode> {
+                        entry<DryToastRoute.HardenedMode>(
+                            metadata = SettingsTwoPaneSceneStrategy.detailMetadata(
+                                section = SettingsDetailSection.HARDENED_MODE,
+                            ),
+                        ) {
                             LaunchedEffect(Unit) {
                                 settingsViewModel.refreshHardenedModeStatus()
                             }
@@ -863,7 +916,11 @@ class MainActivity : ComponentActivity() {
                             )
                         }
 
-                        entry<DryToastRoute.BreakGlass> {
+                        entry<DryToastRoute.BreakGlass>(
+                            metadata = SettingsTwoPaneSceneStrategy.detailMetadata(
+                                section = SettingsDetailSection.BREAK_GLASS,
+                            ),
+                        ) {
                             BreakGlassScreen(
                                 breakGlassTagUid = settingsUiState.general.normalizedBreakGlassTagUid(),
                                 breakGlassDurationMinutes = settingsUiState.general.breakGlassDurationMinutes,
@@ -941,10 +998,11 @@ class MainActivity : ComponentActivity() {
                             )
                         }
 
-                        entry<DryToastRoute.Profiles> {
-                            LaunchedEffect(Unit) {
-                                settingsViewModel.ensureLoaded()
-                            }
+                        entry<DryToastRoute.Profiles>(
+                            metadata = SettingsTwoPaneSceneStrategy.detailMetadata(
+                                section = SettingsDetailSection.PROFILES,
+                            ),
+                        ) {
                             ProfilesScreen(
                                 profiles = settingsUiState.customProfiles,
                                 onSaveProfile = settingsViewModel::saveCustomProfile,
@@ -980,7 +1038,14 @@ class MainActivity : ComponentActivity() {
                             )
                         }
 
-                        entry<DryToastRoute.ConfigureApps> { route ->
+                        entry<DryToastRoute.ConfigureApps>(
+                            metadata = { route ->
+                                SettingsTwoPaneSceneStrategy.detailMetadata(
+                                    section = SettingsDetailSection.CONFIGURE_APPS,
+                                    isSubDetail = route.profileId != null,
+                                )
+                            },
+                        ) { route ->
                             LaunchedEffect(Unit) {
                                 settingsViewModel.ensureLoaded()
                             }

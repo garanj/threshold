@@ -2,9 +2,10 @@ package com.garan.drytoast.ui.settings
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -17,9 +18,13 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.staggeredgrid.LazyVerticalStaggeredGrid
+import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridCells
+import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridItemSpan
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -27,8 +32,6 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.ListItem
-import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
@@ -36,8 +39,6 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -52,7 +53,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.semantics
@@ -60,7 +60,6 @@ import androidx.compose.ui.semantics.testTagsAsResourceId
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import com.garan.drytoast.core.model.AppAssignment
 import com.garan.drytoast.core.model.CustomProfile
 import com.garan.drytoast.core.model.LocationFix
 import com.garan.drytoast.core.model.NfcTagRegistrationResult
@@ -70,8 +69,9 @@ import com.garan.drytoast.core.model.TriggerRule
 import com.garan.drytoast.core.port.HapticEngine
 import com.garan.drytoast.core.port.LocationTelemetry
 import com.garan.drytoast.core.port.NoOpHapticEngine
-import com.garan.drytoast.ui.theme.profileBaseColor
 import java.util.UUID
+import androidx.compose.foundation.lazy.staggeredgrid.items as gridItems
+import androidx.compose.foundation.lazy.staggeredgrid.itemsIndexed as gridItemsIndexed
 
 private enum class ProfilesTab {
     PROFILES,
@@ -107,6 +107,7 @@ fun ProfilesScreen(
     onRegisterNfcScanListener: (((String) -> Unit)?) -> Unit = {},
     onRegisterNfcRegistrationListener: (((NfcTagRegistrationResult) -> Unit)?) -> Unit = {},
 ) {
+    val hideBackArrow = LocalHideSettingsDetailBackArrow.current
     BackHandler(onBack = onBack)
 
     // Local fallback trigger store for standalone tests that do not supply `onSaveTrigger`
@@ -187,99 +188,130 @@ fun ProfilesScreen(
         }
     }
 
+    fun moveProfile(fromIndex: Int, toIndex: Int) {
+        if (fromIndex !in profiles.indices || toIndex !in profiles.indices) return
+        hapticEngine.rotaryDetent()
+        val list = profiles.toMutableList()
+        val temp = list[fromIndex]
+        list[fromIndex] = list[toIndex]
+        list[toIndex] = temp
+        onReorderProfiles(list)
+    }
+
+    fun toggleProfileEnabled(profile: CustomProfile, enabled: Boolean) {
+        hapticEngine.rotaryDetent()
+        onSaveProfile(profile.copy(enabled = enabled))
+        if (enabled) {
+            checkPermissionsForTriggers(profile.resolvedTriggers(savedTriggersById))
+        }
+    }
+
     Scaffold(
         modifier = modifier
             .fillMaxSize()
             .semantics { testTagsAsResourceId = true }
             .nestedScroll(scrollBehavior.nestedScrollConnection),
         topBar = {
-            Column {
-                TopAppBar(
-                    title = {
-                        Column {
-                            Text(
-                                text = "Profiles",
-                                style = MaterialTheme.typography.titleLarge,
-                            )
-                            Text(
-                                text = if (selectedTab == ProfilesTab.PROFILES) {
-                                    "Top active profile takes precedence"
-                                } else {
-                                    "Reusable conditions for activating profiles"
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(MaterialTheme.colorScheme.surface),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Column(
+                    modifier = Modifier
+                        .widthIn(max = SETTINGS_GRID_MAX_WIDTH)
+                        .fillMaxWidth(),
+                ) {
+                    TopAppBar(
+                        title = {
+                            Column {
+                                Text(
+                                    text = "Profiles",
+                                    style = MaterialTheme.typography.titleLarge,
+                                )
+                                Text(
+                                    text = if (selectedTab == ProfilesTab.PROFILES) {
+                                        "Top active profile takes precedence"
+                                    } else {
+                                        "Reusable conditions for activating profiles"
+                                    },
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        },
+                        navigationIcon = {
+                            if (!hideBackArrow) {
+                                IconButton(onClick = onBack) {
+                                    Icon(
+                                        imageVector = DryToastIcons.ArrowBack,
+                                        contentDescription = "Back",
+                                    )
+                                }
+                            }
+                        },
+                        actions = {
+                            IconButton(
+                                onClick = {
+                                    hapticEngine.rotaryDetent()
+                                    if (selectedTab == ProfilesTab.PROFILES) {
+                                        isCreatingNewProfile = true
+                                    } else {
+                                        isCreatingNewStandaloneTrigger = true
+                                    }
                                 },
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                    },
-                    navigationIcon = {
-                        IconButton(onClick = onBack) {
-                            Icon(
-                                imageVector = DryToastIcons.ArrowBack,
-                                contentDescription = "Back",
-                            )
-                        }
-                    },
-                    actions = {
-                        IconButton(
+                                modifier = Modifier.testTag(ProfilesTestTags.TOP_ADD_BUTTON),
+                            ) {
+                                Icon(
+                                    imageVector = DryToastIcons.Add,
+                                    contentDescription = if (selectedTab == ProfilesTab.PROFILES) {
+                                        "Add Profile"
+                                    } else {
+                                        "Add Trigger"
+                                    },
+                                )
+                            }
+                        },
+                        scrollBehavior = scrollBehavior,
+                        colors = TopAppBarDefaults.topAppBarColors(
+                            containerColor = MaterialTheme.colorScheme.surface,
+                            scrolledContainerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+                        ),
+                    )
+
+                    SingleChoiceSegmentedButtonRow(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp)
+                            .padding(bottom = 12.dp),
+                    ) {
+                        SegmentedButton(
+                            selected = selectedTab == ProfilesTab.PROFILES,
                             onClick = {
-                                hapticEngine.rotaryDetent()
-                                if (selectedTab == ProfilesTab.PROFILES) {
-                                    isCreatingNewProfile = true
-                                } else {
-                                    isCreatingNewStandaloneTrigger = true
+                                if (selectedTab != ProfilesTab.PROFILES) {
+                                    hapticEngine.rotaryDetent()
+                                    selectedTab = ProfilesTab.PROFILES
                                 }
                             },
-                            modifier = Modifier.testTag(ProfilesTestTags.TOP_ADD_BUTTON),
+                            shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2),
+                            modifier = Modifier.testTag(ProfilesTestTags.TAB_PROFILES),
                         ) {
-                            Icon(
-                                imageVector = DryToastIcons.Add,
-                                contentDescription = if (selectedTab == ProfilesTab.PROFILES) {
-                                    "Add Profile"
-                                } else {
-                                    "Add Trigger"
-                                },
-                            )
+                            Text("Profiles")
                         }
-                    },
-                    scrollBehavior = scrollBehavior,
-                    colors = TopAppBarDefaults.topAppBarColors(
-                        containerColor = MaterialTheme.colorScheme.surface,
-                        scrolledContainerColor = MaterialTheme.colorScheme.surfaceContainerLow,
-                    ),
-                )
-
-                SingleChoiceSegmentedButtonRow(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp)
-                        .padding(bottom = 12.dp),
-                ) {
-                    SegmentedButton(
-                        selected = selectedTab == ProfilesTab.PROFILES,
-                        onClick = {
-                            if (selectedTab != ProfilesTab.PROFILES) {
-                                hapticEngine.rotaryDetent()
-                                selectedTab = ProfilesTab.PROFILES
-                            }
-                        },
-                        shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2),
-                        modifier = Modifier.testTag(ProfilesTestTags.TAB_PROFILES),
-                    ) {
-                        Text("Profiles")
-                    }
-                    SegmentedButton(
-                        selected = selectedTab == ProfilesTab.TRIGGERS,
-                        onClick = {
-                            if (selectedTab != ProfilesTab.TRIGGERS) {
-                                hapticEngine.rotaryDetent()
-                                selectedTab = ProfilesTab.TRIGGERS
-                            }
-                        },
-                        shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2),
-                        modifier = Modifier.testTag(ProfilesTestTags.TAB_TRIGGERS),
-                    ) {
-                        Text("Triggers")
+                        SegmentedButton(
+                            selected = selectedTab == ProfilesTab.TRIGGERS,
+                            onClick = {
+                                if (selectedTab != ProfilesTab.TRIGGERS) {
+                                    hapticEngine.rotaryDetent()
+                                    selectedTab = ProfilesTab.TRIGGERS
+                                }
+                            },
+                            shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2),
+                            modifier = Modifier.testTag(ProfilesTestTags.TAB_TRIGGERS),
+                        ) {
+                            Text("Triggers")
+                        }
                     }
                 }
 
@@ -291,206 +323,240 @@ fun ProfilesScreen(
         },
         containerColor = MaterialTheme.colorScheme.background,
     ) { innerPadding ->
-        when (selectedTab) {
-            ProfilesTab.PROFILES -> {
-                LazyColumn(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .consumeWindowInsets(innerPadding),
-                    contentPadding = PaddingValues(
-                        top = innerPadding.calculateTopPadding() + 16.dp,
-                        bottom = innerPadding.calculateBottomPadding() + 24.dp,
-                        start = 16.dp,
-                        end = 16.dp,
-                    ),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                ) {
-                    if (profiles.isEmpty()) {
-                        item(key = "empty_state") {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(vertical = 48.dp),
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                Text(
-                                    text = "No custom profiles yet.\nAdd one to schedule focused app restrictions.",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    textAlign = TextAlign.Center,
+        BoxWithConstraints(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.TopCenter,
+        ) {
+            val useTwoColumnGrid = maxWidth >= SETTINGS_GRID_BREAKPOINT
+            val listContentPadding = PaddingValues(
+                top = innerPadding.calculateTopPadding() + 16.dp,
+                bottom = innerPadding.calculateBottomPadding() + 24.dp,
+                start = 16.dp,
+                end = 16.dp,
+            )
+            val hasGeo = profiles.any { profile ->
+                profile.resolvedTriggers(savedTriggersById).any { it is ProfileTrigger.Geo }
+            }
+
+            when (selectedTab) {
+                ProfilesTab.PROFILES -> {
+                    if (useTwoColumnGrid) {
+                        LazyVerticalStaggeredGrid(
+                            columns = StaggeredGridCells.Fixed(2),
+                            modifier = Modifier
+                                .widthIn(max = SETTINGS_GRID_MAX_WIDTH)
+                                .fillMaxSize()
+                                .consumeWindowInsets(innerPadding)
+                                .testTag(ProfilesTestTags.PROFILES_GRID),
+                            contentPadding = listContentPadding,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            verticalItemSpacing = 12.dp,
+                        ) {
+                            if (profiles.isEmpty()) {
+                                item(key = "empty_state", span = StaggeredGridItemSpan.FullLine) {
+                                    EmptyProfilesNotice()
+                                }
+                            } else {
+                                gridItemsIndexed(
+                                    items = profiles,
+                                    key = { _, profile -> profile.id },
+                                ) { index, profile ->
+                                    ProfileCard(
+                                        profile = profile,
+                                        index = index,
+                                        totalProfiles = profiles.size,
+                                        savedTriggersById = savedTriggersById,
+                                        currentLocation = currentLocation,
+                                        onMoveUp = { moveProfile(index, index - 1) },
+                                        onMoveDown = { moveProfile(index, index + 1) },
+                                        onToggleEnabled = { enabled -> toggleProfileEnabled(profile, enabled) },
+                                        onEditProfile = { editingProfileId = profile.id },
+                                        onConfigureApps = { onConfigureProfileApps(profile.id) },
+                                        onDelete = {
+                                            hapticEngine.rotaryDetent()
+                                            profilePendingDeletionId = profile.id
+                                        },
+                                    )
+                                }
+                            }
+
+                            item(key = "add_profile_row", span = StaggeredGridItemSpan.FullLine) {
+                                AddEntityOutlinedButton(
+                                    label = "Add Profile",
+                                    testTag = ProfilesTestTags.ADD_PROFILE_BUTTON,
+                                    onClick = {
+                                        hapticEngine.rotaryDetent()
+                                        isCreatingNewProfile = true
+                                    },
                                 )
+                            }
+
+                            if (locationTelemetry != null && hasGeo) {
+                                item(key = "location_telemetry_footer", span = StaggeredGridItemSpan.FullLine) {
+                                    LocationTelemetryFooterText(locationTelemetry)
+                                }
                             }
                         }
                     } else {
-                        itemsIndexed(
-                            items = profiles,
-                            key = { _, profile -> profile.id },
-                        ) { index, profile ->
-                            ProfileCard(
-                                profile = profile,
-                                index = index,
-                                totalProfiles = profiles.size,
-                                savedTriggersById = savedTriggersById,
-                                currentLocation = currentLocation,
-                                onMoveUp = {
-                                    if (index > 0) {
-                                        hapticEngine.rotaryDetent()
-                                        val list = profiles.toMutableList()
-                                        val temp = list[index]
-                                        list[index] = list[index - 1]
-                                        list[index - 1] = temp
-                                        onReorderProfiles(list)
-                                    }
-                                },
-                                onMoveDown = {
-                                    if (index < profiles.size - 1) {
-                                        hapticEngine.rotaryDetent()
-                                        val list = profiles.toMutableList()
-                                        val temp = list[index]
-                                        list[index] = list[index + 1]
-                                        list[index + 1] = temp
-                                        onReorderProfiles(list)
-                                    }
-                                },
-                                onToggleEnabled = { enabled ->
-                                    hapticEngine.rotaryDetent()
-                                    onSaveProfile(profile.copy(enabled = enabled))
-                                    if (enabled) {
-                                        checkPermissionsForTriggers(profile.resolvedTriggers(savedTriggersById))
-                                    }
-                                },
-                                onEditProfile = { editingProfileId = profile.id },
-                                onConfigureApps = { onConfigureProfileApps(profile.id) },
-                                onDelete = {
-                                    hapticEngine.rotaryDetent()
-                                    profilePendingDeletionId = profile.id
-                                },
-                            )
-                        }
-                    }
-
-                    item(key = "add_profile_row") {
-                        OutlinedButton(
-                            onClick = {
-                                hapticEngine.rotaryDetent()
-                                isCreatingNewProfile = true
-                            },
+                        LazyColumn(
                             modifier = Modifier
-                                .fillMaxWidth()
-                                .height(48.dp)
-                                .testTag(ProfilesTestTags.ADD_PROFILE_BUTTON),
-                            shape = RoundedCornerShape(4.dp),
-                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                                .widthIn(max = SETTINGS_MEDIUM_MAX_WIDTH)
+                                .fillMaxSize()
+                                .consumeWindowInsets(innerPadding)
+                                .testTag(ProfilesTestTags.PROFILES_LIST),
+                            contentPadding = listContentPadding,
+                            verticalArrangement = Arrangement.spacedBy(12.dp),
                         ) {
-                            Icon(
-                                imageVector = DryToastIcons.Add,
-                                contentDescription = null,
-                                modifier = Modifier.size(18.dp),
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(
-                                text = "Add Profile",
-                                style = MaterialTheme.typography.labelLarge,
-                                fontWeight = FontWeight.SemiBold,
-                            )
-                        }
-                    }
+                            if (profiles.isEmpty()) {
+                                item(key = "empty_state") {
+                                    EmptyProfilesNotice()
+                                }
+                            } else {
+                                itemsIndexed(
+                                    items = profiles,
+                                    key = { _, profile -> profile.id },
+                                ) { index, profile ->
+                                    ProfileCard(
+                                        profile = profile,
+                                        index = index,
+                                        totalProfiles = profiles.size,
+                                        savedTriggersById = savedTriggersById,
+                                        currentLocation = currentLocation,
+                                        onMoveUp = { moveProfile(index, index - 1) },
+                                        onMoveDown = { moveProfile(index, index + 1) },
+                                        onToggleEnabled = { enabled -> toggleProfileEnabled(profile, enabled) },
+                                        onEditProfile = { editingProfileId = profile.id },
+                                        onConfigureApps = { onConfigureProfileApps(profile.id) },
+                                        onDelete = {
+                                            hapticEngine.rotaryDetent()
+                                            profilePendingDeletionId = profile.id
+                                        },
+                                    )
+                                }
+                            }
 
-                    val hasGeo = profiles.any { profile ->
-                        profile.resolvedTriggers(savedTriggersById).any { it is ProfileTrigger.Geo }
-                    }
-                    if (locationTelemetry != null && hasGeo) {
-                        item(key = "location_telemetry_footer") {
-                            Text(
-                                text = formatLocationTelemetryFooter(locationTelemetry),
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                textAlign = TextAlign.Center,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(top = 4.dp),
-                            )
+                            item(key = "add_profile_row") {
+                                AddEntityOutlinedButton(
+                                    label = "Add Profile",
+                                    testTag = ProfilesTestTags.ADD_PROFILE_BUTTON,
+                                    onClick = {
+                                        hapticEngine.rotaryDetent()
+                                        isCreatingNewProfile = true
+                                    },
+                                )
+                            }
+
+                            if (locationTelemetry != null && hasGeo) {
+                                item(key = "location_telemetry_footer") {
+                                    LocationTelemetryFooterText(locationTelemetry)
+                                }
+                            }
                         }
                     }
                 }
-            }
 
-            ProfilesTab.TRIGGERS -> {
-                LazyColumn(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .consumeWindowInsets(innerPadding),
-                    contentPadding = PaddingValues(
-                        top = innerPadding.calculateTopPadding() + 16.dp,
-                        bottom = innerPadding.calculateBottomPadding() + 24.dp,
-                        start = 16.dp,
-                        end = 16.dp,
-                    ),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                ) {
-                    if (effectiveSavedTriggers.isEmpty()) {
-                        item(key = "empty_triggers_state") {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(vertical = 48.dp),
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                Text(
-                                    text = "No triggers yet.\n" +
-                                        "Create reusable schedule or location triggers for your profiles.",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    textAlign = TextAlign.Center,
+                ProfilesTab.TRIGGERS -> {
+                    if (useTwoColumnGrid) {
+                        LazyVerticalStaggeredGrid(
+                            columns = StaggeredGridCells.Fixed(2),
+                            modifier = Modifier
+                                .widthIn(max = SETTINGS_GRID_MAX_WIDTH)
+                                .fillMaxSize()
+                                .consumeWindowInsets(innerPadding)
+                                .testTag(ProfilesTestTags.TRIGGERS_GRID),
+                            contentPadding = listContentPadding,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            verticalItemSpacing = 12.dp,
+                        ) {
+                            if (effectiveSavedTriggers.isEmpty()) {
+                                item(key = "empty_triggers_state", span = StaggeredGridItemSpan.FullLine) {
+                                    EmptyTriggersNotice()
+                                }
+                            } else {
+                                gridItems(
+                                    items = effectiveSavedTriggers,
+                                    key = { it.id },
+                                ) { savedTrigger ->
+                                    val referencingProfiles = profiles.filter { profile ->
+                                        savedTrigger.id in profile.referencedTriggerIds ||
+                                            (
+                                                profile.activationRules.isEmpty() &&
+                                                    "trigger-${profile.id}" == savedTrigger.id
+                                                )
+                                    }
+                                    TriggerCard(
+                                        savedTrigger = savedTrigger,
+                                        referencingProfiles = referencingProfiles,
+                                        currentLocation = currentLocation,
+                                        onEdit = { editingTriggerId = savedTrigger.id },
+                                        onDelete = {
+                                            hapticEngine.rotaryDetent()
+                                            triggerPendingDeletionId = savedTrigger.id
+                                        },
+                                    )
+                                }
+                            }
+
+                            item(key = "add_trigger_row", span = StaggeredGridItemSpan.FullLine) {
+                                AddEntityOutlinedButton(
+                                    label = "Add Trigger",
+                                    testTag = ProfilesTestTags.ADD_TRIGGER_BUTTON,
+                                    onClick = {
+                                        hapticEngine.rotaryDetent()
+                                        isCreatingNewStandaloneTrigger = true
+                                    },
                                 )
                             }
                         }
                     } else {
-                        items(
-                            items = effectiveSavedTriggers,
-                            key = { it.id },
-                        ) { savedTrigger ->
-                            val referencingProfiles = profiles.filter { profile ->
-                                savedTrigger.id in profile.referencedTriggerIds ||
-                                    (profile.activationRules.isEmpty() && "trigger-${profile.id}" == savedTrigger.id)
-                            }
-                            TriggerCard(
-                                savedTrigger = savedTrigger,
-                                referencingProfiles = referencingProfiles,
-                                currentLocation = currentLocation,
-                                onEdit = { editingTriggerId = savedTrigger.id },
-                                onDelete = {
-                                    hapticEngine.rotaryDetent()
-                                    triggerPendingDeletionId = savedTrigger.id
-                                },
-                            )
-                        }
-                    }
-
-                    item(key = "add_trigger_row") {
-                        OutlinedButton(
-                            onClick = {
-                                hapticEngine.rotaryDetent()
-                                isCreatingNewStandaloneTrigger = true
-                            },
+                        LazyColumn(
                             modifier = Modifier
-                                .fillMaxWidth()
-                                .height(48.dp)
-                                .testTag(ProfilesTestTags.ADD_TRIGGER_BUTTON),
-                            shape = RoundedCornerShape(4.dp),
-                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                                .widthIn(max = SETTINGS_MEDIUM_MAX_WIDTH)
+                                .fillMaxSize()
+                                .consumeWindowInsets(innerPadding)
+                                .testTag(ProfilesTestTags.TRIGGERS_LIST),
+                            contentPadding = listContentPadding,
+                            verticalArrangement = Arrangement.spacedBy(12.dp),
                         ) {
-                            Icon(
-                                imageVector = DryToastIcons.Add,
-                                contentDescription = null,
-                                modifier = Modifier.size(18.dp),
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(
-                                text = "Add Trigger",
-                                style = MaterialTheme.typography.labelLarge,
-                                fontWeight = FontWeight.SemiBold,
-                            )
+                            if (effectiveSavedTriggers.isEmpty()) {
+                                item(key = "empty_triggers_state") {
+                                    EmptyTriggersNotice()
+                                }
+                            } else {
+                                items(
+                                    items = effectiveSavedTriggers,
+                                    key = { it.id },
+                                ) { savedTrigger ->
+                                    val referencingProfiles = profiles.filter { profile ->
+                                        savedTrigger.id in profile.referencedTriggerIds ||
+                                            (
+                                                profile.activationRules.isEmpty() &&
+                                                    "trigger-${profile.id}" == savedTrigger.id
+                                                )
+                                    }
+                                    TriggerCard(
+                                        savedTrigger = savedTrigger,
+                                        referencingProfiles = referencingProfiles,
+                                        currentLocation = currentLocation,
+                                        onEdit = { editingTriggerId = savedTrigger.id },
+                                        onDelete = {
+                                            hapticEngine.rotaryDetent()
+                                            triggerPendingDeletionId = savedTrigger.id
+                                        },
+                                    )
+                                }
+                            }
+
+                            item(key = "add_trigger_row") {
+                                AddEntityOutlinedButton(
+                                    label = "Add Trigger",
+                                    testTag = ProfilesTestTags.ADD_TRIGGER_BUTTON,
+                                    onClick = {
+                                        hapticEngine.rotaryDetent()
+                                        isCreatingNewStandaloneTrigger = true
+                                    },
+                                )
+                            }
                         }
                     }
                 }
@@ -777,350 +843,74 @@ fun ProfilesScreen(
     }
 }
 
-/**
- * Material 3 card for a reusable [SavedTrigger] in the `Triggers` tab of [ProfilesScreen].
- */
 @Composable
-private fun TriggerCard(
-    savedTrigger: SavedTrigger,
-    referencingProfiles: List<CustomProfile>,
-    currentLocation: LocationFix?,
-    onEdit: () -> Unit,
-    onDelete: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val detailSummary = formatTriggerDetail(savedTrigger.trigger, currentLocation)
-    val usageSummary = if (referencingProfiles.isEmpty()) {
-        "Not used by any profile"
-    } else {
-        "Used by: ${referencingProfiles.joinToString(", ") { it.name }}"
-    }
-
-    Surface(
-        modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(8.dp),
-        color = MaterialTheme.colorScheme.surfaceContainerLow,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+private fun EmptyProfilesNotice() {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 48.dp),
+        contentAlignment = Alignment.Center,
     ) {
-        ListItem(
-            leadingContent = {
-                Icon(
-                    imageVector = when (savedTrigger.trigger) {
-                        is ProfileTrigger.Schedule -> DryToastIcons.Schedule
-                        is ProfileTrigger.Geo -> DryToastIcons.LocationOn
-                        is ProfileTrigger.Nfc -> DryToastIcons.Nfc
-                    },
-                    contentDescription = when (savedTrigger.trigger) {
-                        is ProfileTrigger.Schedule -> "Schedule trigger"
-                        is ProfileTrigger.Geo -> "Geo trigger"
-                        is ProfileTrigger.Nfc -> "NFC trigger"
-                    },
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(22.dp),
-                )
-            },
-            headlineContent = {
-                Text(
-                    text = savedTrigger.name,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold,
-                )
-            },
-            supportingContent = {
-                Column(modifier = Modifier.padding(top = 2.dp)) {
-                    Text(
-                        text = detailSummary,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurface,
-                    )
-                    Text(
-                        text = usageSummary,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            },
-            trailingContent = {
-                IconButton(
-                    onClick = onDelete,
-                    modifier = Modifier.testTag(ProfilesTestTags.triggerDelete(savedTrigger.id)),
-                ) {
-                    Icon(
-                        imageVector = DryToastIcons.Delete,
-                        contentDescription = "Delete Trigger",
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            },
-            colors = ListItemDefaults.colors(
-                containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
-            ),
-            modifier = Modifier
-                .fillMaxWidth()
-                .testTag(ProfilesTestTags.triggerCard(savedTrigger.id))
-                .clickable(onClick = onEdit),
+        Text(
+            text = "No custom profiles yet.\nAdd one to schedule focused app restrictions.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center,
         )
     }
 }
 
-/**
- * Material 3 profile container with accessible vector reorder controls, trigger summary, and action buttons.
- */
 @Composable
-private fun ProfileCard(
-    profile: CustomProfile,
-    index: Int,
-    totalProfiles: Int,
-    savedTriggersById: Map<String, SavedTrigger>,
-    currentLocation: LocationFix?,
-    onMoveUp: () -> Unit,
-    onMoveDown: () -> Unit,
-    onToggleEnabled: (Boolean) -> Unit,
-    onEditProfile: () -> Unit,
-    onConfigureApps: () -> Unit,
-    onDelete: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val resolvedTriggers = profile.resolvedTriggers(savedTriggersById)
-    val hasSchedule = resolvedTriggers.any { it is ProfileTrigger.Schedule }
-    val hasGeo = resolvedTriggers.any { it is ProfileTrigger.Geo }
-    val hasNfc = resolvedTriggers.any { it is ProfileTrigger.Nfc }
-
-    val triggerSummary = formatProfileRulesSummary(
-        profile = profile,
-        savedTriggersById = savedTriggersById,
-        currentLocation = currentLocation,
-    )
-
-    val editButtonLabel = when {
-        hasSchedule && !hasGeo && !hasNfc && profile.referencedTriggerIds.size <= 1 -> "Schedule"
-        hasGeo && !hasSchedule && !hasNfc && profile.referencedTriggerIds.size <= 1 -> "Location"
-        hasNfc && !hasSchedule && !hasGeo && profile.referencedTriggerIds.size <= 1 -> "NFC"
-        else -> "Triggers"
-    }
-
-    val blockedCount = profile.appAssignments.count { it.value is AppAssignment.Blocked }
-    val guardedCount = profile.appAssignments.count { it.value is AppAssignment.Guarded }
-    val allowCount = profile.appAssignments.count { it.value is AppAssignment.Standard }
-    val totalOverrides = blockedCount + guardedCount + allowCount
-    val appSummary = if (totalOverrides == 0) {
-        "All apps inherit default behavior"
-    } else {
-        val ruleCounts = "$blockedCount Blocked · $guardedCount Guarded · $allowCount Allow"
-        val defaultPrefix = when (profile.defaultRule) {
-            com.garan.drytoast.core.model.ProfileDefaultRule.FALLTHROUGH -> null
-            com.garan.drytoast.core.model.ProfileDefaultRule.ALLOW_ALL -> "Default: Allow all"
-            com.garan.drytoast.core.model.ProfileDefaultRule.GUARD_ALL -> "Default: Guard all"
-            com.garan.drytoast.core.model.ProfileDefaultRule.BLOCK_ALL -> "Default: Block all"
-        }
-        if (defaultPrefix != null) "$defaultPrefix · $ruleCounts" else ruleCounts
-    }
-
-    val baseColor = profileBaseColor(profile.colorIndex)
-    val cardBackground = baseColor.copy(alpha = if (profile.enabled) 0.16f else 0.06f)
-        .compositeOver(MaterialTheme.colorScheme.surfaceContainerLow)
-    val cardBorder = baseColor.copy(alpha = if (profile.enabled) 0.42f else 0.18f)
-        .compositeOver(MaterialTheme.colorScheme.outlineVariant)
-
-    Surface(
-        modifier = modifier
+private fun EmptyTriggersNotice() {
+    Box(
+        modifier = Modifier
             .fillMaxWidth()
-            .testTag(ProfilesTestTags.profileCard(profile.id)),
-        shape = RoundedCornerShape(8.dp),
-        color = cardBackground,
-        border = BorderStroke(1.dp, cardBorder),
+            .padding(vertical = 48.dp),
+        contentAlignment = Alignment.Center,
     ) {
-        Column(modifier = Modifier.fillMaxWidth()) {
-            ListItem(
-                leadingContent = {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(2.dp),
-                    ) {
-                        val iconTint = if (profile.enabled) {
-                            MaterialTheme.colorScheme.onSurface
-                        } else {
-                            MaterialTheme.colorScheme.onSurfaceVariant
-                        }
-                        if (hasSchedule || (!hasSchedule && !hasGeo && !hasNfc)) {
-                            Icon(
-                                imageVector = DryToastIcons.Schedule,
-                                contentDescription = "Schedule profile",
-                                modifier = Modifier.size(22.dp),
-                                tint = iconTint,
-                            )
-                        }
-                        if (hasGeo) {
-                            Icon(
-                                imageVector = DryToastIcons.LocationOn,
-                                contentDescription = "Geo profile",
-                                modifier = Modifier.size(22.dp),
-                                tint = iconTint,
-                            )
-                        }
-                        if (hasNfc) {
-                            Icon(
-                                imageVector = DryToastIcons.Nfc,
-                                contentDescription = "NFC profile",
-                                modifier = Modifier.size(22.dp),
-                                tint = iconTint,
-                            )
-                        }
-
-                        if (totalProfiles > 1) {
-                            Column(
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                verticalArrangement = Arrangement.Center,
-                            ) {
-                                IconButton(
-                                    onClick = onMoveUp,
-                                    enabled = index > 0,
-                                    modifier = Modifier
-                                        .size(28.dp)
-                                        .testTag(ProfilesTestTags.profileMoveUp(profile.id)),
-                                ) {
-                                    Icon(
-                                        imageVector = DryToastIcons.KeyboardArrowUp,
-                                        contentDescription = "Move profile up",
-                                        modifier = Modifier.size(20.dp),
-                                        tint = if (index > 0) {
-                                            MaterialTheme.colorScheme.onSurface
-                                        } else {
-                                            MaterialTheme.colorScheme.outlineVariant
-                                        },
-                                    )
-                                }
-                                IconButton(
-                                    onClick = onMoveDown,
-                                    enabled = index < totalProfiles - 1,
-                                    modifier = Modifier
-                                        .size(28.dp)
-                                        .testTag(ProfilesTestTags.profileMoveDown(profile.id)),
-                                ) {
-                                    Icon(
-                                        imageVector = DryToastIcons.KeyboardArrowDown,
-                                        contentDescription = "Move profile down",
-                                        modifier = Modifier.size(20.dp),
-                                        tint = if (index < totalProfiles - 1) {
-                                            MaterialTheme.colorScheme.onSurface
-                                        } else {
-                                            MaterialTheme.colorScheme.outlineVariant
-                                        },
-                                    )
-                                }
-                            }
-                        }
-                    }
-                },
-                headlineContent = {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            text = profile.name,
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.SemiBold,
-                            color = if (profile.enabled) {
-                                MaterialTheme.colorScheme.onSurface
-                            } else {
-                                MaterialTheme.colorScheme.onSurfaceVariant
-                            },
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = "#${index + 1}",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                },
-                supportingContent = {
-                    Column(modifier = Modifier.padding(top = 2.dp)) {
-                        Text(
-                            text = triggerSummary,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = if (profile.enabled) {
-                                MaterialTheme.colorScheme.onSurface
-                            } else {
-                                MaterialTheme.colorScheme.onSurfaceVariant
-                            },
-                        )
-                        Text(
-                            text = appSummary,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                },
-                trailingContent = {
-                    Switch(
-                        checked = profile.enabled,
-                        onCheckedChange = onToggleEnabled,
-                        modifier = Modifier.testTag(ProfilesTestTags.profileToggle(profile.id)),
-                    )
-                },
-                colors = ListItemDefaults.colors(
-                    containerColor = cardBackground,
-                ),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable(onClick = onEditProfile),
-            )
-
-            HorizontalDivider(
-                color = MaterialTheme.colorScheme.outlineVariant,
-                thickness = 0.5.dp,
-                modifier = Modifier.padding(horizontal = 16.dp),
-            )
-
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                OutlinedButton(
-                    onClick = onEditProfile,
-                    modifier = Modifier
-                        .weight(1f)
-                        .testTag(ProfilesTestTags.profileEditRules(profile.id)),
-                    shape = RoundedCornerShape(4.dp),
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp),
-                ) {
-                    Text(
-                        text = editButtonLabel,
-                        style = MaterialTheme.typography.labelMedium,
-                        maxLines = 1,
-                    )
-                }
-
-                OutlinedButton(
-                    onClick = onConfigureApps,
-                    modifier = Modifier
-                        .weight(1.25f)
-                        .testTag(ProfilesTestTags.profileConfigureApps(profile.id)),
-                    shape = RoundedCornerShape(4.dp),
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp),
-                ) {
-                    Text(
-                        text = "Configure Apps",
-                        style = MaterialTheme.typography.labelMedium,
-                        maxLines = 1,
-                    )
-                }
-
-                IconButton(
-                    onClick = onDelete,
-                    modifier = Modifier.testTag(ProfilesTestTags.profileDelete(profile.id)),
-                ) {
-                    Icon(
-                        imageVector = DryToastIcons.Delete,
-                        contentDescription = "Delete Profile",
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            }
-        }
+        Text(
+            text = "No triggers yet.\nCreate reusable schedule or location triggers for your profiles.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center,
+        )
     }
+}
+
+@Composable
+private fun AddEntityOutlinedButton(label: String, testTag: String, onClick: () -> Unit) {
+    OutlinedButton(
+        onClick = onClick,
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(48.dp)
+            .testTag(testTag),
+        shape = RoundedCornerShape(4.dp),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+    ) {
+        Icon(
+            imageVector = DryToastIcons.Add,
+            contentDescription = null,
+            modifier = Modifier.size(18.dp),
+        )
+        Spacer(modifier = Modifier.width(8.dp))
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelLarge,
+            fontWeight = FontWeight.SemiBold,
+        )
+    }
+}
+
+@Composable
+private fun LocationTelemetryFooterText(locationTelemetry: LocationTelemetry) {
+    Text(
+        text = formatLocationTelemetryFooter(locationTelemetry),
+        style = MaterialTheme.typography.labelSmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        textAlign = TextAlign.Center,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 4.dp),
+    )
 }

@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -99,7 +100,9 @@ fun ConfigureAppsScreen(
     profileDefaultRule: ProfileDefaultRule = ProfileDefaultRule.FALLTHROUGH,
     onUpdateProfileDefaultRule: (ProfileDefaultRule) -> Unit = {},
 ) {
-    BackHandler(onBack = onBack)
+    val hideBackArrow = LocalHideSettingsDetailBackArrow.current
+    val isDefaultSettingsDetail = LocalIsDefaultSettingsDetail.current
+    BackHandler(enabled = !isDefaultSettingsDetail, onBack = onBack)
 
     val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior()
 
@@ -181,49 +184,62 @@ fun ConfigureAppsScreen(
             .semantics { testTagsAsResourceId = true }
             .nestedScroll(scrollBehavior.nestedScrollConnection),
         topBar = {
-            Column(modifier = Modifier.background(MaterialTheme.colorScheme.surface)) {
-                TopAppBar(
-                    title = {
-                        Text(
-                            text = if (isCustomProfile) {
-                                customProfileName ?: stringResource(R.string.action_configure_default_apps)
-                            } else {
-                                stringResource(R.string.action_configure_default_apps)
-                            },
-                            style = MaterialTheme.typography.titleLarge,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    },
-                    navigationIcon = {
-                        IconButton(onClick = onBack) {
-                            Icon(
-                                imageVector = DryToastIcons.ArrowBack,
-                                contentDescription = stringResource(R.string.action_go_back),
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(MaterialTheme.colorScheme.surface),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Column(
+                    modifier = Modifier
+                        .widthIn(max = SETTINGS_MEDIUM_MAX_WIDTH)
+                        .fillMaxWidth(),
+                ) {
+                    TopAppBar(
+                        title = {
+                            Text(
+                                text = if (isCustomProfile) {
+                                    customProfileName ?: stringResource(R.string.action_configure_default_apps)
+                                } else {
+                                    stringResource(R.string.action_configure_default_apps)
+                                },
+                                style = MaterialTheme.typography.titleLarge,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
                             )
-                        }
-                    },
-                    scrollBehavior = scrollBehavior,
-                    colors = TopAppBarDefaults.topAppBarColors(
-                        containerColor = MaterialTheme.colorScheme.surface,
-                        scrolledContainerColor = MaterialTheme.colorScheme.surfaceContainerLow,
-                    ),
-                )
+                        },
+                        navigationIcon = {
+                            if (!hideBackArrow) {
+                                IconButton(onClick = onBack) {
+                                    Icon(
+                                        imageVector = DryToastIcons.ArrowBack,
+                                        contentDescription = stringResource(R.string.action_go_back),
+                                    )
+                                }
+                            }
+                        },
+                        scrollBehavior = scrollBehavior,
+                        colors = TopAppBarDefaults.topAppBarColors(
+                            containerColor = MaterialTheme.colorScheme.surface,
+                            scrolledContainerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+                        ),
+                    )
 
-                FilterCounterHeaderBar(
-                    selectedFilter = selectedFilter,
-                    onSelectFilter = { filter ->
-                        if (filter != selectedFilter) {
-                            hapticEngine.rotaryDetent()
-                            selectedFilter = filter
-                        }
-                    },
-                    allCount = allCount,
-                    blockedCount = blockedCount,
-                    guardedCount = guardedCount,
-                    allowCount = allowCount,
-                    defaultCount = defaultCount,
-                )
+                    FilterCounterHeaderBar(
+                        selectedFilter = selectedFilter,
+                        onSelectFilter = { filter ->
+                            if (filter != selectedFilter) {
+                                hapticEngine.rotaryDetent()
+                                selectedFilter = filter
+                            }
+                        },
+                        allCount = allCount,
+                        blockedCount = blockedCount,
+                        guardedCount = guardedCount,
+                        allowCount = allowCount,
+                        defaultCount = defaultCount,
+                    )
+                }
 
                 HorizontalDivider(
                     color = MaterialTheme.colorScheme.outlineVariant,
@@ -233,108 +249,110 @@ fun ConfigureAppsScreen(
         },
         containerColor = MaterialTheme.colorScheme.background,
     ) { innerPadding ->
-        LazyColumn(
-            modifier = Modifier
-                .fillMaxSize()
-                .consumeWindowInsets(innerPadding)
-                .testTag("configure_apps_list"),
-            contentPadding = innerPadding,
-        ) {
-            if (isCustomProfile) {
-                item(key = "profile_default_rule_selector") {
-                    ProfileDefaultRuleHeader(
-                        selectedRule = profileDefaultRule,
-                        onSelectRule = { rule ->
-                            if (rule != profileDefaultRule) {
-                                hapticEngine.rotaryDetent()
-                                onUpdateProfileDefaultRule(rule)
-                            }
-                        },
-                    )
-                }
-            }
-
-            if (filteredApps.isEmpty()) {
-                item(key = "empty_state") {
-                    Box(
-                        modifier = Modifier
-                            .fillParentMaxWidth()
-                            .padding(vertical = 64.dp),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Text(
-                            text = when (selectedFilter) {
-                                AppListFilter.BLOCKED -> "NO BLOCKED APPS"
-                                AppListFilter.GUARDED -> "NO GUARDED APPS"
-                                AppListFilter.ALLOW -> "NO ALLOWED APPS"
-                                AppListFilter.DEFAULT -> "NO DEFAULT APPS"
-                                AppListFilter.ALL -> "NO APPS INSTALLED"
+        SettingsContentFrame {
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .consumeWindowInsets(innerPadding)
+                    .testTag("configure_apps_list"),
+                contentPadding = innerPadding,
+            ) {
+                if (isCustomProfile) {
+                    item(key = "profile_default_rule_selector") {
+                        ProfileDefaultRuleHeader(
+                            selectedRule = profileDefaultRule,
+                            onSelectRule = { rule ->
+                                if (rule != profileDefaultRule) {
+                                    hapticEngine.rotaryDetent()
+                                    onUpdateProfileDefaultRule(rule)
+                                }
                             },
-                            style = MaterialTheme.typography.labelLarge,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
                 }
-            } else {
-                items(filteredApps, key = { it.component.id }) { app ->
-                    val assignment = assignments[app.component]
-                    val isExpanded = expandedAppId == app.component.id
 
-                    UnifiedAppRow(
-                        app = app,
-                        assignment = assignment,
-                        defaultFriction = defaultFriction,
-                        isExpanded = isExpanded,
-                        onToggleExpand = {
-                            expandedAppId = if (isExpanded) null else app.component.id
-                        },
-                        onSelectToggle = { toggleState ->
-                            when (toggleState) {
-                                BaseToggleState.ALLOW -> {
-                                    assignments.remove(app.component)
-                                    if (isExpanded) expandedAppId = null
+                if (filteredApps.isEmpty()) {
+                    item(key = "empty_state") {
+                        Box(
+                            modifier = Modifier
+                                .fillParentMaxWidth()
+                                .padding(vertical = 64.dp),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Text(
+                                text = when (selectedFilter) {
+                                    AppListFilter.BLOCKED -> "NO BLOCKED APPS"
+                                    AppListFilter.GUARDED -> "NO GUARDED APPS"
+                                    AppListFilter.ALLOW -> "NO ALLOWED APPS"
+                                    AppListFilter.DEFAULT -> "NO DEFAULT APPS"
+                                    AppListFilter.ALL -> "NO APPS INSTALLED"
+                                },
+                                style = MaterialTheme.typography.labelLarge,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                } else {
+                    items(filteredApps, key = { it.component.id }) { app ->
+                        val assignment = assignments[app.component]
+                        val isExpanded = expandedAppId == app.component.id
+
+                        UnifiedAppRow(
+                            app = app,
+                            assignment = assignment,
+                            defaultFriction = defaultFriction,
+                            isExpanded = isExpanded,
+                            onToggleExpand = {
+                                expandedAppId = if (isExpanded) null else app.component.id
+                            },
+                            onSelectToggle = { toggleState ->
+                                when (toggleState) {
+                                    BaseToggleState.ALLOW -> {
+                                        assignments.remove(app.component)
+                                        if (isExpanded) expandedAppId = null
+                                    }
+                                    BaseToggleState.GUARD -> {
+                                        val existing = assignments[app.component] as? AppAssignment.Guarded
+                                        assignments[app.component] = existing ?: AppAssignment.Guarded(null)
+                                        expandedAppId = app.component.id
+                                    }
+                                    BaseToggleState.BLOCK -> {
+                                        assignments[app.component] = AppAssignment.Blocked
+                                        if (isExpanded) expandedAppId = null
+                                    }
                                 }
-                                BaseToggleState.GUARD -> {
-                                    val existing = assignments[app.component] as? AppAssignment.Guarded
-                                    assignments[app.component] = existing ?: AppAssignment.Guarded(null)
-                                    expandedAppId = app.component.id
+                                commitAssignments()
+                            },
+                            onSelectOverrideToggle = { override ->
+                                when (override) {
+                                    null -> {
+                                        assignments.remove(app.component)
+                                        if (isExpanded) expandedAppId = null
+                                    }
+                                    BaseToggleState.ALLOW -> {
+                                        assignments[app.component] = AppAssignment.Standard
+                                        if (isExpanded) expandedAppId = null
+                                    }
+                                    BaseToggleState.GUARD -> {
+                                        val existing = assignments[app.component] as? AppAssignment.Guarded
+                                        assignments[app.component] = existing ?: AppAssignment.Guarded(null)
+                                        expandedAppId = app.component.id
+                                    }
+                                    BaseToggleState.BLOCK -> {
+                                        assignments[app.component] = AppAssignment.Blocked
+                                        if (isExpanded) expandedAppId = null
+                                    }
                                 }
-                                BaseToggleState.BLOCK -> {
-                                    assignments[app.component] = AppAssignment.Blocked
-                                    if (isExpanded) expandedAppId = null
-                                }
-                            }
-                            commitAssignments()
-                        },
-                        onSelectOverrideToggle = { override ->
-                            when (override) {
-                                null -> {
-                                    assignments.remove(app.component)
-                                    if (isExpanded) expandedAppId = null
-                                }
-                                BaseToggleState.ALLOW -> {
-                                    assignments[app.component] = AppAssignment.Standard
-                                    if (isExpanded) expandedAppId = null
-                                }
-                                BaseToggleState.GUARD -> {
-                                    val existing = assignments[app.component] as? AppAssignment.Guarded
-                                    assignments[app.component] = existing ?: AppAssignment.Guarded(null)
-                                    expandedAppId = app.component.id
-                                }
-                                BaseToggleState.BLOCK -> {
-                                    assignments[app.component] = AppAssignment.Blocked
-                                    if (isExpanded) expandedAppId = null
-                                }
-                            }
-                            commitAssignments()
-                        },
-                        onUpdateGuardedAssignment = { updated ->
-                            assignments[app.component] = updated
-                            commitAssignments()
-                        },
-                        hapticEngine = hapticEngine,
-                        isCustomProfile = isCustomProfile,
-                    )
+                                commitAssignments()
+                            },
+                            onUpdateGuardedAssignment = { updated ->
+                                assignments[app.component] = updated
+                                commitAssignments()
+                            },
+                            hapticEngine = hapticEngine,
+                            isCustomProfile = isCustomProfile,
+                        )
+                    }
                 }
             }
         }

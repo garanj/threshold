@@ -53,6 +53,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTagsAsResourceId
 import androidx.compose.ui.text.font.FontWeight
@@ -140,7 +141,10 @@ fun DryToastSettingsScreen(
     backupStatusMessage: String? = null,
     onClearBackupStatusMessage: () -> Unit = {},
 ) {
-    BackHandler(onBack = onBack)
+    val isMasterPane = LocalIsSettingsMasterPane.current
+    val isMasterWithPushedDetail = LocalIsSettingsMasterWithPushedDetail.current
+    val selectedDetail = LocalSelectedSettingsDetail.current
+    BackHandler(enabled = !isMasterWithPushedDetail, onBack = onBack)
 
     val context = LocalContext.current
     val openWebsiteHandler: (String) -> Unit = onOpenWebsite ?: { url ->
@@ -200,350 +204,156 @@ fun DryToastSettingsScreen(
         },
         containerColor = MaterialTheme.colorScheme.background,
     ) { innerPadding ->
-        LazyColumn(
-            modifier = Modifier
-                .fillMaxSize()
-                .testTag(SettingsTestTags.SETTINGS_LIST)
-                .consumeWindowInsets(innerPadding),
-            contentPadding = innerPadding,
-        ) {
-            if (uiState.hasPendingRebootChanges) {
-                item(key = "pending_reboot_banner") {
-                    ListItem(
-                        headlineContent = {
-                            Text(
-                                text = stringResource(R.string.banner_pending_reboot_title),
-                                style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.SemiBold,
-                            )
-                        },
-                        supportingContent = {
-                            Text(
-                                text = stringResource(R.string.banner_pending_reboot_body),
-                                style = MaterialTheme.typography.bodySmall,
-                            )
-                        },
-                        trailingContent = {
-                            TextButton(
-                                onClick = onDiscardPendingChanges,
-                                modifier = Modifier.testTag(SettingsTestTags.DISCARD_PENDING_CHANGES_BUTTON),
-                            ) {
-                                Text(text = stringResource(R.string.action_discard_pending_changes))
-                            }
-                        },
-                        colors = ListItemDefaults.colors(
-                            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                        ),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .testTag(SettingsTestTags.PENDING_REBOOT_BANNER),
-                    )
-                    HorizontalDivider(
-                        color = MaterialTheme.colorScheme.outlineVariant,
-                        thickness = 1.dp,
-                    )
+        SettingsContentFrame {
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .testTag(SettingsTestTags.SETTINGS_LIST)
+                    .consumeWindowInsets(innerPadding),
+                contentPadding = innerPadding,
+            ) {
+                if (uiState.hasPendingRebootChanges) {
+                    item(key = "pending_reboot_banner") {
+                        ListItem(
+                            headlineContent = {
+                                Text(
+                                    text = stringResource(R.string.banner_pending_reboot_title),
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.SemiBold,
+                                )
+                            },
+                            supportingContent = {
+                                Text(
+                                    text = stringResource(R.string.banner_pending_reboot_body),
+                                    style = MaterialTheme.typography.bodySmall,
+                                )
+                            },
+                            trailingContent = {
+                                TextButton(
+                                    onClick = onDiscardPendingChanges,
+                                    modifier = Modifier.testTag(SettingsTestTags.DISCARD_PENDING_CHANGES_BUTTON),
+                                ) {
+                                    Text(text = stringResource(R.string.action_discard_pending_changes))
+                                }
+                            },
+                            colors = ListItemDefaults.colors(
+                                containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                            ),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag(SettingsTestTags.PENDING_REBOOT_BANNER),
+                        )
+                        HorizontalDivider(
+                            color = MaterialTheme.colorScheme.outlineVariant,
+                            thickness = 1.dp,
+                        )
+                    }
                 }
-            }
 
-            // SECTION 1: QUICK ACTIONS
-            item(key = "header_quick_actions") {
-                SettingsSectionHeader(title = stringResource(R.string.section_quick_actions))
-            }
-
-            if (uiState.baseProfile.quickActions.isEmpty()) {
-                item(key = "quick_actions_empty") {
-                    ListItem(
-                        headlineContent = {
-                            Text(
-                                text = stringResource(R.string.label_empty),
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        },
-                    )
+                // SECTION 1: QUICK ACTIONS
+                item(key = "header_quick_actions") {
+                    SettingsSectionHeader(title = stringResource(R.string.section_quick_actions))
                 }
-            } else {
-                uiState.baseProfile.quickActions.forEachIndexed { index, quickApp ->
-                    val comp = quickApp.component
-                    item(key = "quick_action_${comp.id}") {
-                        val slotFormatted = String.format("%02d", index + 1)
 
+                if (uiState.baseProfile.quickActions.isEmpty()) {
+                    item(key = "quick_actions_empty") {
+                        ListItem(
+                            headlineContent = {
+                                Text(
+                                    text = stringResource(R.string.label_empty),
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            },
+                        )
+                    }
+                } else {
+                    uiState.baseProfile.quickActions.forEachIndexed { index, quickApp ->
+                        val comp = quickApp.component
+                        item(key = "quick_action_${comp.id}") {
+                            val slotFormatted = String.format("%02d", index + 1)
+
+                            ListItem(
+                                leadingContent = {
+                                    Text(
+                                        text = slotFormatted,
+                                        style = MaterialTheme.typography.labelLarge,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                },
+                                headlineContent = {
+                                    Text(
+                                        text = quickApp.label,
+                                        style = MaterialTheme.typography.bodyLarge,
+                                    )
+                                },
+                                trailingContent = {
+                                    IconButton(onClick = { onRemoveQuickAction(comp) }) {
+                                        Icon(
+                                            imageVector = DryToastIcons.Delete,
+                                            contentDescription = stringResource(R.string.cd_delete),
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                    }
+                                },
+                            )
+                        }
+                    }
+                }
+
+                if (uiState.baseProfile.quickActions.size < BaseProfileSettings.MAX_QUICK_ACTIONS) {
+                    item(key = "quick_action_add") {
                         ListItem(
                             leadingContent = {
-                                Text(
-                                    text = slotFormatted,
-                                    style = MaterialTheme.typography.labelLarge,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                Icon(
+                                    imageVector = DryToastIcons.Add,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
                                 )
                             },
                             headlineContent = {
                                 Text(
-                                    text = quickApp.label,
-                                    style = MaterialTheme.typography.bodyLarge,
+                                    text = stringResource(R.string.cd_add),
+                                    style = MaterialTheme.typography.labelLarge,
+                                    fontWeight = FontWeight.SemiBold,
                                 )
                             },
-                            trailingContent = {
-                                IconButton(onClick = { onRemoveQuickAction(comp) }) {
-                                    Icon(
-                                        imageVector = DryToastIcons.Delete,
-                                        contentDescription = stringResource(R.string.cd_delete),
-                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    )
-                                }
-                            },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag(SettingsTestTags.ADD_QUICK_ACTION)
+                                .clickable { showAddQuickActionSheet = true },
                         )
                     }
                 }
-            }
 
-            if (uiState.baseProfile.quickActions.size < BaseProfileSettings.MAX_QUICK_ACTIONS) {
-                item(key = "quick_action_add") {
-                    ListItem(
-                        leadingContent = {
-                            Icon(
-                                imageVector = DryToastIcons.Add,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary,
-                            )
-                        },
-                        headlineContent = {
-                            Text(
-                                text = stringResource(R.string.cd_add),
-                                style = MaterialTheme.typography.labelLarge,
-                                fontWeight = FontWeight.SemiBold,
-                            )
-                        },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .testTag(SettingsTestTags.ADD_QUICK_ACTION)
-                            .clickable { showAddQuickActionSheet = true },
+                item(key = "divider_1") {
+                    HorizontalDivider(
+                        color = MaterialTheme.colorScheme.outlineVariant,
+                        thickness = 1.dp,
+                        modifier = Modifier.padding(top = 8.dp),
                     )
                 }
-            }
 
-            item(key = "divider_1") {
-                HorizontalDivider(
-                    color = MaterialTheme.colorScheme.outlineVariant,
-                    thickness = 1.dp,
-                    modifier = Modifier.padding(top = 8.dp),
-                )
-            }
-
-            // SECTION 2: PROFILES & APP CONFIGURATION
-            item(key = "header_app_config") {
-                SettingsSectionHeader(title = stringResource(R.string.section_app_configuration))
-            }
-
-            item(key = "nav_profiles") {
-                val profileCount = uiState.customProfiles.size
-                val activeCount = uiState.customProfiles.count { it.enabled }
-                val summary = when {
-                    profileCount == 0 -> "No custom profiles configured"
-                    activeCount == 1 -> "1 profile active"
-                    else -> "$profileCount profiles ($activeCount active)"
+                // SECTION 2: PROFILES & APP CONFIGURATION
+                item(key = "header_app_config") {
+                    SettingsSectionHeader(title = stringResource(R.string.section_app_configuration))
                 }
 
-                ListItem(
-                    headlineContent = {
-                        Text(
-                            text = "Custom profiles",
-                            style = MaterialTheme.typography.bodyLarge,
-                        )
-                    },
-                    supportingContent = {
-                        Text(
-                            text = summary,
-                            style = MaterialTheme.typography.bodySmall,
-                        )
-                    },
-                    trailingContent = {
-                        Icon(
-                            imageVector = DryToastIcons.ChevronRight,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .testTag(SettingsTestTags.NAV_PROFILES)
-                        .clickable(onClick = onNavigateToProfiles),
-                )
-            }
+                item(key = "nav_profiles") {
+                    val profileCount = uiState.customProfiles.size
+                    val activeCount = uiState.customProfiles.count { it.enabled }
+                    val summary = when {
+                        profileCount == 0 -> "No custom profiles configured"
+                        activeCount == 1 -> "1 profile active"
+                        else -> "$profileCount profiles ($activeCount active)"
+                    }
+                    val isSelected = isMasterPane && selectedDetail == SettingsDetailSection.PROFILES
 
-            item(key = "nav_configure_apps") {
-                ListItem(
-                    headlineContent = {
-                        Text(
-                            text = stringResource(R.string.action_configure_default_apps),
-                            style = MaterialTheme.typography.bodyLarge,
-                        )
-                    },
-                    supportingContent = {
-                        Text(
-                            text = "$guardedCount guarded · $blockedCount blocked",
-                            style = MaterialTheme.typography.bodySmall,
-                        )
-                    },
-                    trailingContent = {
-                        Icon(
-                            imageVector = DryToastIcons.ChevronRight,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .testTag(SettingsTestTags.NAV_CONFIGURE_APPS)
-                        .clickable(onClick = onNavigateToConfigureApps),
-                )
-            }
-
-            item(key = "divider_2") {
-                HorizontalDivider(
-                    color = MaterialTheme.colorScheme.outlineVariant,
-                    thickness = 1.dp,
-                    modifier = Modifier.padding(top = 8.dp),
-                )
-            }
-
-            // SECTION 3: GENERAL
-            item(key = "header_general") {
-                SettingsSectionHeader(title = stringResource(R.string.section_general))
-            }
-
-            item(key = "toggle_show_unlocks") {
-                SettingsToggleItem(
-                    label = stringResource(R.string.setting_show_unlocks),
-                    checked = uiState.general.showUnlocks,
-                    onCheckedChange = onUpdateShowUnlocks,
-                )
-            }
-
-            item(key = "toggle_show_rest") {
-                SettingsToggleItem(
-                    label = stringResource(R.string.setting_show_rest),
-                    checked = uiState.general.showRest,
-                    onCheckedChange = onUpdateShowRest,
-                )
-            }
-
-            item(key = "toggle_show_dialer_icon") {
-                SettingsToggleItem(
-                    label = stringResource(R.string.setting_show_dialer_icon),
-                    checked = uiState.general.showDialerIcon,
-                    onCheckedChange = onUpdateShowDialerIcon,
-                    modifier = Modifier.testTag(SettingsTestTags.TOGGLE_SHOW_DIALER_ICON),
-                )
-            }
-
-            item(key = "toggle_require_full_typing") {
-                SettingsToggleItem(
-                    label = stringResource(R.string.setting_require_full_typing),
-                    checked = uiState.general.requireFullTypingOfGuardedApps,
-                    onCheckedChange = onUpdateRequireFullTyping,
-                )
-            }
-
-            item(key = "toggle_require_reboot") {
-                SettingsToggleItem(
-                    label = stringResource(R.string.setting_require_reboot),
-                    supportingText = stringResource(R.string.setting_require_reboot_summary),
-                    checked = uiState.general.requireRebootForSettingsChange,
-                    onCheckedChange = { newChecked ->
-                        if (newChecked && !uiState.isRequireRebootActiveOnLive) {
-                            showConfirmRequireRebootDialog = true
-                        } else {
-                            onUpdateRequireReboot(newChecked)
-                        }
-                    },
-                    modifier = Modifier.testTag(SettingsTestTags.TOGGLE_REQUIRE_REBOOT),
-                )
-            }
-
-            item(key = "nav_hardened_mode") {
-                val summary = if (uiState.isHardenedModeActive) {
-                    stringResource(R.string.setting_hardened_mode_active_summary)
-                } else {
-                    stringResource(R.string.setting_hardened_mode_inactive_summary)
-                }
-                ListItem(
-                    headlineContent = {
-                        Text(
-                            text = stringResource(R.string.setting_hardened_mode),
-                            style = MaterialTheme.typography.bodyLarge,
-                        )
-                    },
-                    supportingContent = {
-                        Text(
-                            text = summary,
-                            style = MaterialTheme.typography.bodySmall,
-                        )
-                    },
-                    trailingContent = {
-                        Icon(
-                            imageVector = DryToastIcons.ChevronRight,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .testTag(SettingsTestTags.NAV_HARDENED_MODE)
-                        .clickable(onClick = onNavigateToHardenedMode),
-                )
-            }
-
-            item(key = "nav_break_glass") {
-                val nowMillis = System.currentTimeMillis()
-                val breakGlassRemainingMin = uiState.breakGlassUntilEpochMillis?.let { until ->
-                    val diff = until - nowMillis
-                    if (diff > 0L) ((diff + 59_999L) / 60_000L).toInt().coerceAtLeast(1) else 0
-                } ?: 0
-                val summary = when {
-                    breakGlassRemainingMin > 0 ->
-                        stringResource(R.string.setting_break_glass_active_summary, breakGlassRemainingMin)
-                    uiState.general.normalizedBreakGlassTagUid() != null ->
-                        stringResource(
-                            R.string.setting_break_glass_configured_summary,
-                            uiState.general.breakGlassDurationMinutes,
-                        )
-                    else -> stringResource(R.string.setting_break_glass_unconfigured)
-                }
-                ListItem(
-                    headlineContent = {
-                        Text(
-                            text = stringResource(R.string.setting_break_glass),
-                            style = MaterialTheme.typography.bodyLarge,
-                        )
-                    },
-                    supportingContent = {
-                        Text(
-                            text = summary,
-                            style = MaterialTheme.typography.bodySmall,
-                        )
-                    },
-                    trailingContent = {
-                        Icon(
-                            imageVector = DryToastIcons.ChevronRight,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .testTag(SettingsTestTags.NAV_BREAK_GLASS)
-                        .clickable(onClick = onNavigateToBreakGlass),
-                )
-            }
-
-            if (uiState.isHardenedModeActive) {
-                item(key = "setting_guarded_grace_period") {
-                    val graceMinutes = uiState.general.guardedSessionGraceMinutes
-                    val summary = formatGuardedGraceOptionLabel(graceMinutes)
                     ListItem(
                         headlineContent = {
                             Text(
-                                text = stringResource(R.string.setting_guarded_grace_period),
+                                text = "Custom profiles",
                                 style = MaterialTheme.typography.bodyLarge,
+                                fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
                             )
                         },
                         supportingContent = {
@@ -556,249 +366,501 @@ fun DryToastSettingsScreen(
                             Icon(
                                 imageVector = DryToastIcons.ChevronRight,
                                 contentDescription = null,
+                                tint = if (isSelected) {
+                                    MaterialTheme.colorScheme.primary
+                                } else {
+                                    MaterialTheme.colorScheme.onSurfaceVariant
+                                },
+                            )
+                        },
+                        colors = ListItemDefaults.colors(
+                            containerColor = if (isSelected) {
+                                MaterialTheme.colorScheme.surfaceContainerHigh
+                            } else {
+                                MaterialTheme.colorScheme.background
+                            },
+                        ),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .semantics { if (isMasterPane) selected = isSelected }
+                            .testTag(SettingsTestTags.NAV_PROFILES)
+                            .clickable(onClick = onNavigateToProfiles),
+                    )
+                }
+
+                item(key = "nav_configure_apps") {
+                    val isSelected = isMasterPane && selectedDetail == SettingsDetailSection.CONFIGURE_APPS
+                    ListItem(
+                        headlineContent = {
+                            Text(
+                                text = stringResource(R.string.action_configure_default_apps),
+                                style = MaterialTheme.typography.bodyLarge,
+                                fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
+                            )
+                        },
+                        supportingContent = {
+                            Text(
+                                text = "$guardedCount guarded · $blockedCount blocked",
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                        },
+                        trailingContent = {
+                            Icon(
+                                imageVector = DryToastIcons.ChevronRight,
+                                contentDescription = null,
+                                tint = if (isSelected) {
+                                    MaterialTheme.colorScheme.primary
+                                } else {
+                                    MaterialTheme.colorScheme.onSurfaceVariant
+                                },
+                            )
+                        },
+                        colors = ListItemDefaults.colors(
+                            containerColor = if (isSelected) {
+                                MaterialTheme.colorScheme.surfaceContainerHigh
+                            } else {
+                                MaterialTheme.colorScheme.background
+                            },
+                        ),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .semantics { if (isMasterPane) selected = isSelected }
+                            .testTag(SettingsTestTags.NAV_CONFIGURE_APPS)
+                            .clickable(onClick = onNavigateToConfigureApps),
+                    )
+                }
+
+                item(key = "divider_2") {
+                    HorizontalDivider(
+                        color = MaterialTheme.colorScheme.outlineVariant,
+                        thickness = 1.dp,
+                        modifier = Modifier.padding(top = 8.dp),
+                    )
+                }
+
+                // SECTION 3: GENERAL
+                item(key = "header_general") {
+                    SettingsSectionHeader(title = stringResource(R.string.section_general))
+                }
+
+                item(key = "toggle_show_unlocks") {
+                    SettingsToggleItem(
+                        label = stringResource(R.string.setting_show_unlocks),
+                        checked = uiState.general.showUnlocks,
+                        onCheckedChange = onUpdateShowUnlocks,
+                    )
+                }
+
+                item(key = "toggle_show_rest") {
+                    SettingsToggleItem(
+                        label = stringResource(R.string.setting_show_rest),
+                        checked = uiState.general.showRest,
+                        onCheckedChange = onUpdateShowRest,
+                    )
+                }
+
+                item(key = "toggle_show_dialer_icon") {
+                    SettingsToggleItem(
+                        label = stringResource(R.string.setting_show_dialer_icon),
+                        checked = uiState.general.showDialerIcon,
+                        onCheckedChange = onUpdateShowDialerIcon,
+                        modifier = Modifier.testTag(SettingsTestTags.TOGGLE_SHOW_DIALER_ICON),
+                    )
+                }
+
+                item(key = "toggle_require_full_typing") {
+                    SettingsToggleItem(
+                        label = stringResource(R.string.setting_require_full_typing),
+                        checked = uiState.general.requireFullTypingOfGuardedApps,
+                        onCheckedChange = onUpdateRequireFullTyping,
+                    )
+                }
+
+                item(key = "toggle_require_reboot") {
+                    SettingsToggleItem(
+                        label = stringResource(R.string.setting_require_reboot),
+                        supportingText = stringResource(R.string.setting_require_reboot_summary),
+                        checked = uiState.general.requireRebootForSettingsChange,
+                        onCheckedChange = { newChecked ->
+                            if (newChecked && !uiState.isRequireRebootActiveOnLive) {
+                                showConfirmRequireRebootDialog = true
+                            } else {
+                                onUpdateRequireReboot(newChecked)
+                            }
+                        },
+                        modifier = Modifier.testTag(SettingsTestTags.TOGGLE_REQUIRE_REBOOT),
+                    )
+                }
+
+                item(key = "nav_hardened_mode") {
+                    val summary = if (uiState.isHardenedModeActive) {
+                        stringResource(R.string.setting_hardened_mode_active_summary)
+                    } else {
+                        stringResource(R.string.setting_hardened_mode_inactive_summary)
+                    }
+                    val isSelected = isMasterPane && selectedDetail == SettingsDetailSection.HARDENED_MODE
+                    ListItem(
+                        headlineContent = {
+                            Text(
+                                text = stringResource(R.string.setting_hardened_mode),
+                                style = MaterialTheme.typography.bodyLarge,
+                                fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
+                            )
+                        },
+                        supportingContent = {
+                            Text(
+                                text = summary,
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                        },
+                        trailingContent = {
+                            Icon(
+                                imageVector = DryToastIcons.ChevronRight,
+                                contentDescription = null,
+                                tint = if (isSelected) {
+                                    MaterialTheme.colorScheme.primary
+                                } else {
+                                    MaterialTheme.colorScheme.onSurfaceVariant
+                                },
+                            )
+                        },
+                        colors = ListItemDefaults.colors(
+                            containerColor = if (isSelected) {
+                                MaterialTheme.colorScheme.surfaceContainerHigh
+                            } else {
+                                MaterialTheme.colorScheme.background
+                            },
+                        ),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .semantics { if (isMasterPane) selected = isSelected }
+                            .testTag(SettingsTestTags.NAV_HARDENED_MODE)
+                            .clickable(onClick = onNavigateToHardenedMode),
+                    )
+                }
+
+                item(key = "nav_break_glass") {
+                    val nowMillis = System.currentTimeMillis()
+                    val breakGlassRemainingMin = uiState.breakGlassUntilEpochMillis?.let { until ->
+                        val diff = until - nowMillis
+                        if (diff > 0L) ((diff + 59_999L) / 60_000L).toInt().coerceAtLeast(1) else 0
+                    } ?: 0
+                    val summary = when {
+                        breakGlassRemainingMin > 0 ->
+                            stringResource(R.string.setting_break_glass_active_summary, breakGlassRemainingMin)
+                        uiState.general.normalizedBreakGlassTagUid() != null ->
+                            stringResource(
+                                R.string.setting_break_glass_configured_summary,
+                                uiState.general.breakGlassDurationMinutes,
+                            )
+                        else -> stringResource(R.string.setting_break_glass_unconfigured)
+                    }
+                    val isSelected = isMasterPane && selectedDetail == SettingsDetailSection.BREAK_GLASS
+                    ListItem(
+                        headlineContent = {
+                            Text(
+                                text = stringResource(R.string.setting_break_glass),
+                                style = MaterialTheme.typography.bodyLarge,
+                                fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
+                            )
+                        },
+                        supportingContent = {
+                            Text(
+                                text = summary,
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                        },
+                        trailingContent = {
+                            Icon(
+                                imageVector = DryToastIcons.ChevronRight,
+                                contentDescription = null,
+                                tint = if (isSelected) {
+                                    MaterialTheme.colorScheme.primary
+                                } else {
+                                    MaterialTheme.colorScheme.onSurfaceVariant
+                                },
+                            )
+                        },
+                        colors = ListItemDefaults.colors(
+                            containerColor = if (isSelected) {
+                                MaterialTheme.colorScheme.surfaceContainerHigh
+                            } else {
+                                MaterialTheme.colorScheme.background
+                            },
+                        ),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .semantics { if (isMasterPane) selected = isSelected }
+                            .testTag(SettingsTestTags.NAV_BREAK_GLASS)
+                            .clickable(onClick = onNavigateToBreakGlass),
+                    )
+                }
+
+                if (uiState.isHardenedModeActive) {
+                    item(key = "setting_guarded_grace_period") {
+                        val graceMinutes = uiState.general.guardedSessionGraceMinutes
+                        val summary = formatGuardedGraceOptionLabel(graceMinutes)
+                        ListItem(
+                            headlineContent = {
+                                Text(
+                                    text = stringResource(R.string.setting_guarded_grace_period),
+                                    style = MaterialTheme.typography.bodyLarge,
+                                )
+                            },
+                            supportingContent = {
+                                Text(
+                                    text = summary,
+                                    style = MaterialTheme.typography.bodySmall,
+                                )
+                            },
+                            trailingContent = {
+                                Icon(
+                                    imageVector = DryToastIcons.ChevronRight,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag(SettingsTestTags.GUARDED_GRACE_PERIOD_ROW)
+                                .clickable { showGuardedGraceSheet = true },
+                        )
+                    }
+                }
+
+                item(key = "action_set_black_wallpaper") {
+                    ListItem(
+                        headlineContent = {
+                            Text(
+                                text = stringResource(R.string.action_set_black_wallpaper),
+                                style = MaterialTheme.typography.bodyLarge,
+                            )
+                        },
+                        supportingContent = {
+                            Text(
+                                text = stringResource(R.string.action_set_black_wallpaper_summary),
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                        },
+                        trailingContent = {
+                            Icon(
+                                imageVector = DryToastIcons.ChevronRight,
+                                contentDescription = null,
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         },
                         modifier = Modifier
                             .fillMaxWidth()
-                            .testTag(SettingsTestTags.GUARDED_GRACE_PERIOD_ROW)
-                            .clickable { showGuardedGraceSheet = true },
+                            .testTag(SettingsTestTags.SET_BLACK_WALLPAPER_ACTION)
+                            .clickable { showConfirmBlackWallpaperDialog = true },
                     )
                 }
-            }
 
-            item(key = "action_set_black_wallpaper") {
-                ListItem(
-                    headlineContent = {
-                        Text(
-                            text = stringResource(R.string.action_set_black_wallpaper),
-                            style = MaterialTheme.typography.bodyLarge,
-                        )
-                    },
-                    supportingContent = {
-                        Text(
-                            text = stringResource(R.string.action_set_black_wallpaper_summary),
-                            style = MaterialTheme.typography.bodySmall,
-                        )
-                    },
-                    trailingContent = {
-                        Icon(
-                            imageVector = DryToastIcons.ChevronRight,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .testTag(SettingsTestTags.SET_BLACK_WALLPAPER_ACTION)
-                        .clickable { showConfirmBlackWallpaperDialog = true },
-                )
-            }
-
-            item(key = "divider_3") {
-                HorizontalDivider(
-                    color = MaterialTheme.colorScheme.outlineVariant,
-                    thickness = 1.dp,
-                    modifier = Modifier.padding(top = 8.dp),
-                )
-            }
-
-            // SECTION 4: DEFAULT FRICTION
-            item(key = "header_default_friction") {
-                SettingsSectionHeader(title = stringResource(R.string.label_default_friction))
-            }
-
-            item(key = "default_friction_group") {
-                val currentFriction = uiState.baseProfile.defaultFriction
-                Column(modifier = Modifier.selectableGroup()) {
-                    FrictionRadioOption(
-                        title = stringResource(R.string.friction_typed_intention),
-                        selected = currentFriction == FrictionChoice.TYPED_INTENTION,
-                        onSelect = { onUpdateDefaultFriction(FrictionChoice.TYPED_INTENTION) },
-                    )
-                    FrictionRadioOption(
-                        title = stringResource(R.string.friction_drag_sort),
-                        selected = currentFriction == FrictionChoice.DRAG_SORT,
-                        onSelect = { onUpdateDefaultFriction(FrictionChoice.DRAG_SORT) },
-                    )
-                    FrictionRadioOption(
-                        title = stringResource(R.string.friction_caret_tracing),
-                        selected = currentFriction == FrictionChoice.CARET_TRACING,
-                        onSelect = { onUpdateDefaultFriction(FrictionChoice.CARET_TRACING) },
-                    )
-                    FrictionRadioOption(
-                        title = stringResource(R.string.friction_random),
-                        selected = currentFriction == FrictionChoice.RANDOM,
-                        onSelect = { onUpdateDefaultFriction(FrictionChoice.RANDOM) },
+                item(key = "divider_3") {
+                    HorizontalDivider(
+                        color = MaterialTheme.colorScheme.outlineVariant,
+                        thickness = 1.dp,
+                        modifier = Modifier.padding(top = 8.dp),
                     )
                 }
-            }
 
-            item(key = "divider_4") {
-                HorizontalDivider(
-                    color = MaterialTheme.colorScheme.outlineVariant,
-                    thickness = 1.dp,
-                    modifier = Modifier.padding(top = 8.dp),
-                )
-            }
+                // SECTION 4: DEFAULT FRICTION
+                item(key = "header_default_friction") {
+                    SettingsSectionHeader(title = stringResource(R.string.label_default_friction))
+                }
 
-            // SECTION 5: BACKUP & RESTORE
-            item(key = "header_backup_and_restore") {
-                SettingsSectionHeader(title = stringResource(R.string.section_backup_and_restore))
-            }
+                item(key = "default_friction_group") {
+                    val currentFriction = uiState.baseProfile.defaultFriction
+                    Column(modifier = Modifier.selectableGroup()) {
+                        FrictionRadioOption(
+                            title = stringResource(R.string.friction_typed_intention),
+                            selected = currentFriction == FrictionChoice.TYPED_INTENTION,
+                            onSelect = { onUpdateDefaultFriction(FrictionChoice.TYPED_INTENTION) },
+                        )
+                        FrictionRadioOption(
+                            title = stringResource(R.string.friction_drag_sort),
+                            selected = currentFriction == FrictionChoice.DRAG_SORT,
+                            onSelect = { onUpdateDefaultFriction(FrictionChoice.DRAG_SORT) },
+                        )
+                        FrictionRadioOption(
+                            title = stringResource(R.string.friction_caret_tracing),
+                            selected = currentFriction == FrictionChoice.CARET_TRACING,
+                            onSelect = { onUpdateDefaultFriction(FrictionChoice.CARET_TRACING) },
+                        )
+                        FrictionRadioOption(
+                            title = stringResource(R.string.friction_random),
+                            selected = currentFriction == FrictionChoice.RANDOM,
+                            onSelect = { onUpdateDefaultFriction(FrictionChoice.RANDOM) },
+                        )
+                    }
+                }
 
-            item(key = "action_export_config") {
-                ListItem(
-                    headlineContent = {
-                        Text(
-                            text = stringResource(R.string.setting_export_config_title),
-                            style = MaterialTheme.typography.bodyLarge,
-                        )
-                    },
-                    supportingContent = {
-                        Text(
-                            text = stringResource(R.string.setting_export_config_summary),
-                            style = MaterialTheme.typography.bodySmall,
-                        )
-                    },
-                    trailingContent = {
-                        Icon(
-                            imageVector = DryToastIcons.ChevronRight,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .testTag(SettingsTestTags.EXPORT_CONFIG_ACTION)
-                        .clickable { showExportConfigSheet = true },
-                )
-            }
+                item(key = "divider_4") {
+                    HorizontalDivider(
+                        color = MaterialTheme.colorScheme.outlineVariant,
+                        thickness = 1.dp,
+                        modifier = Modifier.padding(top = 8.dp),
+                    )
+                }
 
-            item(key = "action_import_config") {
-                val importEnabled = !uiState.isSettingsLocked
-                ListItem(
-                    headlineContent = {
-                        Text(
-                            text = stringResource(R.string.setting_import_config_title),
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = if (importEnabled) {
-                                MaterialTheme.colorScheme.onSurface
-                            } else {
-                                MaterialTheme.colorScheme.onSurfaceVariant
-                            },
-                        )
-                    },
-                    supportingContent = {
-                        Text(
-                            text = stringResource(
-                                if (importEnabled) {
-                                    R.string.setting_import_config_summary
+                // SECTION 5: BACKUP & RESTORE
+                item(key = "header_backup_and_restore") {
+                    SettingsSectionHeader(title = stringResource(R.string.section_backup_and_restore))
+                }
+
+                item(key = "action_export_config") {
+                    ListItem(
+                        headlineContent = {
+                            Text(
+                                text = stringResource(R.string.setting_export_config_title),
+                                style = MaterialTheme.typography.bodyLarge,
+                            )
+                        },
+                        supportingContent = {
+                            Text(
+                                text = stringResource(R.string.setting_export_config_summary),
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                        },
+                        trailingContent = {
+                            Icon(
+                                imageVector = DryToastIcons.ChevronRight,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag(SettingsTestTags.EXPORT_CONFIG_ACTION)
+                            .clickable { showExportConfigSheet = true },
+                    )
+                }
+
+                item(key = "action_import_config") {
+                    val importEnabled = !uiState.isSettingsLocked
+                    ListItem(
+                        headlineContent = {
+                            Text(
+                                text = stringResource(R.string.setting_import_config_title),
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = if (importEnabled) {
+                                    MaterialTheme.colorScheme.onSurface
                                 } else {
-                                    R.string.setting_import_config_locked_summary
+                                    MaterialTheme.colorScheme.onSurfaceVariant
                                 },
-                            ),
-                            style = MaterialTheme.typography.bodySmall,
-                        )
-                    },
-                    trailingContent = {
-                        Icon(
-                            imageVector = DryToastIcons.ChevronRight,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .testTag(SettingsTestTags.IMPORT_CONFIG_ACTION)
-                        .clickable(enabled = importEnabled, onClick = onRequestImport),
-                )
-            }
-
-            item(key = "divider_5") {
-                HorizontalDivider(
-                    color = MaterialTheme.colorScheme.outlineVariant,
-                    thickness = 1.dp,
-                    modifier = Modifier.padding(top = 8.dp),
-                )
-            }
-
-            // SECTION 6: GUIDE & CONSOLE
-            item(key = "header_guide_and_console") {
-                SettingsSectionHeader(title = stringResource(R.string.section_guide_and_console))
-            }
-
-            item(key = "link_docs") {
-                val docsUrl = stringResource(R.string.docs_website_url)
-                ListItem(
-                    headlineContent = {
-                        Text(
-                            text = stringResource(R.string.setting_docs_title),
-                            style = MaterialTheme.typography.bodyLarge,
-                        )
-                    },
-                    supportingContent = {
-                        Text(
-                            text = stringResource(R.string.setting_docs_summary),
-                            style = MaterialTheme.typography.bodySmall,
-                        )
-                    },
-                    trailingContent = {
-                        Icon(
-                            imageVector = DryToastIcons.ChevronRight,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .testTag(SettingsTestTags.DOCS_LINK_ROW)
-                        .clickable { openWebsiteHandler(docsUrl) },
-                )
-            }
-
-            item(key = "link_console") {
-                val consoleUrl = stringResource(R.string.console_website_url)
-                ListItem(
-                    headlineContent = {
-                        Text(
-                            text = stringResource(R.string.setting_console_title),
-                            style = MaterialTheme.typography.bodyLarge,
-                        )
-                    },
-                    supportingContent = {
-                        Text(
-                            text = stringResource(R.string.setting_console_summary),
-                            style = MaterialTheme.typography.bodySmall,
-                        )
-                    },
-                    trailingContent = {
-                        Icon(
-                            imageVector = DryToastIcons.ChevronRight,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .testTag(SettingsTestTags.CONSOLE_LINK_ROW)
-                        .clickable { pendingSecondDeviceUrl = consoleUrl },
-                )
-            }
-
-            item(key = "action_feedback") {
-                OutlinedButton(
-                    onClick = onSendFeedback,
-                    shape = RoundedCornerShape(2.dp),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 20.dp)
-                        .testTag(SettingsTestTags.FEEDBACK_BUTTON),
-                ) {
-                    Text(
-                        text = stringResource(R.string.action_feedback_is_a_gift),
-                        style = MaterialTheme.typography.labelLarge,
+                            )
+                        },
+                        supportingContent = {
+                            Text(
+                                text = stringResource(
+                                    if (importEnabled) {
+                                        R.string.setting_import_config_summary
+                                    } else {
+                                        R.string.setting_import_config_locked_summary
+                                    },
+                                ),
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                        },
+                        trailingContent = {
+                            Icon(
+                                imageVector = DryToastIcons.ChevronRight,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag(SettingsTestTags.IMPORT_CONFIG_ACTION)
+                            .clickable(enabled = importEnabled, onClick = onRequestImport),
                     )
+                }
+
+                item(key = "divider_5") {
+                    HorizontalDivider(
+                        color = MaterialTheme.colorScheme.outlineVariant,
+                        thickness = 1.dp,
+                        modifier = Modifier.padding(top = 8.dp),
+                    )
+                }
+
+                // SECTION 6: GUIDE & CONSOLE
+                item(key = "header_guide_and_console") {
+                    SettingsSectionHeader(title = stringResource(R.string.section_guide_and_console))
+                }
+
+                item(key = "link_docs") {
+                    val docsUrl = stringResource(R.string.docs_website_url)
+                    ListItem(
+                        headlineContent = {
+                            Text(
+                                text = stringResource(R.string.setting_docs_title),
+                                style = MaterialTheme.typography.bodyLarge,
+                            )
+                        },
+                        supportingContent = {
+                            Text(
+                                text = stringResource(R.string.setting_docs_summary),
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                        },
+                        trailingContent = {
+                            Icon(
+                                imageVector = DryToastIcons.ChevronRight,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag(SettingsTestTags.DOCS_LINK_ROW)
+                            .clickable { openWebsiteHandler(docsUrl) },
+                    )
+                }
+
+                item(key = "link_console") {
+                    val consoleUrl = stringResource(R.string.console_website_url)
+                    ListItem(
+                        headlineContent = {
+                            Text(
+                                text = stringResource(R.string.setting_console_title),
+                                style = MaterialTheme.typography.bodyLarge,
+                            )
+                        },
+                        supportingContent = {
+                            Text(
+                                text = stringResource(R.string.setting_console_summary),
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                        },
+                        trailingContent = {
+                            Icon(
+                                imageVector = DryToastIcons.ChevronRight,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag(SettingsTestTags.CONSOLE_LINK_ROW)
+                            .clickable { pendingSecondDeviceUrl = consoleUrl },
+                    )
+                }
+
+                item(key = "action_feedback") {
+                    OutlinedButton(
+                        onClick = onSendFeedback,
+                        shape = RoundedCornerShape(2.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 20.dp)
+                            .testTag(SettingsTestTags.FEEDBACK_BUTTON),
+                    ) {
+                        Text(
+                            text = stringResource(R.string.action_feedback_is_a_gift),
+                            style = MaterialTheme.typography.labelLarge,
+                        )
+                    }
                 }
             }
         }

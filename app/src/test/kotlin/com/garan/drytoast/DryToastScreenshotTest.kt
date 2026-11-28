@@ -999,4 +999,202 @@ class DryToastScreenshotTest {
         }
         verifyAndArchiveSnapshot("settings_lock_tablet_expanded.png")
     }
+
+    @Test
+    @Config(sdk = [34], qualifiers = "w673dp-h841dp-mdpi")
+    fun snapshotConfigureAppsFoldableUnfolded() {
+        val cameraKey = ComponentKey("com.android.camera", "CameraActivity")
+        val chromeKey = ComponentKey("com.android.chrome", "Main")
+        val clockKey = ComponentKey("com.google.android.deskclock", "DeskClock")
+        val gmailKey = ComponentKey("com.google.android.gm", "ConversationListActivityGmail")
+        val socialKey = ComponentKey("com.instagram.android", "MainActivity")
+        val mapsKey = ComponentKey("com.google.android.apps.maps", "MapsActivity")
+        val videoKey = ComponentKey("com.google.android.youtube", "HomeActivity")
+
+        val apps = persistentListOf(
+            com.garan.drytoast.core.model.InstalledApp(cameraKey, "Camera"),
+            com.garan.drytoast.core.model.InstalledApp(chromeKey, "Chrome"),
+            com.garan.drytoast.core.model.InstalledApp(clockKey, "Clock"),
+            com.garan.drytoast.core.model.InstalledApp(gmailKey, "Gmail"),
+            com.garan.drytoast.core.model.InstalledApp(socialKey, "Instagram"),
+            com.garan.drytoast.core.model.InstalledApp(mapsKey, "Maps"),
+            com.garan.drytoast.core.model.InstalledApp(videoKey, "YouTube"),
+        )
+        val assignments = mapOf(
+            chromeKey to com.garan.drytoast.core.model.AppAssignment.Guarded(),
+            gmailKey to com.garan.drytoast.core.model.AppAssignment.Guarded(),
+            socialKey to com.garan.drytoast.core.model.AppAssignment.Blocked,
+            videoKey to com.garan.drytoast.core.model.AppAssignment.Blocked,
+        )
+
+        composeTestRule.setContent {
+            DryToastTheme {
+                com.garan.drytoast.ui.settings.ConfigureAppsScreen(
+                    availableApps = apps,
+                    initialAssignments = assignments,
+                    defaultFriction = com.garan.drytoast.core.model.FrictionChoice.TYPED_INTENTION,
+                    onSave = {},
+                    onBack = {},
+                )
+            }
+        }
+        verifyAndArchiveSnapshot("configure_apps_foldable_unfolded.png")
+    }
+
+    @Test
+    @Config(sdk = [34], qualifiers = "w1280dp-h800dp-mdpi")
+    fun snapshotSettingsMasterDetailTabletExpanded() {
+        val chromeKey = ComponentKey("com.android.chrome", "Main")
+        val clockKey = ComponentKey("com.google.android.deskclock", "DeskClock")
+        val socialKey = ComponentKey("com.instagram.android", "MainActivity")
+        val videoKey = ComponentKey("com.google.android.youtube", "HomeActivity")
+
+        val workTrigger = com.garan.drytoast.core.model.SavedTrigger(
+            id = "t-work",
+            name = "Workday Focus",
+            trigger = com.garan.drytoast.core.model.ProfileTrigger.Schedule(
+                com.garan.drytoast.core.model.ScheduleTrigger(
+                    days = setOf(
+                        com.garan.drytoast.core.model.DayOfWeek.MONDAY,
+                        com.garan.drytoast.core.model.DayOfWeek.TUESDAY,
+                        com.garan.drytoast.core.model.DayOfWeek.WEDNESDAY,
+                        com.garan.drytoast.core.model.DayOfWeek.THURSDAY,
+                        com.garan.drytoast.core.model.DayOfWeek.FRIDAY,
+                    ),
+                    startTime = com.garan.drytoast.core.model.TimeOfDay(9, 0),
+                    endTime = com.garan.drytoast.core.model.TimeOfDay(17, 0),
+                ),
+            ),
+        )
+        val bedtimeTrigger = com.garan.drytoast.core.model.SavedTrigger(
+            id = "t-bedtime",
+            name = "Evening Wind-Down",
+            trigger = com.garan.drytoast.core.model.ProfileTrigger.Schedule(
+                com.garan.drytoast.core.model.ScheduleTrigger(
+                    days = com.garan.drytoast.core.model.DayOfWeek.entries.toSet(),
+                    startTime = com.garan.drytoast.core.model.TimeOfDay(22, 0),
+                    endTime = com.garan.drytoast.core.model.TimeOfDay(6, 30),
+                ),
+            ),
+        )
+        val profiles = persistentListOf(
+            com.garan.drytoast.core.model.CustomProfile(
+                id = "work",
+                name = "Deep Work",
+                priority = 0,
+                enabled = true,
+                colorIndex = 0,
+                activationRules = listOf(com.garan.drytoast.core.model.TriggerRule(listOf("t-work"))),
+                appAssignments = mapOf(
+                    socialKey to com.garan.drytoast.core.model.AppAssignment.Blocked,
+                    videoKey to com.garan.drytoast.core.model.AppAssignment.Blocked,
+                    chromeKey to com.garan.drytoast.core.model.AppAssignment.Guarded(),
+                ),
+            ),
+            com.garan.drytoast.core.model.CustomProfile(
+                id = "bedtime",
+                name = "Bedtime",
+                priority = 1,
+                enabled = true,
+                colorIndex = 2,
+                activationRules = listOf(com.garan.drytoast.core.model.TriggerRule(listOf("t-bedtime"))),
+                defaultRule = com.garan.drytoast.core.model.ProfileDefaultRule.BLOCK_ALL,
+                appAssignments = mapOf(
+                    clockKey to com.garan.drytoast.core.model.AppAssignment.Standard,
+                ),
+            ),
+        )
+        val uiState = com.garan.drytoast.ui.settings.SettingsUiState(
+            general = com.garan.drytoast.core.model.GeneralSettings(
+                showUnlocks = true,
+                showRest = true,
+                requireFullTypingOfGuardedApps = false,
+            ),
+            baseProfile = com.garan.drytoast.core.model.BaseProfileSettings(
+                defaultFriction = com.garan.drytoast.core.model.FrictionChoice.TYPED_INTENTION,
+                quickActions = listOf(
+                    com.garan.drytoast.core.model.InstalledApp(chromeKey, "Chrome"),
+                    com.garan.drytoast.core.model.InstalledApp(clockKey, "Clock"),
+                ),
+                appAssignments = mapOf(
+                    chromeKey to com.garan.drytoast.core.model.AppAssignment.Guarded(),
+                    socialKey to com.garan.drytoast.core.model.AppAssignment.Blocked,
+                ),
+            ),
+            customProfiles = profiles,
+            savedTriggers = persistentListOf(workTrigger, bedtimeTrigger),
+            availableApps = persistentListOf(
+                com.garan.drytoast.core.model.InstalledApp(chromeKey, "Chrome"),
+                com.garan.drytoast.core.model.InstalledApp(clockKey, "Clock"),
+                com.garan.drytoast.core.model.InstalledApp(socialKey, "Instagram"),
+                com.garan.drytoast.core.model.InstalledApp(videoKey, "YouTube"),
+            ),
+            isLoading = false,
+        )
+
+        composeTestRule.setContent {
+            val backStack = androidx.compose.runtime.remember {
+                androidx.compose.runtime.mutableStateListOf<DryToastRoute>(
+                    DryToastRoute.Home,
+                    DryToastRoute.Settings,
+                    DryToastRoute.Profiles,
+                )
+            }
+            val twoPaneStrategy = com.garan.drytoast.ui.settings.rememberSettingsTwoPaneSceneStrategy<DryToastRoute>(
+                isExpanded = true,
+            ) {
+                com.garan.drytoast.ui.settings.ConfigureAppsScreen(
+                    availableApps = uiState.availableApps,
+                    initialAssignments = uiState.baseProfile.appAssignments,
+                    defaultFriction = com.garan.drytoast.core.model.FrictionChoice.TYPED_INTENTION,
+                    onSave = {},
+                    onBack = {},
+                )
+            }
+            DryToastTheme {
+                androidx.navigation3.ui.NavDisplay(
+                    backStack = backStack,
+                    sceneStrategies = listOf(
+                        twoPaneStrategy,
+                        androidx.navigation3.scene.SinglePaneSceneStrategy(),
+                    ),
+                    onBack = {},
+                    entryProvider = androidx.navigation3.runtime.entryProvider {
+                        entry<DryToastRoute.Home> {}
+                        entry<DryToastRoute.Settings>(
+                            metadata = com.garan.drytoast.ui.settings.SettingsTwoPaneSceneStrategy.masterMetadata(),
+                        ) {
+                            com.garan.drytoast.ui.settings.DryToastSettingsScreen(
+                                uiState = uiState,
+                                onBack = {},
+                                onNavigateToConfigureApps = {},
+                                onUpdateShowUnlocks = {},
+                                onUpdateShowRest = {},
+                                onUpdateRequireFullTyping = {},
+                                onUpdateDefaultFriction = {},
+                                onAddQuickAction = {},
+                                onRemoveQuickAction = {},
+                            )
+                        }
+                        entry<DryToastRoute.Profiles>(
+                            metadata = com.garan.drytoast.ui.settings.SettingsTwoPaneSceneStrategy.detailMetadata(
+                                com.garan.drytoast.ui.settings.SettingsDetailSection.PROFILES,
+                            ),
+                        ) {
+                            com.garan.drytoast.ui.settings.ProfilesScreen(
+                                profiles = uiState.customProfiles,
+                                savedTriggers = uiState.savedTriggers,
+                                onSaveProfile = {},
+                                onDeleteProfile = {},
+                                onReorderProfiles = {},
+                                onConfigureProfileApps = {},
+                                onBack = {},
+                            )
+                        }
+                    },
+                )
+            }
+        }
+        verifyAndArchiveSnapshot("settings_master_detail_tablet_expanded.png")
+    }
 }

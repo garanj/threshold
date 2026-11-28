@@ -6,6 +6,7 @@ import android.content.ContextWrapper
 import android.content.Intent
 import android.net.Uri
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
@@ -177,6 +178,7 @@ fun HardenedModeScreen(
     onSaveLockScreenText: (ownerName: String, lockScreenInfo: String) -> Unit = { _, _ -> },
     onOpenWebsite: ((String) -> Unit)? = null,
 ) {
+    val hideBackArrow = LocalHideSettingsDetailBackArrow.current
     BackHandler(onBack = onBack)
 
     val context = LocalContext.current
@@ -197,144 +199,255 @@ fun HardenedModeScreen(
             .semantics { testTagsAsResourceId = true }
             .nestedScroll(scrollBehavior.nestedScrollConnection),
         topBar = {
-            TopAppBar(
-                title = {
-                    Text(
-                        text = stringResource(R.string.hardened_mode_title),
-                        style = MaterialTheme.typography.titleLarge,
-                    )
-                },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(
-                            imageVector = DryToastIcons.ArrowBack,
-                            contentDescription = stringResource(R.string.action_go_back),
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(MaterialTheme.colorScheme.surface),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                TopAppBar(
+                    modifier = Modifier
+                        .widthIn(max = SETTINGS_MEDIUM_MAX_WIDTH)
+                        .fillMaxWidth(),
+                    title = {
+                        Text(
+                            text = stringResource(R.string.hardened_mode_title),
+                            style = MaterialTheme.typography.titleLarge,
                         )
-                    }
-                },
-                scrollBehavior = scrollBehavior,
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface,
-                    scrolledContainerColor = MaterialTheme.colorScheme.surfaceContainerLow,
-                ),
-            )
+                    },
+                    navigationIcon = {
+                        if (!hideBackArrow) {
+                            IconButton(onClick = onBack) {
+                                Icon(
+                                    imageVector = DryToastIcons.ArrowBack,
+                                    contentDescription = stringResource(R.string.action_go_back),
+                                )
+                            }
+                        }
+                    },
+                    scrollBehavior = scrollBehavior,
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = MaterialTheme.colorScheme.surface,
+                        scrolledContainerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+                    ),
+                )
+            }
         },
         containerColor = MaterialTheme.colorScheme.background,
     ) { innerPadding ->
-        LazyColumn(
-            modifier = Modifier
-                .fillMaxSize()
-                .testTag(HardenedModeTestTags.SCREEN_LIST)
-                .consumeWindowInsets(innerPadding),
-            contentPadding = innerPadding,
-        ) {
-            item(key = "status_banner") {
-                val statusLabel = if (isHardenedModeActive) {
-                    stringResource(R.string.hardened_mode_status_active_label)
-                } else {
-                    stringResource(R.string.hardened_mode_status_inactive_label)
-                }
-                val statusBody = if (isHardenedModeActive) {
-                    stringResource(R.string.hardened_mode_status_active_body)
-                } else {
-                    stringResource(R.string.hardened_mode_status_inactive_body)
-                }
-                val containerColor = if (isHardenedModeActive) {
-                    MaterialTheme.colorScheme.surfaceContainerHigh
-                } else {
-                    MaterialTheme.colorScheme.surfaceContainerLow
-                }
+        SettingsContentFrame {
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .testTag(HardenedModeTestTags.SCREEN_LIST)
+                    .consumeWindowInsets(innerPadding),
+                contentPadding = innerPadding,
+            ) {
+                item(key = "status_banner") {
+                    val statusLabel = if (isHardenedModeActive) {
+                        stringResource(R.string.hardened_mode_status_active_label)
+                    } else {
+                        stringResource(R.string.hardened_mode_status_inactive_label)
+                    }
+                    val statusBody = if (isHardenedModeActive) {
+                        stringResource(R.string.hardened_mode_status_active_body)
+                    } else {
+                        stringResource(R.string.hardened_mode_status_inactive_body)
+                    }
+                    val containerColor = if (isHardenedModeActive) {
+                        MaterialTheme.colorScheme.surfaceContainerHigh
+                    } else {
+                        MaterialTheme.colorScheme.surfaceContainerLow
+                    }
 
-                ListItem(
-                    headlineContent = {
-                        Text(
-                            text = statusLabel,
-                            style = MaterialTheme.typography.labelLarge,
-                            fontWeight = FontWeight.SemiBold,
-                            color = if (isHardenedModeActive) {
-                                MaterialTheme.colorScheme.primary
-                            } else {
-                                MaterialTheme.colorScheme.onSurfaceVariant
-                            },
-                        )
-                    },
-                    supportingContent = {
-                        Text(
-                            text = statusBody,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurface,
-                            modifier = Modifier.padding(top = 4.dp),
-                        )
-                    },
-                    colors = ListItemDefaults.colors(containerColor = containerColor),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .testTag(HardenedModeTestTags.STATUS_CARD),
-                )
-                HorizontalDivider(
-                    color = MaterialTheme.colorScheme.outlineVariant,
-                    thickness = 1.dp,
-                )
-            }
-
-            if (isHardenedModeActive) {
-                item(key = "header_controls") {
-                    SettingsSectionHeader(title = stringResource(R.string.hardened_mode_section_controls))
-                }
-
-                item(key = "toggle_block_new_app_installs") {
                     ListItem(
                         headlineContent = {
                             Text(
-                                text = stringResource(R.string.setting_block_new_app_installs_title),
-                                style = MaterialTheme.typography.bodyLarge,
+                                text = statusLabel,
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = FontWeight.SemiBold,
+                                color = if (isHardenedModeActive) {
+                                    MaterialTheme.colorScheme.primary
+                                } else {
+                                    MaterialTheme.colorScheme.onSurfaceVariant
+                                },
                             )
                         },
                         supportingContent = {
                             Text(
-                                text = stringResource(R.string.setting_block_new_app_installs_summary),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                text = statusBody,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                modifier = Modifier.padding(top = 4.dp),
                             )
                         },
-                        trailingContent = {
-                            Switch(
-                                checked = blockNewAppInstalls,
-                                onCheckedChange = null,
-                                enabled = !isSettingsLocked,
-                                modifier = Modifier.testTag(HardenedModeTestTags.BLOCK_NEW_APP_INSTALLS_SWITCH),
-                            )
-                        },
+                        colors = ListItemDefaults.colors(containerColor = containerColor),
                         modifier = Modifier
                             .fillMaxWidth()
-                            .testTag(HardenedModeTestTags.BLOCK_NEW_APP_INSTALLS_ROW)
-                            .toggleable(
-                                value = blockNewAppInstalls,
-                                enabled = !isSettingsLocked,
-                                role = Role.Switch,
-                                onValueChange = onToggleBlockNewAppInstalls,
-                            ),
+                            .testTag(HardenedModeTestTags.STATUS_CARD),
+                    )
+                    HorizontalDivider(
+                        color = MaterialTheme.colorScheme.outlineVariant,
+                        thickness = 1.dp,
                     )
                 }
 
-                item(key = "lock_screen_text_row") {
-                    val effectiveName = hardenedOwnerName.trim().ifEmpty { GeneralSettings.DEFAULT_HARDENED_OWNER_NAME }
-                    val ownerPreview = stringResource(R.string.setting_lock_screen_owner_preview, effectiveName)
-                    val summaryText = if (hardenedLockScreenInfo.isNotBlank()) {
-                        "$ownerPreview · ${hardenedLockScreenInfo.trim()}"
-                    } else {
-                        ownerPreview
+                if (isHardenedModeActive) {
+                    item(key = "header_controls") {
+                        SettingsSectionHeader(title = stringResource(R.string.hardened_mode_section_controls))
                     }
+
+                    item(key = "toggle_block_new_app_installs") {
+                        ListItem(
+                            headlineContent = {
+                                Text(
+                                    text = stringResource(R.string.setting_block_new_app_installs_title),
+                                    style = MaterialTheme.typography.bodyLarge,
+                                )
+                            },
+                            supportingContent = {
+                                Text(
+                                    text = stringResource(R.string.setting_block_new_app_installs_summary),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            },
+                            trailingContent = {
+                                Switch(
+                                    checked = blockNewAppInstalls,
+                                    onCheckedChange = null,
+                                    enabled = !isSettingsLocked,
+                                    modifier = Modifier.testTag(HardenedModeTestTags.BLOCK_NEW_APP_INSTALLS_SWITCH),
+                                )
+                            },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag(HardenedModeTestTags.BLOCK_NEW_APP_INSTALLS_ROW)
+                                .toggleable(
+                                    value = blockNewAppInstalls,
+                                    enabled = !isSettingsLocked,
+                                    role = Role.Switch,
+                                    onValueChange = onToggleBlockNewAppInstalls,
+                                ),
+                        )
+                    }
+
+                    item(key = "lock_screen_text_row") {
+                        val effectiveName = hardenedOwnerName.trim().ifEmpty {
+                            GeneralSettings.DEFAULT_HARDENED_OWNER_NAME
+                        }
+                        val ownerPreview = stringResource(R.string.setting_lock_screen_owner_preview, effectiveName)
+                        val summaryText = if (hardenedLockScreenInfo.isNotBlank()) {
+                            "$ownerPreview · ${hardenedLockScreenInfo.trim()}"
+                        } else {
+                            ownerPreview
+                        }
+                        ListItem(
+                            headlineContent = {
+                                Text(
+                                    text = stringResource(R.string.setting_lock_screen_text_title),
+                                    style = MaterialTheme.typography.bodyLarge,
+                                )
+                            },
+                            supportingContent = {
+                                Text(
+                                    text = summaryText,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            },
+                            trailingContent = {
+                                Icon(
+                                    imageVector = DryToastIcons.ChevronRight,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag(HardenedModeTestTags.LOCK_SCREEN_TEXT_ROW)
+                                .clickable(enabled = !isSettingsLocked) {
+                                    showLockScreenTextSheet = true
+                                },
+                        )
+                    }
+
+                    item(key = "divider_controls") {
+                        HorizontalDivider(
+                            color = MaterialTheme.colorScheme.outlineVariant,
+                            thickness = 1.dp,
+                            modifier = Modifier.padding(top = 8.dp),
+                        )
+                    }
+                }
+
+                // SECTION 1: WHAT HARDENED MODE ENFORCES
+                item(key = "header_capabilities") {
+                    SettingsSectionHeader(title = stringResource(R.string.hardened_mode_section_capabilities))
+                }
+
+                item(key = "cap_suspend") {
+                    HardenedFeatureRow(
+                        title = stringResource(R.string.hardened_mode_cap_suspend_title),
+                        body = stringResource(R.string.hardened_mode_cap_suspend_body),
+                    )
+                }
+
+                item(key = "cap_home") {
+                    HardenedFeatureRow(
+                        title = stringResource(R.string.hardened_mode_cap_home_title),
+                        body = stringResource(R.string.hardened_mode_cap_home_body),
+                    )
+                }
+
+                item(key = "cap_tamper") {
+                    HardenedFeatureRow(
+                        title = stringResource(R.string.hardened_mode_cap_tamper_title),
+                        body = stringResource(R.string.hardened_mode_cap_tamper_body),
+                    )
+                }
+
+                item(key = "divider_1") {
+                    HorizontalDivider(
+                        color = MaterialTheme.colorScheme.outlineVariant,
+                        thickness = 1.dp,
+                        modifier = Modifier.padding(top = 8.dp),
+                    )
+                }
+
+                // SECTION 2: COMPANION COMMITMENT LAYERS
+                item(key = "header_companion") {
+                    SettingsSectionHeader(title = stringResource(R.string.hardened_mode_section_companion))
+                }
+
+                item(key = "companion_intro") {
+                    Text(
+                        text = stringResource(R.string.hardened_mode_companion_intro),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                    )
+                }
+
+                item(key = "companion_reboot") {
+                    HardenedFeatureRow(
+                        title = stringResource(R.string.hardened_mode_companion_reboot_title),
+                        body = stringResource(R.string.hardened_mode_companion_reboot_body),
+                    )
+                }
+
+                item(key = "companion_adb") {
+                    val consoleUrl = stringResource(R.string.console_website_url)
                     ListItem(
                         headlineContent = {
                             Text(
-                                text = stringResource(R.string.setting_lock_screen_text_title),
+                                text = stringResource(R.string.hardened_mode_companion_adb_title),
                                 style = MaterialTheme.typography.bodyLarge,
                             )
                         },
                         supportingContent = {
                             Text(
-                                text = summaryText,
+                                text = stringResource(R.string.hardened_mode_companion_adb_body),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
@@ -348,149 +461,54 @@ fun HardenedModeScreen(
                         },
                         modifier = Modifier
                             .fillMaxWidth()
-                            .testTag(HardenedModeTestTags.LOCK_SCREEN_TEXT_ROW)
-                            .clickable(enabled = !isSettingsLocked) {
-                                showLockScreenTextSheet = true
-                            },
+                            .testTag(HardenedModeTestTags.COMPANION_CONSOLE_ROW)
+                            .clickable { pendingSecondDeviceUrl = consoleUrl },
                     )
                 }
 
-                item(key = "divider_controls") {
+                item(key = "divider_2") {
                     HorizontalDivider(
                         color = MaterialTheme.colorScheme.outlineVariant,
                         thickness = 1.dp,
                         modifier = Modifier.padding(top = 8.dp),
                     )
                 }
-            }
 
-            // SECTION 1: WHAT HARDENED MODE ENFORCES
-            item(key = "header_capabilities") {
-                SettingsSectionHeader(title = stringResource(R.string.hardened_mode_section_capabilities))
-            }
+                // SECTION 3: SETUP & REMOVAL
+                item(key = "header_setup") {
+                    SettingsSectionHeader(title = stringResource(R.string.hardened_mode_section_setup))
+                }
 
-            item(key = "cap_suspend") {
-                HardenedFeatureRow(
-                    title = stringResource(R.string.hardened_mode_cap_suspend_title),
-                    body = stringResource(R.string.hardened_mode_cap_suspend_body),
-                )
-            }
-
-            item(key = "cap_home") {
-                HardenedFeatureRow(
-                    title = stringResource(R.string.hardened_mode_cap_home_title),
-                    body = stringResource(R.string.hardened_mode_cap_home_body),
-                )
-            }
-
-            item(key = "cap_tamper") {
-                HardenedFeatureRow(
-                    title = stringResource(R.string.hardened_mode_cap_tamper_title),
-                    body = stringResource(R.string.hardened_mode_cap_tamper_body),
-                )
-            }
-
-            item(key = "divider_1") {
-                HorizontalDivider(
-                    color = MaterialTheme.colorScheme.outlineVariant,
-                    thickness = 1.dp,
-                    modifier = Modifier.padding(top = 8.dp),
-                )
-            }
-
-            // SECTION 2: COMPANION COMMITMENT LAYERS
-            item(key = "header_companion") {
-                SettingsSectionHeader(title = stringResource(R.string.hardened_mode_section_companion))
-            }
-
-            item(key = "companion_intro") {
-                Text(
-                    text = stringResource(R.string.hardened_mode_companion_intro),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                )
-            }
-
-            item(key = "companion_reboot") {
-                HardenedFeatureRow(
-                    title = stringResource(R.string.hardened_mode_companion_reboot_title),
-                    body = stringResource(R.string.hardened_mode_companion_reboot_body),
-                )
-            }
-
-            item(key = "companion_adb") {
-                val consoleUrl = stringResource(R.string.console_website_url)
-                ListItem(
-                    headlineContent = {
-                        Text(
-                            text = stringResource(R.string.hardened_mode_companion_adb_title),
-                            style = MaterialTheme.typography.bodyLarge,
-                        )
-                    },
-                    supportingContent = {
-                        Text(
-                            text = stringResource(R.string.hardened_mode_companion_adb_body),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    },
-                    trailingContent = {
-                        Icon(
-                            imageVector = DryToastIcons.ChevronRight,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .testTag(HardenedModeTestTags.COMPANION_CONSOLE_ROW)
-                        .clickable { pendingSecondDeviceUrl = consoleUrl },
-                )
-            }
-
-            item(key = "divider_2") {
-                HorizontalDivider(
-                    color = MaterialTheme.colorScheme.outlineVariant,
-                    thickness = 1.dp,
-                    modifier = Modifier.padding(top = 8.dp),
-                )
-            }
-
-            // SECTION 3: SETUP & REMOVAL
-            item(key = "header_setup") {
-                SettingsSectionHeader(title = stringResource(R.string.hardened_mode_section_setup))
-            }
-
-            item(key = "setup_intro") {
-                Text(
-                    text = stringResource(R.string.hardened_mode_setup_intro),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                )
-            }
-
-            item(key = "open_website_button") {
-                val websiteUrl = stringResource(R.string.hardened_mode_website_url)
-                OutlinedButton(
-                    onClick = { pendingSecondDeviceUrl = websiteUrl },
-                    shape = RoundedCornerShape(2.dp),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 12.dp)
-                        .heightIn(min = 48.dp)
-                        .testTag(HardenedModeTestTags.OPEN_WEBSITE_BUTTON),
-                ) {
+                item(key = "setup_intro") {
                     Text(
-                        text = stringResource(R.string.action_open_hardened_mode_website),
-                        style = MaterialTheme.typography.labelLarge,
+                        text = stringResource(R.string.hardened_mode_setup_intro),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                     )
                 }
-            }
 
-            item(key = "bottom_spacer") {
-                Spacer(modifier = Modifier.height(24.dp))
+                item(key = "open_website_button") {
+                    val websiteUrl = stringResource(R.string.hardened_mode_website_url)
+                    OutlinedButton(
+                        onClick = { pendingSecondDeviceUrl = websiteUrl },
+                        shape = RoundedCornerShape(2.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 12.dp)
+                            .heightIn(min = 48.dp)
+                            .testTag(HardenedModeTestTags.OPEN_WEBSITE_BUTTON),
+                    ) {
+                        Text(
+                            text = stringResource(R.string.action_open_hardened_mode_website),
+                            style = MaterialTheme.typography.labelLarge,
+                        )
+                    }
+                }
+
+                item(key = "bottom_spacer") {
+                    Spacer(modifier = Modifier.height(24.dp))
+                }
             }
         }
     }
